@@ -149,11 +149,12 @@ function renderWelcome() {
   $('welcome').hidden = S.tabs.length > 0;
   const p = project(S.current);
   const btn = (label, onclick, primary) => h('button', {class: primary ? 'btn primary' : 'btn', type: 'button', onclick}, label);
-  $('welcome-acts').replaceChildren(
+  $('welcome-acts').replaceChildren(...[
     btn('폴더 열기', addProject, !p),
     p ? btn(`${p.name} · Claude 새 세션`, () => openTab(p.path, 'claude'), true) : null,
     p ? btn(`Codex 새 세션`, () => openTab(p.path, 'codex')) : null,
-    p ? btn('터미널만 열기', () => openTab(p.path, 'shell')) : null);
+    p ? btn('터미널만 열기', () => openTab(p.path, 'shell')) : null,
+  ].filter(Boolean));
 }
 
 api.onData((id, data) => { const t = tab(id); if (t) t.term.write(data); });
