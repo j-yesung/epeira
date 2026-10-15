@@ -2,7 +2,7 @@
 /* Agent Orbit 대시보드 — 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다. */
 
 // ── 설정 ──
-const LATEST = '0.2.1';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.3.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -15,6 +15,7 @@ const LOCAL_URL = `http://127.0.0.1:${PORT}`;
 const SAFARI = !LOCAL && /^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent);
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const HUB = (params.get('hub') || 'HUB').slice(0, 6).toUpperCase();
+const MINI = params.get('view') === 'mini';  // agent-orbit mini 가 여는 작은 창
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
 
 const KIND = {
@@ -60,7 +61,7 @@ const S = {
   connected: false,          // 이벤트 스트림 연결 여부
   range: 'today', bounds: [dayStart(0), null], day: dayStart(0),
   summary: new Map(), summarySeq: 0, summaryReady: false, pending: [],
-  nodes: new Map(), feed: [], hubFlash: -9, bursts: [],
+  nodes: new Map(), feed: [], feedVer: 0, hubFlash: -9, bursts: [],
   spark: Object.fromEntries(CARDS.map(([k]) => [k, Array(SPARK_N).fill(0)])),
   drawer: null, boot: null, es: null,
   demoTimer: 0, demoSeq: 0, demoLog: [],
@@ -155,6 +156,7 @@ async function refreshStatus() {
 }
 
 async function boot() {
+  if (MINI) { document.body.classList.add('mini'); $('bigger').hidden = false; resize(); }
   renderStatic();
   if (!LOCAL) loadAnalytics();
   if (LOCAL) return goLive();
@@ -198,7 +200,7 @@ function openStream() {
 function onMessage(e) {
   if (e.kind === 'hello') {
     const restarted = S.boot && S.boot !== e.boot;
-    S.boot = e.boot; S.feed = [];
+    S.boot = e.boot; S.feed = []; S.feedVer++;
     for (const n of S.nodes.values()) n.running.clear();
     loadSummary();
     if (restarted) refreshStatus();
@@ -237,6 +239,7 @@ function onEvent(e) {
     if (live) { n.flash = S.hubFlash = now(); burst(n); }
     S.feed.unshift(e);
     S.feed.length = Math.min(S.feed.length, 6);
+    S.feedVer++;
     tape(e, live);
   }
   if (live) {
@@ -354,11 +357,14 @@ function renderPanels() {
   $('judged').textContent = `${t.tools.toLocaleString()} tool calls`;
   const sum = t.read + t.edit + t.run + t.other || 1;
   for (const [k] of BARS) { const pc = Math.round(t[k] / sum * 100); $(`p-${k}`).textContent = pc + '%'; $(`f-${k}`).style.width = pc + '%'; }
+  if (S.feedVer === feedDrawn.ver && S.mode === feedDrawn.mode) return;  // 목록이 바뀔 때만 다시 그림 (깜빡임 방지)
   const feed = $('feed');
-  feed.replaceChildren(...S.feed.map(e => h('li', {style: `--c:${(KIND[e.kind] || KIND.tool).c}`},
+  feed.replaceChildren(...S.feed.map((e, i) => h('li', {class: i === 0 && e !== feedDrawn.top && !e.replay ? 'new' : null, style: `--c:${(KIND[e.kind] || KIND.tool).c}`},
     h('span', {class: 'dot'}), h('b', {}, e.kind), h('p', {}, `${e.label} · ${e.text}`))));
   if (!S.feed.length) feed.append(h('li', {class: 'empty'}, S.mode === 'live' ? '에이전트가 일하면 여기에 바로 나타나요' : '…'));
+  feedDrawn = {ver: S.feedVer, mode: S.mode, top: S.feed[0]};
 }
+let feedDrawn = {ver: -1, mode: null, top: null};
 
 function renderSessions() {
   const list = [...S.summary.values()].sort((a, b) => b.last - a.last);
@@ -396,7 +402,7 @@ function connectedAny() { const a = S.status && S.status.agents; return !!a && O
 function renderOnboard() {
   const box = $('onboard');
   const live = S.mode === 'live' && S.status;
-  box.hidden = !(S.onboard || (live && !connectedAny()));
+  box.hidden = MINI || !(S.onboard || (live && !connectedAny()));
   if (box.hidden) return box.replaceChildren();
   const st = S.onboard;
   const step = (n, title, state, ...body) => h('div', {class: `step ${state}`}, h('h3', {}, h('b', {}, state === 'done' ? '✓' : n), title), ...body);
@@ -465,6 +471,7 @@ function renderFooter() {
     };
     kids.push(sw);
   }
+  if (S.mode === 'live') kids.push(h('span', {}, '미니 창: 터미널에서 agent-orbit mini'));
   if (!LOCAL && S.mode === 'live') kids.push(h('a', {href: LOCAL_URL}, '로컬 주소로 열기'));
   if (FEEDBACK_URL) kids.push(h('a', {href: FEEDBACK_URL, target: '_blank', rel: 'noopener'}, '피드백'));
   kids.push(h('a', {href: '#privacy', onclick: () => { $('privacy').open = true; }}, '개인정보'));
@@ -654,7 +661,7 @@ function demoEmit(e) {
 
 function stopDemo() {
   clearTimeout(S.demoTimer);
-  S.nodes.clear(); S.summary.clear(); S.feed = []; S.demoLog = [];
+  S.nodes.clear(); S.summary.clear(); S.feed = []; S.feedVer++; S.demoLog = [];
   for (const k in S.spark) S.spark[k].fill(0);
   $('tape').textContent = 'waiting for agents';
 }
@@ -690,7 +697,10 @@ let W = 0, H = 0, Z = 1, stars = [], rot = 0, lastFrame = now(), working = false
 function resize() {
   const dpr = devicePixelRatio || 1;
   W = cv.clientWidth; Z = Math.max(.62, Math.min(1, W / 760));
-  H = Math.round(W < 600 ? W * 1.1 : Math.max(340, Math.min(540, W * .56)));
+  if (MINI) {  // 미니 창: 다른 요소를 뺀 나머지 높이를 궤도가 채운다
+    const rest = document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - cv.offsetHeight;
+    H = Math.max(200, Math.round(innerHeight - rest));
+  } else H = Math.round(W < 600 ? W * 1.1 : Math.max(340, Math.min(540, W * .56)));
   cv.style.height = H + 'px'; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   stars = Array.from({length: 90}, () => [Math.random() * W, Math.random() * H, Math.random() * .35 + .05]);
 }
@@ -804,7 +814,10 @@ function frame() {
     ctx.fillStyle = '#8aa0c2'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
     ctx.fillText(connectedAny() ? '최근 30분 동안 움직인 에이전트가 없어요' : '에이전트를 연결하면 여기에 나타나요', g.cx, g.cy + g.ry * .62 + 30);
   }
-  if (S.dirty) { S.dirty = false; renderPanels(); }
+  if (S.dirty) {
+    S.dirty = false; renderPanels();
+    if (MINI && Math.abs(document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - innerHeight) > 2) resize();  // 미니 창은 스크롤 없이 꽉 차게
+  }
   if (S.listDirty && t - lastList > .5) { S.listDirty = false; lastList = t; renderSessions(); }
   requestAnimationFrame(frame);
 }
