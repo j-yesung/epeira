@@ -2,7 +2,7 @@
 /* Agent Orbit 대시보드 — 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다. */
 
 // ── 설정 ──
-const LATEST = '0.3.1';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.4.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -463,15 +463,24 @@ function renderAgents() {
 
 function renderFooter() {
   const st = S.status, kids = [h('span', {class: 'grow'}, `Agent Orbit · 화면 v${LATEST}` + (st ? ` · 수집기 v${st.version}` : ''))];
-  if (st && st.autostart != null) {
-    const sw = h('button', {class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(st.autostart)}, h('i'), '로그인할 때 자동 실행');
-    sw.onclick = async () => {
-      try { const r = await postJSON('/api/autostart', {enabled: !st.autostart}); st.autostart = r.autostart; renderFooter(); toast(r.autostart ? '로그인할 때 자동으로 켜져요' : '자동 실행을 껐어요. 지금 실행 중인 수집기는 그대로예요'); }
-      catch { toast('설정을 바꾸지 못했어요'); }
-    };
-    kids.push(sw);
+  const toggle = (label, on, flip) => {
+    const sw = h('button', {class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(on)}, h('i'), label);
+    sw.onclick = async () => { try { await flip(); renderFooter(); } catch { toast('설정을 바꾸지 못했어요'); } };
+    return sw;
+  };
+  if (st && st.autoMini != null) {
+    kids.push(toggle('세션 시작 시 미니 창', st.autoMini, async () => {
+      st.autoMini = (await postJSON('/api/settings', {autoMini: !st.autoMini})).autoMini;
+      toast(st.autoMini ? 'Claude · Codex 세션이 시작되면 미니 창이 떠요' : '세션이 시작돼도 미니 창을 띄우지 않아요. 터미널에서 agent-orbit mini 로 열 수 있어요');
+    }));
   }
-  if (S.mode === 'live') kids.push(h('span', {}, '미니 창: 터미널에서 agent-orbit mini'));
+  if (st && st.autostart != null) {
+    kids.push(toggle('로그인할 때 자동 실행', st.autostart, async () => {
+      st.autostart = (await postJSON('/api/autostart', {enabled: !st.autostart})).autostart;
+      toast(st.autostart ? '로그인할 때 자동으로 켜져요' : '자동 실행을 껐어요. 지금 실행 중인 수집기는 그대로예요');
+    }));
+  }
+  if (S.mode === 'live') kids.push(h('span', {}, '미니 창: agent-orbit mini'));
   if (!LOCAL && S.mode === 'live') kids.push(h('a', {href: LOCAL_URL}, '로컬 주소로 열기'));
   if (FEEDBACK_URL) kids.push(h('a', {href: FEEDBACK_URL, target: '_blank', rel: 'noopener'}, '피드백'));
   kids.push(h('a', {href: '#privacy', onclick: () => { $('privacy').open = true; }}, '개인정보'));

@@ -62,6 +62,25 @@ def test_hook_mapping():
     assert 't2' not in ao.running  # 끝이 먼저 오면 늦게 온 시작은 무시
 
 
+def test_session_start_opens_mini():
+    opened = []
+    ao.open_mini, real = (lambda top=True: opened.append(top) or True), ao.open_mini
+    ao.MAC = True
+    try:
+        for source in ('startup', 'resume', 'compact', 'clear', None):
+            h = {'hook_event_name': 'SessionStart', 'session_id': 'S'}
+            if source:
+                h['source'] = source
+            ao.hook('claude', h)
+        assert len(opened) == 3, '새로 시작·이어 열기·source 없음(Codex)만 띄운다'
+        ao.save_setting('autoMini', False)
+        ao.hook('codex', {'hook_event_name': 'SessionStart'})
+        assert len(opened) == 3, '사용자가 끄면 띄우지 않는다'
+        ao.save_setting('autoMini', True)
+    finally:
+        ao.open_mini = real
+
+
 def write_lines(path, *objs):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'a') as f:

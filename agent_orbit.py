@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.3.1'
+VERSION = '0.4.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -41,6 +41,7 @@ DATA_DIR = os.path.join(APP_DIR, 'data')
 EVENTS_DIR = os.path.join(DATA_DIR, 'events')
 CKPT_FILE = os.path.join(DATA_DIR, 'state.json')
 RESTORE_FILE = os.path.join(DATA_DIR, 'restore.json')
+SETTINGS_FILE = os.path.join(DATA_DIR, 'settings.json')
 LOG_FILE = os.path.join(APP_DIR, 'collector.log')
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = 'https://agent-orbit-app.vercel.app'
@@ -51,12 +52,13 @@ HOSTS = {'127.0.0.1:%d' % PORT, 'localhost:%d' % PORT}  # 다른 Host 는 거부
 RETENTION_DAYS = 7
 BOOT = str(int(time.time() * 1000))
 LABEL = 'dev.agentorbit.collector'
+MAC = sys.platform == 'darwin'  # 미니 창(WebKit)은 macOS 에서만
 
 AGENTS = {
     'claude': {'name': 'Claude Code', 'dir': '~/.claude', 'file': '~/.claude/settings.json',
-               'events': ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'], 'opts': {'async': True}},
+               'events': ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure'], 'opts': {'async': True}},
     'codex': {'name': 'Codex', 'dir': '~/.codex', 'file': '~/.codex/hooks.json',
-              'events': ['PreToolUse', 'PostToolUse'], 'opts': {'async': True, 'timeout': 2}},
+              'events': ['SessionStart', 'PreToolUse', 'PostToolUse'], 'opts': {'async': True, 'timeout': 2}},
 }
 CODEX_CONFIG = '~/.codex/config.toml'
 
@@ -459,6 +461,11 @@ HOOK_PHASE = {'PreToolUse': 'start', 'PostToolUse': 'end', 'PostToolUseFailure':
 
 
 def hook(agent, h):
+    if h.get('hook_event_name') == 'SessionStart':
+        # 새로 시작하거나 이어 열 때만. 대화 압축·/clear 로 다시 시작될 땐 사용자가 닫은 창을 다시 띄우지 않는다
+        if h.get('source', 'startup') in ('startup', 'resume') and setting('autoMini') and MAC:
+            open_mini()
+        return
     phase, tid = HOOK_PHASE.get(h.get('hook_event_name')), h.get('tool_use_id')
     if not phase or not tid:
         return
@@ -716,9 +723,24 @@ def agent_state(agent):
     return out
 
 
+DEFAULTS = {'autoMini': True}  # 세션이 시작되면 미니 창을 띄울지
+
+
+def setting(key):
+    return (read_json(SETTINGS_FILE) or {}).get(key, DEFAULTS[key])
+
+
+def save_setting(key, value):
+    s = read_json(SETTINGS_FILE) or {}
+    s[key] = value
+    write_text(SETTINGS_FILE, json.dumps(s))
+    return value
+
+
 def status():
     return {'version': VERSION, 'protocol': PROTOCOL, 'port': PORT, 'boot': BOOT, 'platform': sys.platform,
             'autostart': autostart_state(), 'retentionDays': RETENTION_DAYS,
+            'autoMini': setting('autoMini') if MAC else None,
             'agents': {k: agent_state(k) for k in AGENTS}}
 
 
@@ -929,6 +951,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, act(agent, action))
         if u.path == '/api/autostart':
             return self.reply(200, {'autostart': set_autostart(bool(data.get('enabled')))})
+        if u.path == '/api/settings' and isinstance(data.get('autoMini'), bool):
+            return self.reply(200, {'autoMini': save_setting('autoMini', data['autoMini'])})
         self.reply(404, {'error': 'not found'})
 
     def static(self, name, ctype):
@@ -1063,7 +1087,7 @@ function run(argv) {
   win.appearance = $.NSAppearance.appearanceNamed('NSAppearanceNameDarkAqua');
   win.backgroundColor = $.NSColor.colorWithSRGBRedGreenBlueAlpha(5 / 255, 10 / 255, 20 / 255, 1);
   win.minSize = $.NSMakeSize(320, 480);
-  if (top) { win.level = 3; win.collectionBehavior = 1; }  // 다른 창 위, 모든 데스크톱에
+  if (top) { win.level = 3; win.collectionBehavior = 1 | 256; }  // 다른 창 위, 모든 데스크톱·전체 화면 앱 위에도
   const web = $.WKWebView.alloc.initWithFrameConfiguration(win.contentView.bounds, $.WKWebViewConfiguration.alloc.init);
   web.autoresizingMask = 2 | 16;
   try { web.setValueForKey($.NSNumber.numberWithBool(false), 'drawsBackground'); } catch (e) {}  // 로딩 중 흰 화면 방지
@@ -1089,17 +1113,25 @@ function run(argv) {
 '''
 
 
+def open_mini(top=True):
+    """macOS 미니 창을 띄운다. 이미 떠 있으면 그대로 둔다. 수집기(세션 시작 훅)와 CLI 가 같이 쓴다."""
+    script = os.path.join(APP_DIR, 'mini.js')
+    if read_text(script) != MINI_JS:
+        write_text(script, MINI_JS)
+    if run('pgrep', '-f', script).stdout.strip():
+        return False
+    subprocess.Popen(['osascript', '-l', 'JavaScript', script, 'http://127.0.0.1:%d/?view=mini' % PORT, 'top' if top else 'no'],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return True
+
+
 def cmd_mini(args):
     if local_status(3) is None:
         die('수집기가 꺼져 있습니다. agent-orbit doctor 로 확인하세요.')
     url = 'http://127.0.0.1:%d/?view=mini' % PORT
     if sys.platform == 'darwin':
-        script = os.path.join(APP_DIR, 'mini.js')
-        write_text(script, MINI_JS)
-        if run('pgrep', '-f', script).stdout.strip():
+        if not open_mini('--no-top' not in args):
             return print('미니 창이 이미 열려 있습니다.')
-        subprocess.Popen(['osascript', '-l', 'JavaScript', script, url, 'no' if '--no-top' in args else 'top'],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         return print('미니 창을 열었습니다. 닫으려면 창의 빨간 버튼을 누르세요.')
     for exe in ('google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'brave-browser'):
         if shutil.which(exe):  # Linux: 주소창 없는 앱 창
@@ -1140,7 +1172,8 @@ def cmd_doctor(args):
              'install     %s' % tilde(APP_DIR),
              'collector   %s' % ('running %s on 127.0.0.1:%d' % (st['version'], PORT) if st else
                                  'NOT RUNNING (127.0.0.1:%d%s)' % (PORT, ' — port used by another program' if port_open() else '')),
-             'autostart   %s' % {None: 'not installed', True: 'on', False: 'off'}[autostart_state()]]
+             'autostart   %s' % {None: 'not installed', True: 'on', False: 'off'}[autostart_state()],
+             'auto mini   %s' % ('on' if setting('autoMini') else 'off')]
     for k in AGENTS:
         a = (st or {}).get('agents', {}).get(k) or agent_state(k)
         lines.append('%-11s installed=%s hooks=%s%s' % (k, a['installed'], 'connected' if a['connected'] else 'legacy' if a.get('legacy') else 'off',

@@ -271,8 +271,9 @@ body.mini .brand span { display: inline; }
       <ul>
         <li><code>~/.agent-orbit</code> — 수집기와 최근 7일 기록 (프롬프트·명령의 앞부분, 파일 이름, 토큰 수). 7일이 지나면 자동으로 지워집니다.</li>
         <li>로그인 시 자동 실행 — macOS <code>~/Library/LaunchAgents/dev.agentorbit.collector.plist</code>, Linux <code>~/.config/systemd/user/agent-orbit.service</code></li>
-        <li>Claude Code 연결 시 — <code>~/.claude/settings.json</code>의 hooks 항목 3개 (최초 원본은 <code>settings.json.orbit-bak</code>)</li>
-        <li>Codex 연결 시 — <code>~/.codex/hooks.json</code>의 hooks 항목 2개와 <code>~/.codex/config.toml</code>의 승인 기록</li>
+        <li>Claude Code 연결 시 — <code>~/.claude/settings.json</code>의 hooks 항목 4개: 세션 시작, 도구 실행 전·후·실패 (최초 원본은 <code>settings.json.orbit-bak</code>)</li>
+        <li>Codex 연결 시 — <code>~/.codex/hooks.json</code>의 hooks 항목 3개: 세션 시작, 도구 실행 전·후. 그리고 <code>~/.codex/config.toml</code>의 승인 기록</li>
+        <li>macOS에서 세션이 시작되면 미니 창이 떠요. 아래 "세션 시작 시 미니 창" 스위치로 끌 수 있어요.</li>
       </ul>
       <p>모두 지우기: 터미널에서 <code>agent-orbit uninstall</code> — 훅, 자동 실행, 설치 파일, 기록을 한 번에 지웁니다. 연결 해제만 하려면 위 에이전트 카드의 해제 버튼을 쓰세요.</p>
     </div>
