@@ -182,7 +182,7 @@ def tool_arg(inp):
 
 def parse_claude(s, o):
     t, out = o.get('type'), []
-    if o.get('cwd') and not s['parent']:  # 훅과 같은 기준: 지금 작업 폴더 (서브에이전트는 agentType 유지)
+    if o.get('cwd') and not s['parent'] and not s['label']:  # 세션을 시작한 폴더 이름으로 고정 (cd 해도 안 바뀜)
         s['label'] = base(o['cwd'])
     m = o.get('message') if isinstance(o.get('message'), dict) else {}
     c = m.get('content')
@@ -260,6 +260,7 @@ PARSERS = {'claude': parse_claude, 'codex': parse_codex}
 
 sessions, checkpoint, clients, running = {}, {}, set(), {}
 tabs = {}  # 앱 터미널 탭 ID → 그 탭에서 실행 중인 세션 id
+labels = {}  # 세션 id → 이름(시작 폴더). 훅도 같은 이름을 쓰게
 history, ended = deque(maxlen=300), deque(maxlen=500)
 lock = threading.Lock()
 seq = 0
@@ -341,6 +342,8 @@ def emit(s, kind, text, ts, st=None):
         return
     if kind in ('say', 'you') and not text:
         return
+    if s['label']:
+        labels.setdefault(s['id'], s['label'])
     dtok = max(0, s['tokens'] - s['tok_sent'])
     s['tok_sent'] = s['tokens']
     if kind == 'stat' and not dtok:
@@ -488,6 +491,8 @@ def hook(agent, h, tab=''):
     if tab and tabs.get(tab) != main:  # 앱의 어느 탭이 어느 세션인지 (서브에이전트는 부모 세션으로)
         tabs[tab] = main
         publish({'kind': 'tab', 'tab': tab, 'id': main, 'ts': time.time()})
+    if h.get('hook_event_name') == 'SessionStart' and h.get('cwd'):
+        labels.setdefault(main, base(h['cwd']))  # 시작 폴더 = 세션 이름
     if h.get('hook_event_name') == 'SessionStart':
         # 새로 시작하거나 이어 열 때만 (대화 압축·/clear 땐 닫은 창을 다시 띄우지 않음). 앱 안의 세션이면 앱이 이미 궤도를 보여준다
         if not tab and h.get('source', 'startup') in ('startup', 'resume') and setting('autoMini') and MAC:
@@ -499,7 +504,7 @@ def hook(agent, h, tab=''):
     inp = h.get('tool_input') if isinstance(h.get('tool_input'), dict) else {}
     name = str(h.get('tool_name') or '').split('__')[-1]
     publish({'id': sid, 'parent': h.get('session_id') if aid else None, 'agent': agent,
-             'label': (h.get('agent_type') if aid else base(h.get('cwd') or '')) or agent,
+             'label': (h.get('agent_type') if aid else labels.get(main) or base(h.get('cwd') or '')) or agent,
              'kind': phase, 'tool': tid, 'st': station(h.get('tool_name')), 'ok': h.get('hook_event_name') != 'PostToolUseFailure',
              'text': (name + ' ' + tool_arg(inp)).strip(), 'ts': time.time()})
 
@@ -1112,7 +1117,7 @@ function run(argv) {
   win.releasedWhenClosed = false;
   win.titlebarAppearsTransparent = true;
   win.appearance = $.NSAppearance.appearanceNamed('NSAppearanceNameDarkAqua');
-  win.backgroundColor = $.NSColor.colorWithSRGBRedGreenBlueAlpha(5 / 255, 10 / 255, 20 / 255, 1);
+  win.backgroundColor = $.NSColor.colorWithSRGBRedGreenBlueAlpha(10 / 255, 10 / 255, 10 / 255, 1);
   win.minSize = $.NSMakeSize(320, 480);
   if (top) { win.level = 3; win.collectionBehavior = 1 | 256; }  // 다른 창 위, 모든 데스크톱·전체 화면 앱 위에도
   const web = $.WKWebView.alloc.initWithFrameConfiguration(win.contentView.bounds, $.WKWebViewConfiguration.alloc.init);

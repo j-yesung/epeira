@@ -18,13 +18,14 @@ const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MINI = params.get('view') === 'mini';  // agent-orbit mini 가 여는 작은 창 · 앱의 궤도 패널
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
 const FOLLOW_QUIET = 8;           // 보던 세션이 이만큼(초) 조용해야 다른 세션으로 HUB 를 옮긴다
-const MAX_STATIONS = MINI ? 7 : 10, MAX_SUBS = 4;
+const MAX_SUBS = 4;
 
+// 종류 색: 에이전트 색(Claude #3b9eff · Codex #8b9cff)은 에이전트 표시에만 쓰고, 종류끼리는 색상(hue)으로 구분 (ΔE ≥ 20)
 const KIND = {
-  read: {c: '#8fb3ff', code: 'RD'}, edit: {c: '#3b9eff', code: 'EDT'}, run: {c: '#22c3ee', code: 'RUN'},
-  web: {c: '#818cf8', code: 'WEB'}, sub: {c: '#a78bfa', code: 'SUB'}, tool: {c: '#94a8c9', code: 'TL'},
-  say: {c: '#34d399', code: 'SAY'}, you: {c: '#e7f0ff', code: 'YOU'}, done: {c: '#34d399', code: 'END'},
-  error: {c: '#ff6b81', code: 'ERR'}, stat: {c: '#94a8c9', code: '··'},
+  read: {c: '#7dd3fc', code: 'RD'}, edit: {c: '#fbbf24', code: 'EDT'}, run: {c: '#2dd4bf', code: 'RUN'},
+  web: {c: '#fb923c', code: 'WEB'}, sub: {c: '#c084fc', code: 'SUB'}, tool: {c: '#94a3b8', code: 'TL'},
+  say: {c: '#34d399', code: 'SAY'}, you: {c: '#ededed', code: 'YOU'}, done: {c: '#34d399', code: 'END'},
+  error: {c: '#ff6b81', code: 'ERR'}, stat: {c: '#94a3b8', code: '··'},
 };
 const TOOL = new Set(['read', 'edit', 'run', 'web', 'sub', 'tool']);
 const bucket = k => ['read', 'edit', 'run'].includes(k) ? k : 'other';
@@ -36,22 +37,22 @@ const SOON = ['Gemini CLI', 'GitHub Copilot CLI', 'Cursor CLI'];
 const CARDS = [
   ['claude', 'CLAUDE', '#3b9eff', 'tool calls'],
   ['codex', 'CODEX', '#8b9cff', 'tool calls'],
-  ['active', 'ACTIVE', '#22c3ee', 'sessions · 2 min'],
+  ['active', 'ACTIVE', '#7dd3fc', 'sessions · 2 min'],
   ['tokens', 'TOKENS', '#34d399', 'output tokens'],
-  ['turns', 'TURNS', '#7dd3fc', 'completed turns'],
+  ['turns', 'TURNS', '#a3e635', 'completed turns'],
   ['errors', 'ERRORS', '#ff6b81', 'failed · interrupted'],
 ];
 const BARS = [
-  ['read', 'read · search', '#8fb3ff,#a78bfa'],
-  ['edit', 'edit · write', '#3b9eff,#5cc2ff'],
-  ['run', 'run · exec', '#22c3ee,#3b9eff'],
-  ['other', 'web · agents · tools', '#818cf8,#a78bfa'],
+  ['read', 'read · search', '#7dd3fc,#7dd3fc'],
+  ['edit', 'edit · write', '#fbbf24,#fbbf24'],
+  ['run', 'run · exec', '#2dd4bf,#2dd4bf'],
+  ['other', 'web · agents · tools', '#fb923c,#c084fc'],
 ];
 const dayStart = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d.getTime() / 1000; };
 const RANGES = {
-  today: {list: '오늘의 세션', bounds: () => [dayStart(0), null]},
-  yesterday: {list: '어제의 세션', bounds: () => [dayStart(1), dayStart(0)]},
-  '7d': {list: '최근 7일 세션', bounds: () => [dayStart(6), null]},
+  today: {label: '오늘', bounds: () => [dayStart(0), null]},
+  yesterday: {label: '어제', bounds: () => [dayStart(1), dayStart(0)]},
+  '7d': {label: '최근 7일', bounds: () => [dayStart(6), null]},
 };
 
 // ── 상태 ──
@@ -446,7 +447,6 @@ function setRange(key) {
   if (key === S.range) return;
   S.range = key;
   for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-selected', String(b.dataset.range === key));
-  $('sessions-title').textContent = RANGES[key].list;
   closeDrawer();
   loadSummary();
 }
@@ -493,7 +493,7 @@ function renderChips() {  // 지금 움직이는 세션들: 누르면 그 세션
 
 function renderSessions() {
   const list = [...S.summary.values()].sort((a, b) => b.last - a.last);
-  $('sessions-count').textContent = list.length ? `${list.length}개` : '';
+  $('sessions-count').textContent = `${RANGES[S.range].label}${list.length ? ` · ${list.length}개` : ''}`;
   const box = $('sessions');
   if (!list.length) {
     const msg = S.mode === 'live' ? (S.bounds[1] === null ? '아직 기록이 없어요. 에이전트를 연결하고 일을 시켜 보세요.' : '이 기간에는 기록이 없어요.') : '수집기에 연결하면 내 세션 기록이 여기에 쌓여요.';
@@ -506,7 +506,7 @@ function renderSessions() {
       h('span', {class: 'label'}, x.parent ? h('small', {}, '↳ ') : null, x.label),
       h('span', {class: 'act', style: `--c:${k.c}`}, x.kind ? h('b', {}, x.kind) : null, x.text || ''),
       h('span', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, fmtK(x.tokens)), ' tok'),
-        x.errors ? h('span', {}, h('b', {}, x.errors), ' err') : null),
+        h('span', {}, x.errors ? [h('b', {}, x.errors), ' err'] : '')),
       h('span', {class: 'ago'}, ago(x.last)));
   }));
 }
@@ -550,7 +550,7 @@ function renderOnboard() {
   box.replaceChildren(
     step(1, '수집기 설치', st === 'install' || st === 'safari' ? 'active' : '',
       h('p', {}, '터미널에 붙여넣으세요. macOS · Linux, Python 3.9 이상.'), cmdBox(),
-      h('p', {class: 'note'}, '에이전트 기록은 이 컴퓨터 밖으로 나가지 않아요. 바뀌는 파일은 아래 "개인정보와 설치 내용"에 있어요.')),
+      h('p', {class: 'note'}, '에이전트 기록은 이 컴퓨터 밖으로 나가지 않아요. 바뀌는 파일은 맨 아래 PRIVACY & INSTALL 에 있어요.')),
     step(2, '이 브라우저와 연결', st && st !== 'install' && st !== 'safari' ? 'active' : '', ...s2),
     step(3, '에이전트 연결', '', h('p', {}, '연결되면 여기서 Claude Code · Codex를 한 번에 연결할 수 있어요.')));
 }
@@ -579,13 +579,13 @@ function agentCard(key) {
 }
 
 function renderAgents() {
-  $('agents').replaceChildren(...Object.keys(AGENTS).map(agentCard),
-    ...SOON.map(name => h('div', {class: 'agent soon'}, h('div', {class: 'hd'}, h('span', {class: 'mark', style: '--c:#55688a'}, name[0]), h('span', {class: 'name'}, name), h('span', {class: 'chip'}, '준비 중')))));
+  $('agents').replaceChildren(...Object.keys(AGENTS).map(agentCard));
+  $('agents-soon').replaceChildren(h('b', {}, '준비 중'), ...SOON.map(name => h('span', {}, name)));
   $('agents-note').textContent = S.mode === 'live' ? '' : '수집기 연결 후 사용';
 }
 
 function renderFooter() {
-  const st = S.status, kids = [h('span', {class: 'grow'}, `Agent Orbit · 화면 v${LATEST}` + (st ? ` · 수집기 v${st.version}` : ''))];
+  const st = S.status, kids = [h('span', {class: 'grow'}, 'Agent Orbit')];
   const toggle = (label, on, flip) => {
     const sw = h('button', {class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(on)}, h('i'), label);
     sw.onclick = async () => { try { await flip(); renderFooter(); } catch { toast('설정을 바꾸지 못했어요'); } };
@@ -690,7 +690,7 @@ async function openDrawer(id) {
   close.onclick = closeDrawer;
   d.replaceChildren(
     h('div', {class: 'hd'}, h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark),
-      h('div', {}, h('h2', {}, (x.parent ? '↳ ' : '') + x.label), h('div', {class: 'sub'}, `${a.name} · ${RANGES[S.range].list.replace('의 세션', '').replace(' 세션', '')} · 마지막 활동 ${ago(x.last)}`)), close),
+      h('div', {}, h('h2', {}, (x.parent ? '↳ ' : '') + x.label), h('div', {class: 'sub'}, `${a.name} · ${RANGES[S.range].label} · 마지막 활동 ${ago(x.last)}`)), close),
     h('div', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, fmtK(x.tokens)), ' tokens'),
       h('span', {}, h('b', {}, x.turns), ' turns'), h('span', {}, h('b', {}, x.errors), ' errors')),
     list);
@@ -827,14 +827,14 @@ function tick() {
 const cv = $('orbit'), ctx = cv.getContext('2d');
 const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono');
 const SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans');
-const PAL = ['#3b9eff', '#3b9eff', '#5cc2ff', '#22c3ee', '#a78bfa', '#ffffff'];
+const PAL = ['#ffffff', '#d4d4d4', '#a3a3a3', '#3b9eff', '#7dd3fc', '#c084fc'];  // 궤도 입자: 무채색 위주 + 약간의 강조색
 const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
 const parts = Array.from({length: 72}, () => ({a: Math.random() * 6.283, sp: (Math.random() * .12 + .03) * (Math.random() < .2 ? -1 : 1), j: (Math.random() - .5) * 14, r: Math.random() * 1.6 + .8, c: pick(PAL)}));
 let W = 0, H = 0, Z = 1, stars = [], rot = 0, lastFrame = now(), working = false, lastList = 0, lastChips = 0;
 
 function resize() {
   const dpr = devicePixelRatio || 1;
-  W = cv.clientWidth; Z = Math.max(.62, Math.min(1, W / 760));
+  W = cv.clientWidth; Z = W < 600 ? .82 : Math.max(.7, Math.min(1, W / 760));  // 좁은 화면도 노드 글자가 읽히게
   if (MINI) {  // 미니 창: 다른 요소를 뺀 나머지 높이를 궤도가 채운다
     const rest = document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - cv.offsetHeight;
     H = Math.max(200, Math.round(innerHeight - rest));
@@ -886,7 +886,7 @@ function drawHub(g, t, focus, toolCount) {
     circle(c * (rx + len), s * (ry + len), 2.2, '#3b9eff');
   }
   ctx.shadowColor = '#3b9eff'; ctx.shadowBlur = 22 + f * 24;
-  rrect(-bw / 2, -bh / 2, bw, bh, 12, '#071428', '#3b9eff', 2.5);
+  rrect(-bw / 2, -bh / 2, bw, bh, 12, '#0d0d0d', '#3b9eff', 2.5);
   ctx.shadowBlur = 0;
   rrect(-bw / 2 + 7, -bh / 2 + 7, bw - 14, bh - 14, 8, null, 'rgba(59,158,255,.35)', 1);
   ctx.textAlign = 'center';
@@ -895,14 +895,14 @@ function drawHub(g, t, focus, toolCount) {
     ctx.fillStyle = a.c; ctx.font = `600 10px ${MONO}`; ctx.fillText(a.name.toUpperCase(), 0, -20);
   }
   ctx.fillStyle = '#fff'; ctx.font = `700 ${focus ? 21 : 30}px ${SANS}`; ctx.fillText(label, 0, focus ? 6 : 6);
-  ctx.fillStyle = '#9db6d8'; ctx.font = `11px ${MONO}`;  // 이 세션이 지금까지 실행한 도구 횟수 (노드 숫자의 합)
+  ctx.fillStyle = '#a3a3a3'; ctx.font = `11px ${MONO}`;  // 이 세션이 지금까지 실행한 도구 횟수 (노드 숫자의 합)
   if (focus) ctx.fillText(thinking ? 'thinking…' : `${toolCount.toLocaleString()} ${toolCount === 1 ? 'tool' : 'tools'}`, 0, 28);
   ctx.restore();
 }
 
 function drawCard(n, t, title, sub, o) {  // 노드 카드: 도구 노드와 서브에이전트 노드 공통
   const s = Z * (.86 + .14 * n.depth), hot = o.live || t - n.flash < 2.5, failed = t - n.fail < 1.5;
-  ctx.save(); ctx.globalAlpha = (o.idle && !o.live ? .45 : 1) * (.7 + .3 * n.depth);
+  ctx.save(); ctx.globalAlpha = (o.idle && !o.live ? .72 : 1) * (.85 + .15 * n.depth);  // 쉬는 노드도 읽힐 만큼
   title = clip(title, Math.round(22 * Z)); sub = clip(sub, Math.round(30 * Z));
   ctx.font = `600 ${14 * s}px ${SANS}`; const w1 = ctx.measureText(title).width;
   ctx.font = `${11 * s}px ${MONO}`; const w2 = ctx.measureText(sub).width;
@@ -911,13 +911,13 @@ function drawCard(n, t, title, sub, o) {  // 노드 카드: 도구 노드와 서
   n.bx = bx; n.bw = bw;
   const edge = failed ? '#ff6b81' : o.color || '#3b9eff';
   if (hot || failed) { ctx.shadowColor = edge; ctx.shadowBlur = o.live ? 12 + 12 * (Math.sin(t * 6) + 1) / 2 : 18; }
-  rrect(bx, by, bw, bh, 6, hot ? 'rgba(10,42,84,.95)' : 'rgba(9,18,34,.92)', hot || failed ? edge : o.idleEdge || 'rgba(255,255,255,.14)', hot ? 1.6 : 1);
+  rrect(bx, by, bw, bh, 6, hot ? 'rgba(19,30,44,.96)' : 'rgba(17,17,17,.92)', hot || failed ? edge : o.idleEdge || 'rgba(255,255,255,.14)', hot ? 1.6 : 1);
   ctx.shadowBlur = 0; ctx.textAlign = 'center';
-  ctx.fillStyle = '#e7f0ff'; ctx.font = `600 ${14 * s}px ${SANS}`; ctx.fillText(title, bx + bw / 2, by + 19 * s);
-  ctx.fillStyle = o.live ? '#a9d6ff' : '#8aa0c2'; ctx.font = `${11 * s}px ${MONO}`; ctx.fillText(sub, bx + bw / 2, by + 35 * s);
+  ctx.fillStyle = '#ededed'; ctx.font = `600 ${14 * s}px ${SANS}`; ctx.fillText(title, bx + bw / 2, by + 19 * s);
+  ctx.fillStyle = o.live ? '#bfe0ff' : '#a3a3a3'; ctx.font = `${11 * s}px ${MONO}`; ctx.fillText(sub, bx + bw / 2, by + 35 * s);
   if (o.live || o.code) {  // 배지: 실행 중엔 스피너, 아니면 마지막 동작 (영상의 SCO / CHO / NOU 박스)
     const x = bx + bw + 6, y = by - 6, c = o.live ? '#3b9eff' : o.codeColor;
-    rrect(x, y, 24, 14, 2, 'rgba(5,10,20,.9)', c, 1);
+    rrect(x, y, 24, 14, 2, 'rgba(10,10,10,.92)', c, 1);
     ctx.fillStyle = c; ctx.font = `600 ${o.live ? 10 : 8}px ${MONO}`; ctx.fillText(o.live ? SPIN[Math.floor(t * 12) % 10] : o.code, x + 12, y + 10);
   }
   ctx.restore();
@@ -934,7 +934,8 @@ function frame() {
   const runs = [];  // 실행 중: [보내는 쪽 세션, 실행 정보]
   if (focus) {
     for (const x of S.sess.values()) if (x === focus || x.parent === focus.id) for (const r of x.running.values()) runs.push([x, r]);
-    stations = [...focus.stations.values()].sort((a, b) => b.last - a.last).slice(0, MAX_STATIONS).sort((a, b) => a.order - b.order);
+    const maxStations = W < 600 ? 6 : 10;  // 좁으면 노드를 줄여 겹치지 않게
+    stations = [...focus.stations.values()].sort((a, b) => b.last - a.last).slice(0, maxStations).sort((a, b) => a.order - b.order);
     for (const n of stations) { n.live = false; n.since = 0; }
     const byKey = new Map(stations.map(n => [n.key, n]));
     for (const [, r] of runs) { const n = r.key && byKey.get(r.key); if (n) { n.live = true; n.since = n.since ? Math.min(n.since, r.t) : r.t; n.arg = argOf(r.text, n.key); } }
@@ -947,11 +948,11 @@ function frame() {
 
   ctx.clearRect(0, 0, W, H);
   const glow = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, g.rx);
-  glow.addColorStop(0, 'rgba(59,158,255,.16)'); glow.addColorStop(1, 'rgba(59,158,255,0)');
+  glow.addColorStop(0, 'rgba(59,158,255,.09)'); glow.addColorStop(1, 'rgba(59,158,255,0)');
   ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-  for (const [x, y, o] of stars) { ctx.fillStyle = `rgba(200,225,255,${o})`; ctx.fillRect(x, y, 1, 1); }
-  ellipse(g, 1, 'rgba(59,158,255,.06)', 20); ellipse(g, 1, 'rgba(120,190,255,.24)', 1);
-  ctx.setLineDash([10, 8]); ellipse(g, .62, 'rgba(59,158,255,.35)', 1.2); ctx.setLineDash([]);
+  for (const [x, y, o] of stars) { ctx.fillStyle = `rgba(235,235,235,${o})`; ctx.fillRect(x, y, 1, 1); }
+  ellipse(g, 1, 'rgba(255,255,255,.035)', 20); ellipse(g, 1, 'rgba(255,255,255,.16)', 1);
+  ctx.setLineDash([10, 8]); ellipse(g, .62, 'rgba(255,255,255,.16)', 1.2); ctx.setLineDash([]);
   for (const p of parts) { if (!CALM) p.a += p.sp * dt; dotOn(g, p.a, p.j, p.r, p.c, .75); }
   S.bursts = S.bursts.filter(b => t - b.t < 1.6);
   for (const b of S.bursts) { b.a += b.sp * dt; dotOn(g, b.a, b.j, 2.2, b.c, 1 - (t - b.t) / 1.6, b.k); }
@@ -971,7 +972,7 @@ function frame() {
     const a = from(S.sess.get(l.from)), age = t - l.t;
     ctx.strokeStyle = `rgba(59,158,255,${(1 - age / 2.5) * .9})`;
     line(a.x, a.y, to.x, to.y);
-    if (age < .7) circle(a.x + (to.x - a.x) * age / .7, a.y + (to.y - a.y) * age / .7, 3, '#d6ebff');
+    if (age < .7) circle(a.x + (to.x - a.x) * age / .7, a.y + (to.y - a.y) * age / .7, 3, '#ffffff');
   }
   working = false;
   for (const [x, r] of runs) {
@@ -981,7 +982,7 @@ function frame() {
     const a = from(x);
     ctx.strokeStyle = 'rgba(59,158,255,.85)';
     line(a.x, a.y, to.x, to.y);
-    for (let i = 0; i < 3; i++) { const q = (t * .9 + i / 3) % 1; circle(a.x + (to.x - a.x) * q, a.y + (to.y - a.y) * q, 3, '#d6ebff'); }
+    for (let i = 0; i < 3; i++) { const q = (t * .9 + i / 3) % 1; circle(a.x + (to.x - a.x) * q, a.y + (to.y - a.y) * q, 3, '#ffffff'); }
   }
 
   let tools = 0;
@@ -1001,10 +1002,10 @@ function frame() {
     }
   }
   if (!focus && S.mode === 'live') {
-    ctx.fillStyle = '#8aa0c2'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
+    ctx.fillStyle = '#a3a3a3'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
     ctx.fillText(connectedAny() ? '최근 30분 동안 움직인 에이전트가 없어요' : '에이전트를 연결하면 여기에 나타나요', g.cx, g.cy + g.ry * .62 + 30);
   } else if (focus && !stations.length && !subs.length) {
-    ctx.fillStyle = '#8aa0c2'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
+    ctx.fillStyle = '#a3a3a3'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
     ctx.fillText('도구를 실행하면 여기에 노드가 생겨요', g.cx, g.cy + g.ry * .62 + 30);
   }
   if (S.dirty) {

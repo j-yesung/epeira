@@ -34,6 +34,8 @@ def test_parsers():
     assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None), ('done', 'turn complete', None)]
     assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None)]  # 같은 응답의 다음 줄: 토큰·done 중복 없음
     assert s['tokens'] == 7 and s['label'] == 'proj'
+    ao.parse_claude(s, {'type': 'user', 'cwd': '/x/proj/sub', 'message': {'content': 'cd 했어요'}})
+    assert s['label'] == 'proj', 'cd 해도 세션 이름은 시작 폴더 그대로'
     err = {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'tu1', 'is_error': True, 'content': 'boom'}]}}
     assert ao.parse_claude(s, err) == [('error', 'boom', 'Edit')], '실패한 도구의 노드를 안다'
     mcp = {'type': 'assistant', 'message': {'id': 'm2', 'content': [{'type': 'tool_use', 'name': 'mcp__asana__get_tasks', 'input': {}}]}}
@@ -60,6 +62,9 @@ def test_hook_mapping():
     assert (r['id'], r['parent'], r['label'], r['text'], r['st']) == ('agent-a1', 'S', 'Explore', 'Bash ls', 'Bash')
     ao.hook('codex', {'hook_event_name': 'PreToolUse', 'tool_use_id': 't9', 'transcript_path': '/s/r.jsonl', 'tool_name': 'apply_patch'})
     assert ao.running['t9']['st'] == 'Edit'
+    ao.hook('claude', {'hook_event_name': 'SessionStart', 'transcript_path': '/p/L1.jsonl', 'cwd': '/w/start-dir'})
+    ao.hook('claude', {'hook_event_name': 'PreToolUse', 'tool_use_id': 't10', 'transcript_path': '/p/L1.jsonl', 'cwd': '/w/start-dir/deep'})
+    assert ao.running['t10']['label'] == 'start-dir', '훅도 시작 폴더 이름'
     ao.hook('claude', dict(pre, hook_event_name='PostToolUseFailure'))
     assert 't1' not in ao.running
     ao.hook('codex', {'hook_event_name': 'PostToolUse', 'tool_use_id': 't2', 'transcript_path': '/s/rollout-x.jsonl'})

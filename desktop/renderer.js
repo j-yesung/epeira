@@ -5,12 +5,11 @@ const $ = id => document.getElementById(id);
 const ORBIT = 'http://127.0.0.1:47777';
 const INSTALL_CMD = 'curl -fsSL https://agent-orbit-app.vercel.app/install.sh | sh';
 const THEME = {
-  background: '#050a14', foreground: '#dce8ff', cursor: '#5cc2ff', cursorAccent: '#050a14', selectionBackground: 'rgba(59,158,255,.32)',
-  black: '#0b1424', red: '#ff6b81', green: '#34d399', yellow: '#fbbf24', blue: '#3b9eff', magenta: '#a78bfa', cyan: '#22c3ee', white: '#dce8ff',
-  brightBlack: '#55688a', brightRed: '#ff8a9c', brightGreen: '#6ee7b7', brightYellow: '#fcd34d', brightBlue: '#5cc2ff',
+  background: '#0a0a0a', foreground: '#e5e5e5', cursor: '#5cc2ff', cursorAccent: '#0a0a0a', selectionBackground: 'rgba(59,158,255,.32)',
+  black: '#1a1a1a', red: '#ff6b81', green: '#34d399', yellow: '#fbbf24', blue: '#3b9eff', magenta: '#a78bfa', cyan: '#22c3ee', white: '#e5e5e5',
+  brightBlack: '#6b6b6b', brightRed: '#ff8a9c', brightGreen: '#6ee7b7', brightYellow: '#fcd34d', brightBlue: '#5cc2ff',
   brightMagenta: '#c4b5fd', brightCyan: '#67e8f9', brightWhite: '#ffffff',
 };
-const TILE = ['#3b9eff', '#22c3ee', '#8b9cff', '#a78bfa', '#34d399', '#5cc2ff'];
 const KIND = {claude: ['C', 'k-claude'], codex: ['X', 'k-codex'], shell: ['›', 'k-shell']};
 
 const S = {projects: [], current: null, tabs: [], active: null, collector: null, orbitReady: false};
@@ -33,7 +32,6 @@ const store = {
   set: (k, v) => { try { localStorage.setItem('app.' + k, v); } catch { /* 없어도 동작엔 지장 없음 */ } },
 };
 const tilde = p => p.replace(/^\/(Users|home)\/[^/]+/, '~');
-const tileColor = name => TILE[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % TILE.length];
 const tab = id => S.tabs.find(t => t.id === id);
 const project = dir => S.projects.find(p => p.path === dir);
 
@@ -75,7 +73,7 @@ function renderProjects() {
     const open = S.tabs.filter(t => t.dir === p.path && !t.exited).length;
     return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path},
       h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
-        h('span', {class: 'tile', style: `--c:${tileColor(p.name)}`}, (p.name[0] || '?').toUpperCase()),
+        h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
         h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, p.exists ? tilde(p.path) : '폴더를 찾을 수 없어요')),
         open ? h('span', {class: 'count', title: `열린 탭 ${open}개`}, open) : null),
       h('span', {class: 'proj-acts'},
