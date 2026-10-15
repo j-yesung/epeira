@@ -2,7 +2,7 @@
 /* Agent Orbit 대시보드 — 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다. */
 
 // ── 설정 ──
-const LATEST = '0.3.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.3.1';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';

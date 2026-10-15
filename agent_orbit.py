@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -1160,9 +1160,10 @@ def cmd_uninstall(args):
             print('· ' + act(k, 'disconnect')['message'])
     remove_service()
     print('· 자동 실행 해제')
-    link = os.path.join(HOME, '.local/bin/agent-orbit')
-    if os.path.islink(link) and os.readlink(link).startswith(APP_DIR):
-        os.remove(link)
+    for d in (os.path.join(HOME, '.local/bin'), os.path.join(HOME, 'bin'), '/opt/homebrew/bin', '/usr/local/bin'):
+        link = os.path.join(d, 'agent-orbit')  # install.sh 가 만든 바로가기만
+        if os.path.islink(link) and os.readlink(link).startswith(APP_DIR):
+            os.remove(link)
     shutil.rmtree(APP_DIR, ignore_errors=True)
     print('· %s 삭제' % tilde(APP_DIR))
     print('설정 파일의 최초 백업(*.orbit-bak)은 남겨 두었습니다.')

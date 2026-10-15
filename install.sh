@@ -34,8 +34,11 @@ cat > "$DIR/bin/agent-orbit" <<EOF
 exec "$PY" "$DIR/agent_orbit.py" "\$@"
 EOF
 chmod +x "$DIR/bin/agent-orbit"
-if [ -d "$HOME/.local/bin" ]; then
-  ln -sf "$DIR/bin/agent-orbit" "$HOME/.local/bin/agent-orbit"
-fi
+# 터미널에서 agent-orbit 만 쳐도 되게: PATH 에 있고 쓸 수 있는 첫 폴더에 바로가기 (sudo 없이)
+for d in "$HOME/.local/bin" "$HOME/bin" /opt/homebrew/bin /usr/local/bin; do
+  case ":$PATH:" in
+    *":$d:"*) if [ -d "$d" ] && [ -w "$d" ]; then ln -sf "$DIR/bin/agent-orbit" "$d/agent-orbit"; break; fi ;;
+  esac
+done
 
 exec "$PY" "$DIR/agent_orbit.py" setup
