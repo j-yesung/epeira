@@ -27,7 +27,7 @@ REPLAY_BYTES = 256 * 1024
 BOOT = str(int(time.time()))
 # 배포된 대시보드(다른 출처)가 이 로컬 서버의 /events 를 읽도록 허용할 주소. 정확히 일치하는 것만 허용:
 # '*' 로 열면 내가 방문한 아무 웹사이트나 에이전트 로그를 읽어갈 수 있다.
-ORIGINS = set(filter(None, os.environ.get('ORBIT_ORIGINS', '').split(',')))
+ORIGINS = set(filter(None, os.environ.get('ORBIT_ORIGINS', 'https://agent-orbit-topaz.vercel.app').split(',')))
 
 READ = {'Read', 'Grep', 'Glob', 'LS'}
 EDIT = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
