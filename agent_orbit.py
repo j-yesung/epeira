@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.6.0'
+VERSION = '0.7.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -42,6 +42,7 @@ EVENTS_DIR = os.path.join(DATA_DIR, 'events')
 CKPT_FILE = os.path.join(DATA_DIR, 'state.json')
 RESTORE_FILE = os.path.join(DATA_DIR, 'restore.json')
 SETTINGS_FILE = os.path.join(DATA_DIR, 'settings.json')
+NAMES_FILE = os.path.join(DATA_DIR, 'names.json')  # 사용자가 바꾼 세션(HUB) 이름
 LOG_FILE = os.path.join(APP_DIR, 'collector.log')
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = 'https://agent-orbit-app.vercel.app'
@@ -261,6 +262,7 @@ PARSERS = {'claude': parse_claude, 'codex': parse_codex}
 sessions, checkpoint, clients, running = {}, {}, set(), {}
 tabs = {}  # 앱 터미널 탭 ID → 그 탭에서 실행 중인 세션 id
 labels = {}  # 세션 id → 이름(시작 폴더). 훅도 같은 이름을 쓰게
+names = {}  # 세션 id → 사용자가 직접 붙인 이름 (화면에서 원래 이름보다 우선)
 history, ended = deque(maxlen=300), deque(maxlen=500)
 lock = threading.Lock()
 seq = 0
@@ -423,8 +425,8 @@ def publish(e, store=False):
         elif k == 'end':
             running.pop(e['tool'], None)
             ended.append(e['tool'])
-        elif k == 'tab':
-            pass  # tabs 에만 기록 (저장 안 함)
+        elif k in ('tab', 'name'):
+            pass  # 저장하지 않는 알림 (tabs · names 에 따로 보관)
         else:
             seq += 1
             e['seq'] = seq
@@ -760,6 +762,19 @@ def setting(key):
     return (read_json(SETTINGS_FILE) or {}).get(key, DEFAULTS[key])
 
 
+def rename(sid, name):
+    """세션 이름 바꾸기. 빈 이름이면 원래 이름(시작 폴더)으로. 제어 문자는 빼고 40자까지"""
+    name = ''.join(ch for ch in str(name or '') if ch.isprintable()).strip()[:40]
+    with lock:
+        if name:
+            names[sid] = name
+        else:
+            names.pop(sid, None)
+        write_text(NAMES_FILE, json.dumps(names, ensure_ascii=False))
+    publish({'kind': 'name', 'id': sid, 'name': name, 'ts': time.time()})
+    return name
+
+
 def save_setting(key, value):
     s = read_json(SETTINGS_FILE) or {}
     s[key] = value
@@ -982,6 +997,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, act(agent, action))
         if u.path == '/api/autostart':
             return self.reply(200, {'autostart': set_autostart(bool(data.get('enabled')))})
+        if u.path == '/api/rename':
+            sid = data.get('id')
+            if not isinstance(sid, str) or not sid or len(sid) > 128:
+                return self.reply(400, {'error': 'bad request'})
+            return self.reply(200, {'ok': True, 'id': sid, 'name': rename(sid, data.get('name'))})
         if u.path == '/api/settings' and isinstance(data.get('autoMini'), bool):
             return self.reply(200, {'autoMini': save_setting('autoMini', data['autoMini'])})
         self.reply(404, {'error': 'not found'})
@@ -1009,7 +1029,7 @@ class Handler(BaseHTTPRequestHandler):
         q = queue.Queue()
         with lock:
             now, today = time.time(), day_start()
-            backlog = [{'kind': 'hello', 'boot': BOOT, 'version': VERSION, 'protocol': PROTOCOL}]
+            backlog = [{'kind': 'hello', 'boot': BOOT, 'version': VERSION, 'protocol': PROTOCOL, 'names': dict(names)}]
             backlog += [dict(e, replay=True) for e in list(history)[-80:] if e['ts'] >= today]
             backlog += [dict(e, replay=True) for e in running.values() if now - e['ts'] < 1800]  # 끝 신호 유실 대비 30분
             backlog += [{'kind': 'tab', 'tab': k, 'id': v, 'replay': True} for k, v in tabs.items()]
@@ -1036,6 +1056,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve():
     checkpoint.update((read_json(CKPT_FILE) or {}).get('files') or {})
+    names.update(read_json(NAMES_FILE) or {})
     os.makedirs(EVENTS_DIR, exist_ok=True)
     prune()
     load_history()

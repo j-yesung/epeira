@@ -199,6 +199,12 @@ def test_http_security():
     hook = json.dumps({'hook_event_name': 'PreToolUse', 'tool_use_id': 'h1', 'transcript_path': '/p/X.jsonl'})
     assert request('POST', '/hook?agent=claude', evil, hook)[0] == 403, '브라우저발 훅 거부'
     assert request('POST', '/hook?agent=claude', None, hook)[0] == 204 and 'h1' in ao.running
+    r = request('POST', '/api/rename', dict(ok, **js), json.dumps({'id': 'sess-1', 'name': '  백엔드\u0007 리팩터링' + 'x' * 60}))
+    assert r[0] == 200 and json.loads(r[2])['name'] == ('백엔드 리팩터링' + 'x' * 60)[:40], '제어 문자 제거 · 40자'
+    assert ao.read_json(ao.NAMES_FILE) == {'sess-1': ao.names['sess-1']}, '재시작해도 남게 저장'
+    assert request('POST', '/api/rename', dict(evil, **js), json.dumps({'id': 'sess-1', 'name': 'x'}))[0] == 403
+    request('POST', '/api/rename', dict(ok, **js), json.dumps({'id': 'sess-1', 'name': ''}))
+    assert 'sess-1' not in ao.names, '빈 이름 = 원래 이름으로'
     st, _, body = request('GET', '/api/preview?agent=claude&action=connect', ok)
     assert st == 200 and '+' in json.loads(body)['diff']
     srv.shutdown()

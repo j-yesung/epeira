@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.6.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.7.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -67,6 +67,8 @@ const S = {
   sess: new Map(),           // 세션(HUB 후보)과 서브에이전트. 각자 쓰는 도구 노드(stations)를 가진다
   focus: null, pinned: false, // HUB 로 보고 있는 세션, 사용자가 고정했는지
   tabs: new Map(), tab: null, // Agent Orbit 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
+  names: new Map(),          // 사용자가 직접 붙인 세션 이름 (수집기에 저장)
+  hubRect: null,             // 캔버스 위 HUB 위치 (더블클릭으로 이름 바꾸기)
   links: [],                 // 방금 끝난 실행: HUB(또는 서브에이전트) → 도구 노드로 쏘는 선
   feed: [], feedVer: 0, hubFlash: -9, bursts: [],
   spark: Object.fromEntries(CARDS.map(([k]) => [k, Array(SPARK_N).fill(0)])),
@@ -82,6 +84,7 @@ const epoch = () => Date.now() / 1000;
 const clip = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(Math.round(x));
 const pick = a => a[Math.random() * a.length | 0];
+const nameOf = (id, fallback) => S.names.get(id) || fallback;  // 바꾼 이름이 있으면 그 이름
 const store = {
   get: k => { try { return localStorage.getItem('ao.' + k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem('ao.' + k, v); } catch { /* 저장 못 해도 동작엔 지장 없음 */ } },
@@ -209,6 +212,7 @@ function onMessage(e) {
   if (e.kind === 'hello') {
     const restarted = S.boot && S.boot !== e.boot;
     S.boot = e.boot; S.feed = []; S.feedVer++;
+    S.names = new Map(Object.entries(e.names || {}));
     for (const s of S.sess.values()) s.running.clear();
     loadSummary();
     if (restarted) refreshStatus();
@@ -216,6 +220,7 @@ function onMessage(e) {
   }
   if (e.kind === 'start' || e.kind === 'end') return onHook(e);
   if (e.kind === 'tab') { S.tabs.set(e.tab, e.id); if (e.tab === S.tab) focusTab(e.tab); return; }
+  if (e.kind === 'name') { setName(e.id, e.name); return; }
   onEvent(e);
 }
 
@@ -310,7 +315,7 @@ function onHook(e) {  // 훅: 도구 실행 시작/끝 → 선을 붙잡아 두�
       s.flash = now();
       if (root.id === S.focus) S.hubFlash = now();
       follow(root);
-      tape({label: s.label, text: '▶ ' + e.text}, true);
+      tape({id: s.id, label: s.label, text: '▶ ' + e.text}, true);
     }
   } else {
     const r = s.running.get(e.tool);
@@ -471,7 +476,7 @@ function renderPanels() {
   if (S.feedVer === feedDrawn.ver && S.mode === feedDrawn.mode) return;  // 목록이 바뀔 때만 다시 그림 (깜빡임 방지)
   const feed = $('feed');
   feed.replaceChildren(...S.feed.map((e, i) => h('li', {class: i === 0 && e !== feedDrawn.top && !e.replay ? 'new' : null, style: `--c:${(KIND[e.kind] || KIND.tool).c}`},
-    h('span', {class: 'dot'}), h('b', {}, e.kind), h('p', {}, `${e.label} · ${e.text}`))));
+    h('span', {class: 'dot'}), h('b', {}, e.kind), h('p', {}, `${nameOf(e.id, e.label)} · ${e.text}`))));
   if (!S.feed.length) feed.append(h('li', {class: 'empty'}, S.mode === 'live' ? '에이전트가 일하면 여기에 바로 나타나요' : '…'));
   feedDrawn = {ver: S.feedVer, mode: S.mode, top: S.feed[0]};
 }
@@ -486,8 +491,8 @@ function renderChips() {  // 지금 움직이는 세션들: 누르면 그 세션
     const a = AGENTS[s.agent] || AGENTS.claude, on = s.id === S.focus;
     const busy = [...S.sess.values()].some(x => (x === s || x.parent === s.id) && x.running.size);
     return h('button', {class: on ? 'chip-btn on' : 'chip-btn', type: 'button', 'aria-pressed': String(on), onclick: () => pickFocus(s.id),
-      title: on && S.pinned ? '고정됨 — 다시 누르면 자동으로 따라가요' : `${s.label}를 HUB로 보기`},
-      h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark), clip(s.label, 18), busy ? h('i', {class: 'spin'}) : null, on && S.pinned ? h('b', {}, '고정') : null);
+      title: on && S.pinned ? '고정됨 — 다시 누르면 자동으로 따라가요' : `${nameOf(s.id, s.label)} — HUB로 보기`},
+      h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark), clip(nameOf(s.id, s.label), 18), busy ? h('i', {class: 'spin'}) : null, on && S.pinned ? h('b', {}, '고정') : null);
   }));
 }
 
@@ -503,7 +508,7 @@ function renderSessions() {
     const k = KIND[x.kind] || KIND.tool, a = AGENTS[x.agent] || AGENTS.claude;
     return h('button', {class: 'row', type: 'button', onclick: () => openDrawer(x.id)},
       h('span', {class: 'mark', style: `--c:${a.c}`, title: a.name}, a.mark),
-      h('span', {class: 'label'}, x.parent ? h('small', {}, '↳ ') : null, x.label),
+      h('span', {class: 'label'}, x.parent ? h('small', {}, '↳ ') : null, nameOf(x.id, x.label)),
       h('span', {class: 'act', style: `--c:${k.c}`}, x.kind ? h('b', {}, x.kind) : null, x.text || ''),
       h('span', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, fmtK(x.tokens)), ' tok'),
         h('span', {}, x.errors ? [h('b', {}, x.errors), ' err'] : '')),
@@ -641,6 +646,30 @@ async function openAction(agent, action) {
   });
 }
 
+// ── 세션(HUB) 이름 바꾸기 ──
+function setName(id, name) {
+  if (name) S.names.set(id, name); else S.names.delete(id);
+  if (S.drawer && S.drawer.id === id) S.drawer.title.textContent = (S.drawer.parent ? '↳ ' : '') + nameOf(id, S.drawer.label);
+  S.feedVer++; S.dirty = S.listDirty = S.chipsDirty = true;
+}
+
+function renameSession(id) {
+  const s = S.sess.get(id), x = S.summary.get(id), original = (s && s.label) || (x && x.label) || id;
+  const input = h('input', {class: 'text-input', type: 'text', maxlength: '40', value: nameOf(id, original), 'aria-label': '새 이름', spellcheck: 'false'});
+  modal({
+    title: 'HUB 이름 바꾸기',
+    body: [h('p', {}, `이 세션에만 적용돼요. 비우고 저장하면 원래 이름(${original})으로 돌아가요.`), input],
+    confirm: '저장', focus: input,
+    onConfirm: async () => {
+      const name = input.value.trim();
+      if (S.mode === 'demo') return setName(id, name);  // 데모: 이 화면에서만
+      const r = await postJSON('/api/rename', {id, name});
+      setName(id, r.name);
+      toast(r.name ? `이름을 "${r.name}"(으)로 바꿨어요` : '원래 이름으로 돌아갔어요');
+    },
+  });
+}
+
 function diffView(text) {
   const box = h('div', {class: 'diff', tabindex: '0', 'aria-label': '바뀌는 내용'});
   for (const line of text.split('\n')) {
@@ -651,7 +680,7 @@ function diffView(text) {
   return box;
 }
 
-function modal({title, body, confirm, danger, onConfirm}) {
+function modal({title, body, confirm, danger, onConfirm, focus}) {
   const m = $('modal'), prev = document.activeElement;
   const ok = h('button', {class: danger ? 'btn danger' : 'btn primary', type: 'button'}, confirm);
   const cancel = h('button', {class: 'btn', type: 'button'}, '취소');
@@ -660,7 +689,7 @@ function modal({title, body, confirm, danger, onConfirm}) {
   const onKey = ev => {
     if (ev.key === 'Escape' && !ok.disabled) close();
     if (ev.key === 'Tab') {  // 확인 창 안에서만 포커스가 돈다
-      const f = [...sheet.querySelectorAll('button, [tabindex="0"]')].filter(x => !x.disabled);
+      const f = [...sheet.querySelectorAll('button, input, [tabindex="0"]')].filter(x => !x.disabled);
       const i = f.indexOf(document.activeElement);
       if (ev.shiftKey && i <= 0) { ev.preventDefault(); f[f.length - 1].focus(); }
       else if (!ev.shiftKey && i === f.length - 1) { ev.preventDefault(); f[0].focus(); }
@@ -676,7 +705,10 @@ function modal({title, body, confirm, danger, onConfirm}) {
   m.replaceChildren(sheet);
   m.hidden = false;
   document.addEventListener('keydown', onKey);
-  ok.focus();
+  if (focus) {  // 입력 칸이 있는 창: 바로 입력하고 Enter 로 저장
+    focus.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); ok.click(); } });
+    focus.focus(); if (focus.select) focus.select();
+  } else ok.focus();
 }
 
 // ── 세션 기록 패널 ──
@@ -686,11 +718,13 @@ async function openDrawer(id) {
   const d = $('drawer'), prev = document.activeElement, a = AGENTS[x.agent] || AGENTS.claude;
   const list = h('ol', {}, h('li', {class: 'empty'}, '불러오는 중…'));
   const close = h('button', {class: 'btn small', type: 'button', 'aria-label': '닫기'}, '닫기');
-  S.drawer = {id, list, prev};
+  const ren = h('button', {class: 'btn small', type: 'button', onclick: () => renameSession(id)}, '이름 바꾸기');
+  const title = h('h2', {}, (x.parent ? '↳ ' : '') + nameOf(id, x.label));
+  S.drawer = {id, list, prev, title, label: x.label, parent: x.parent};
   close.onclick = closeDrawer;
   d.replaceChildren(
     h('div', {class: 'hd'}, h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark),
-      h('div', {}, h('h2', {}, (x.parent ? '↳ ' : '') + x.label), h('div', {class: 'sub'}, `${a.name} · ${RANGES[S.range].label} · 마지막 활동 ${ago(x.last)}`)), close),
+      h('div', {}, title, h('div', {class: 'sub'}, `${a.name} · ${RANGES[S.range].label} · 마지막 활동 ${ago(x.last)}`)), ren, close),
     h('div', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, fmtK(x.tokens)), ' tokens'),
       h('span', {}, h('b', {}, x.turns), ' turns'), h('span', {}, h('b', {}, x.errors), ' errors')),
     list);
@@ -729,7 +763,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && S.drawer
 // ── 테이프 ──
 let tapeTimer;
 function tape(e, animate) {
-  const full = `${e.label}  ${e.text}`;
+  const full = `${nameOf(e.id, e.label)}  ${e.text}`;
   clearInterval(tapeTimer);
   if (!animate || CALM) { $('tape').textContent = full; return; }
   let i = 0;
@@ -843,6 +877,14 @@ function resize() {
   stars = Array.from({length: 90}, () => [Math.random() * W, Math.random() * H, Math.random() * .35 + .05]);
 }
 addEventListener('resize', resize);
+const onHub = ev => { const r = cv.getBoundingClientRect(), h0 = S.hubRect, x = ev.clientX - r.left, y = ev.clientY - r.top;
+  return h0 && x >= h0.x && x <= h0.x + h0.w && y >= h0.y && y <= h0.y + h0.h; };
+cv.addEventListener('mousemove', ev => {  // HUB 위에선 손가락 커서 + 안내
+  const on = onHub(ev) && S.focus;
+  cv.style.cursor = on ? 'pointer' : '';
+  cv.title = on ? '더블클릭해서 HUB 이름 바꾸기' : '';
+});
+cv.addEventListener('dblclick', ev => { if (onHub(ev) && S.focus) renameSession(S.focus); });
 
 const geo = () => ({cx: W / 2, cy: H * .52, rx: W * .41, ry: H * .37});
 function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
@@ -875,10 +917,11 @@ function burst(n) {
 function drawHub(g, t, focus, toolCount) {
   const thinking = focus && !working && epoch() - focus.last < 60 && focus.kind !== 'done';  // 도구 사이: 모델이 다음 행동을 생각하는 중
   const f = Math.max(0, 1 - (t - S.hubFlash) / .8, working ? (Math.sin(t * 5) + 1) * .3 : 0, thinking ? (Math.sin(t * 2.4) + 1) * .22 : 0);
-  const label = focus ? clip(focus.label || focus.agent, 16) : 'HUB';
+  const label = focus ? clip(nameOf(focus.id, focus.label || focus.agent), W < 600 ? 9 : 16) : 'HUB';  // 좁으면 짧게 (전체 이름은 칩·테이프에)
   ctx.save(); ctx.translate(g.cx, g.cy); ctx.scale(Z, Z);
   ctx.font = `700 ${focus ? 21 : 30}px ${SANS}`;
   const bw = Math.max(108, ctx.measureText(label).width + 40), bh = 96, rx = bw / 2 + 10, ry = bh / 2 + 10;
+  S.hubRect = focus ? {x: g.cx - bw * Z / 2, y: g.cy - bh * Z / 2, w: bw * Z, h: bh * Z} : null;
   ctx.strokeStyle = 'rgba(59,158,255,.55)'; ctx.lineWidth = 1.2;
   for (let i = 0; i < 18; i++) {
     const a = i / 18 * 6.283 + .2, len = 8 + (i % 3) * 6 + f * 10, c = Math.cos(a), s = Math.sin(a);
@@ -997,7 +1040,7 @@ function frame() {
         {live: n.live, idle: nowS - n.last > IDLE, code: n.kind ? k.code : null, codeColor: k.c, idleEdge: focus.agent === 'codex' ? 'rgba(139,156,255,.45)' : null});
     } else {
       const job = n.running.size && [...n.running.values()].pop();
-      drawCard(n, t, '↳ ' + n.label, job ? `▶ ${job.text}` : n.act || 'idle',
+      drawCard(n, t, '↳ ' + nameOf(n.id, n.label), job ? `▶ ${job.text}` : n.act || 'idle',
         {live: !!job, idle: nowS - n.last > IDLE, color: '#a78bfa', idleEdge: 'rgba(167,139,250,.4)', code: 'SUB', codeColor: '#a78bfa'});
     }
   }
