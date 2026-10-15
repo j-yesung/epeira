@@ -29,7 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.2.0'
+VERSION = '0.2.1'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -185,7 +185,7 @@ def parse_claude(s, o):
         if m.get('stop_reason') == 'end_turn' and s['ended'] != mid:
             s['ended'] = mid
             out.append(('done', 'turn complete'))
-    elif t == 'user' and not o.get('isMeta'):
+    elif t == 'user' and not o.get('isMeta') and not o.get('isCompactSummary'):  # 대화 압축 요약은 사용자 입력이 아님
         for b in c if isinstance(c, list) else [{'type': 'text', 'text': c or ''}]:
             if b.get('type') == 'tool_result' and b.get('is_error'):
                 out.append(('error', short(text_of(b.get('content')))))

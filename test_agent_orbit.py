@@ -36,6 +36,8 @@ def test_parsers():
     assert s['tokens'] == 7 and s['label'] == 'proj'
     assert ao.parse_claude(s, {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'is_error': True, 'content': 'boom'}]}}) == [('error', 'boom')]
     assert ao.parse_claude(s, {'type': 'user', 'message': {'content': '<command-name>/x'}}) == []
+    assert ao.parse_claude(s, {'type': 'user', 'isCompactSummary': True, 'message': {'content': 'This session is being continued'}}) == []
+    assert ao.parse_claude(s, {'type': 'user', 'message': {'content': '버튼 색 바꿔줘'}}) == [('you', '버튼 색 바꿔줘')]
     c = new_session(agent='codex')
     item = lambda it: {'type': 'event_msg', 'payload': {'type': 'item_completed', 'item': it}}
     assert ao.parse_codex(c, {'type': 'session_meta', 'payload': {'cwd': '/y/app'}}) == [] and c['label'] == 'app'
