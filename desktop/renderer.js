@@ -197,9 +197,9 @@ function renderSideFoot() {
   const st = S.collector && S.collector.status;
   const agents = st ? Object.entries(st.agents) : [];
   const needsConnect = agents.some(([, a]) => a.installed && !a.connected);
-  $('side-ft').replaceChildren(...[
-    h('div', {class: 'ft-row'}, h('i', {class: st ? 'led ok' : 'led'}), st ? `수집기 v${st.version}` : '수집기 꺼짐'),
-    st ? h('div', {class: 'ft-agents'}, ...agents.map(([, a]) => h('span', {class: a.connected ? 'ag ok' : 'ag'}, `${a.name.split(' ')[0]} ${a.connected ? '✓' : '·'}`))) : null,
+  $('side-ft').replaceChildren(...[  // 잘 돌 땐 에이전트 연결 상태만, 수집기가 꺼졌을 때만 알린다
+    st ? null : h('div', {class: 'ft-row'}, h('i', {class: 'led'}), '수집기가 꺼져 있어요'),
+    st ? h('div', {class: 'ft-agents'}, ...agents.map(([, a]) => h('span', {class: a.connected ? 'ag ok' : 'ag', title: a.connected ? '연결됨' : '연결 안 됨'}, `${a.name.split(' ')[0]} ${a.connected ? '✓' : '·'}`))) : null,
     needsConnect ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '에이전트 연결하기 →') : null,
   ].filter(Boolean));
 }

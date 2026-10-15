@@ -134,7 +134,8 @@ function buildMenu() {
 function createWindow() {
   win = new BrowserWindow({
     width: 1480, height: 920, minWidth: 980, minHeight: 600, title: 'Agent Orbit', backgroundColor: '#050a14',
-    titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 16, y: 16}, icon: path.join(__dirname, 'assets/icon.png'),
+    // 신호등 버튼(높이 16) 가운데를 상단 바(52px)의 가운데 26px 에 맞춘다 — style.css 의 .side-top 과 짝
+    titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 16, y: 18}, icon: path.join(__dirname, 'assets/icon.png'),
     webPreferences: {preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true},
   });
   win.loadFile(path.join(__dirname, 'index.html'));

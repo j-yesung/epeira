@@ -895,8 +895,8 @@ function drawHub(g, t, focus, toolCount) {
     ctx.fillStyle = a.c; ctx.font = `600 10px ${MONO}`; ctx.fillText(a.name.toUpperCase(), 0, -20);
   }
   ctx.fillStyle = '#fff'; ctx.font = `700 ${focus ? 21 : 30}px ${SANS}`; ctx.fillText(label, 0, focus ? 6 : 6);
-  ctx.fillStyle = '#9db6d8'; ctx.font = `11px ${MONO}`;
-  ctx.fillText(thinking ? 'thinking…' : '#' + String(toolCount).padStart(4, '0'), 0, 28);
+  ctx.fillStyle = '#9db6d8'; ctx.font = `11px ${MONO}`;  // 이 세션이 지금까지 실행한 도구 횟수 (노드 숫자의 합)
+  if (focus) ctx.fillText(thinking ? 'thinking…' : `${toolCount.toLocaleString()} ${toolCount === 1 ? 'tool' : 'tools'}`, 0, 28);
   ctx.restore();
 }
 
