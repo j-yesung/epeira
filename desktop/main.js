@@ -7,7 +7,7 @@ const http = require('node:http');
 const {spawn} = require('node:child_process');
 const pty = require('node-pty');
 
-const ORBIT = 'http://127.0.0.1:47777';
+const ORBIT = process.env.AGENT_ORBIT_URL || 'http://127.0.0.1:47777';  // 개발·테스트용으로만 바꾼다
 const HOME_APP = path.join(os.homedir(), '.agent-orbit');
 const terms = new Map();  // 탭 id → pty
 let win, seq = 0;
@@ -69,9 +69,9 @@ ipcMain.on('pty:resize', (_, id, cols, rows) => { const p = terms.get(id); if (p
 ipcMain.on('pty:kill', (_, id) => { const p = terms.get(id); if (p) { p.kill(); terms.delete(id); } });
 
 // ── 로컬 수집기 ──
-function collectorStatus() {
+function getJSON(pathname) {
   return new Promise(resolve => {
-    const req = http.get(`${ORBIT}/api/status`, {timeout: 4000}, res => {
+    const req = http.get(`${ORBIT}${pathname}`, {timeout: 4000}, res => {
       let body = '';
       res.on('data', d => { body += d; });
       res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
@@ -80,7 +80,22 @@ function collectorStatus() {
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
 }
+const collectorStatus = () => getJSON('/api/status');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// 하단 상태바: 오늘 에이전트별 도구 횟수 · 토큰(입력 · 출력 · 캐시 읽기) · 연결 상태 · Codex 사용 한도
+ipcMain.handle('collector:usage', async () => {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const [status, sum] = await Promise.all([collectorStatus(), getJSON(`/api/summary?since=${today.getTime() / 1000}`)]);
+  if (!status) return {ok: false};
+  const by = {};
+  for (const [k, a] of Object.entries(status.agents || {})) by[k] = {name: a.name, installed: a.installed, connected: a.connected, trust: a.trust, calls: 0, tin: 0, tout: 0, tcache: 0};
+  for (const x of (sum && sum.sessions) || []) {
+    const b = by[x.agent];
+    if (b) { b.calls += x.tools || 0; b.tin += x.tin || 0; b.tout += x.tokens || 0; b.tcache += x.tcache || 0; }
+  }
+  return {ok: true, version: status.version, by, limits: (status.limits || {}).codex || null};
+});
 
 ipcMain.handle('collector:ensure', async () => {
   let st = await collectorStatus();
@@ -136,7 +151,8 @@ function createWindow() {
     width: 1480, height: 920, minWidth: 980, minHeight: 600, title: 'Agent Orbit', backgroundColor: '#0a0a0a',
     // 신호등 버튼(높이 16) 가운데를 상단 바(52px)의 가운데 26px 에 맞춘다 — style.css 의 .side-top 과 짝
     titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 16, y: 18}, icon: path.join(__dirname, 'assets/icon.png'),
-    webPreferences: {preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true},
+    webPreferences: {preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true,
+      additionalArguments: [`--agent-orbit-url=${ORBIT}`]},
   });
   win.loadFile(path.join(__dirname, 'index.html'));
   // 궤도 패널(webview)은 로컬 수집기 대시보드만 열 수 있다

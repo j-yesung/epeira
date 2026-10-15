@@ -2,7 +2,7 @@
 /* 앱 화면: 프로젝트 사이드바 · 터미널 탭 · 궤도 패널. 터미널 탭을 바꾸면 궤도의 HUB 도 그 탭의 세션으로 바뀐다 */
 const api = window.orbit;
 const $ = id => document.getElementById(id);
-const ORBIT = 'http://127.0.0.1:47777';
+const ORBIT = api.orbitUrl;  // 로컬 수집기 (기본 http://127.0.0.1:47777)
 const INSTALL_CMD = 'curl -fsSL https://agent-orbit-app.vercel.app/install.sh | sh';
 const THEME = {
   background: '#0a0a0a', foreground: '#e5e5e5', cursor: '#5cc2ff', cursorAccent: '#0a0a0a', selectionBackground: 'rgba(59,158,255,.32)',
@@ -10,9 +10,11 @@ const THEME = {
   brightBlack: '#6b6b6b', brightRed: '#ff8a9c', brightGreen: '#6ee7b7', brightYellow: '#fcd34d', brightBlue: '#5cc2ff',
   brightMagenta: '#c4b5fd', brightCyan: '#67e8f9', brightWhite: '#ffffff',
 };
-const KIND = {claude: ['C', 'k-claude'], codex: ['X', 'k-codex'], shell: ['›', 'k-shell']};
+const LOGO = {claude: 'assets/claude.svg', codex: 'assets/codex.svg'};  // Codex 는 중립 마크 (OpenAI 공식 로고 파일을 받으면 교체)
+const kindIcon = kind => h('span', {class: 'k'}, LOGO[kind] ? h('img', {src: LOGO[kind], alt: ''}) : '›');
+const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(Math.round(x || 0));
 
-const S = {projects: [], current: null, tabs: [], active: null, collector: null, orbitReady: false};
+const S = {projects: [], current: null, tabs: [], active: null, collector: null, usage: null, orbitReady: false};
 // tab = {id, dir, name, kind, term, fit, el, exited}
 
 function h(tag, attrs = {}, ...kids) {
@@ -89,7 +91,8 @@ async function openTab(dir, kind = 'shell') {
   if (!dir) return addProject();
   const el = h('div', {class: 'term'});
   $('terms').append(el);
-  const term = new Terminal({fontFamily: '"SF Mono", Menlo, Monaco, monospace', fontSize: 13, lineHeight: 1.2, cursorBlink: true,
+  // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 — 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
+  const term = new Terminal({fontFamily: '"SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: 13, lineHeight: 1.2, cursorBlink: true,
     scrollback: 10000, macOptionIsMeta: true, allowProposedApi: true, theme: THEME});
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -135,10 +138,9 @@ function cycleTab(step) {
 
 function renderTabs() {
   $('tabs').replaceChildren(...S.tabs.map((t, i) => {
-    const [mark, cls] = KIND[t.kind];
     return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${t.exited ? ' dead' : ''}`, title: t.dir},
       h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active), onclick: () => activate(t.id)},
-        h('span', {class: `k ${cls}`}, mark), h('span', {}, t.name), i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null),
+        kindIcon(t.kind), h('span', {}, t.name), i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null),
       h('button', {class: 'tab-x', type: 'button', title: '탭 닫기 (⌘W)', 'aria-label': `${t.name} 탭 닫기`, onclick: () => closeTab(t.id)}, '×'));
   }));
 }
@@ -175,7 +177,7 @@ function tellOrbit() {  // 지금 탭을 대시보드에 알려 HUB 를 그 탭�
 
 async function initOrbit() {
   S.collector = await api.collector();
-  renderSideFoot();
+  await loadUsage();
   const off = $('orbit-off');
   if (S.collector.ok) {
     off.hidden = true; view.hidden = false;
@@ -191,15 +193,44 @@ async function initOrbit() {
     h('button', {class: 'btn primary', type: 'button', onclick: initOrbit}, '다시 확인'));
 }
 
-function renderSideFoot() {
-  const st = S.collector && S.collector.status;
-  const agents = st ? Object.entries(st.agents) : [];
-  const needsConnect = agents.some(([, a]) => a.installed && !a.connected);
-  $('side-ft').replaceChildren(...[  // 잘 돌 땐 에이전트 연결 상태만, 수집기가 꺼졌을 때만 알린다
-    st ? null : h('div', {class: 'ft-row'}, h('i', {class: 'led'}), '수집기가 꺼져 있어요'),
-    st ? h('div', {class: 'ft-agents'}, ...agents.map(([, a]) => h('span', {class: a.connected ? 'ag ok' : 'ag', title: a.connected ? '연결됨' : '연결 안 됨'}, `${a.name.split(' ')[0]} ${a.connected ? '✓' : '·'}`))) : null,
-    needsConnect ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '에이전트 연결하기 →') : null,
+async function loadUsage() {
+  S.usage = await api.usage();
+  renderStatusbar();
+}
+
+function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트별 오늘 사용량 · Codex 한도 · 새로고침
+  const u = S.usage, bar = $('statusbar');
+  const refresh = h('button', {class: 'sb-btn', type: 'button', title: '새로고침', 'aria-label': '새로고침', onclick: refreshAll});
+  refresh.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  if (!u || !u.ok) {
+    return bar.replaceChildren(h('span', {class: 'sb-item'}, h('i', {class: 'led'}), '수집기가 꺼져 있어요'), h('span', {class: 'grow'}), refresh);
+  }
+  const agent = key => {
+    const a = u.by[key];
+    if (!a) return null;
+    const state = !a.installed ? '설치 안 됨' : !a.connected ? '연결 안 됨' : key === 'codex' && a.trust && a.trust !== 'trusted' ? '승인 필요' : '연결됨';
+    return h('span', {class: a.connected ? 'sb-item' : 'sb-item off',
+      title: `${a.name} · ${state}\n오늘 도구 ${a.calls.toLocaleString()}회\n입력 ${fmtK(a.tin)} · 출력 ${fmtK(a.tout)} · 캐시 읽기 ${fmtK(a.tcache)} 토큰`},
+      h('img', {src: LOGO[key], alt: ''}), h('b', {}, a.calls.toLocaleString()), h('span', {class: 'sb-dim'}, `${fmtK(a.tin + a.tout)} tok`), a.connected ? null : h('span', {class: 'sb-dim'}, state));
+  };
+  const L = u.limits, win = w => w && w.used != null ? `${w.window >= 1440 ? '주간' : `${Math.round((w.window || 300) / 60)}시간`} ${Math.round(w.used)}%` : null;
+  const lim = L ? [win(L.primary), win(L.secondary)].filter(Boolean).join(' · ') : '';
+  const needs = Object.values(u.by).some(a => a.installed && !a.connected);
+  bar.replaceChildren(...[
+    h('span', {class: 'sb-item'}, h('i', {class: 'led ok'}), 'LIVE'),
+    agent('claude'), agent('codex'),
+    lim ? h('span', {class: 'sb-item sb-dim', title: 'Codex 요금제 사용 한도 (마지막으로 기록된 값)'}, `Codex 한도 ${lim}`) : null,
+    h('span', {class: 'grow'}),
+    needs ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '에이전트 연결하기 →') : null,
+    refresh,
   ].filter(Boolean));
+}
+
+async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널 새로 불러오기
+  const btn = e && e.currentTarget;
+  if (btn) { btn.classList.add('spin'); setTimeout(() => btn.classList.remove('spin'), 600); }
+  await initOrbit();
+  if (S.orbitReady && !view.hidden) view.reload();
 }
 
 // ── 레이아웃: 패널 너비 · 열고 닫기 ──
@@ -260,4 +291,4 @@ addEventListener('keydown', e => {  // ⌘1–9: 탭 이동
 
 loadProjects();
 initOrbit();
-setInterval(async () => { S.collector = await api.collector(); renderSideFoot(); }, 30000);
+setInterval(loadUsage, 15000);  // 상태바 숫자는 15초마다

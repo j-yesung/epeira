@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('orbit', {
   removeProject: dir => ipcRenderer.invoke('projects:remove', dir),
   touchProject: dir => ipcRenderer.invoke('projects:touch', dir),
   collector: () => ipcRenderer.invoke('collector:ensure'),
+  usage: () => ipcRenderer.invoke('collector:usage'),
   createTerm: opts => ipcRenderer.invoke('pty:create', opts),
   write: (id, data) => ipcRenderer.send('pty:write', id, data),
   resize: (id, cols, rows) => ipcRenderer.send('pty:resize', id, cols, rows),
@@ -16,4 +17,5 @@ contextBridge.exposeInMainWorld('orbit', {
   onMenu: fn => ipcRenderer.on('menu', (_, action) => fn(action)),
   openExternal: url => ipcRenderer.send('open-external', url),
   platform: process.platform,
+  orbitUrl: (process.argv.find(a => a.startsWith('--agent-orbit-url=')) || '=http://127.0.0.1:47777').split('=')[1],
 });

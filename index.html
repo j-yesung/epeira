@@ -59,7 +59,7 @@ main { padding-top: 16px; padding-bottom: 40px; }
 .btn.danger { border-color: rgba(255, 107, 129, .45); color: var(--err); }
 .btn.small { padding: 4px 10px; font-size: 12px; }
 .btn[disabled] { opacity: .5; cursor: default; }
-:is(.btn, .seg button, .row, summary, .switch, .chip-btn, a):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+:is(.btn, .icon-btn, .sb-btn, .seg button, .row, summary, .switch, .chip-btn, a):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
 /* 설치 안내 */
 .onboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; margin-bottom: 14px; }
@@ -92,10 +92,6 @@ main { padding-top: 16px; padding-bottom: 40px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .demo-mark { position: absolute; bottom: 8px; left: 8px; padding: 3px 9px; border: 1px solid rgba(167, 139, 250, .35); border-radius: 6px; background: rgba(167, 139, 250, .1); color: var(--violet); font: 600 11px var(--mono); letter-spacing: .06em; }
 
-.tape { display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: 14px var(--mono); }
-.tape .k { color: var(--dim); font-size: 12px; letter-spacing: .08em; }
-.tape .t { flex: 1; min-width: 0; overflow: hidden; white-space: pre; text-overflow: ellipsis; }
-.cursor { display: inline-block; width: 8px; height: 16px; margin-left: 2px; vertical-align: -3px; background: var(--accent); animation: blink 1s steps(1) infinite; }
 
 .cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .card { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-top: 2px solid var(--c); border-radius: 8px; background: var(--panel); }
@@ -127,7 +123,23 @@ main { padding-top: 16px; padding-bottom: 40px; }
 .agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 12px; }
 .agent { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); }
 .agent .hd { display: flex; align-items: center; gap: 10px; }
-.mark { display: inline-grid; flex: none; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--c); color: var(--ink); font: 700 13px var(--mono); }
+.mark { display: inline-grid; flex: none; place-items: center; width: 28px; height: 28px; border: 1px solid var(--line-2); border-radius: 8px; background: #1a1a1a; color: var(--c); }
+.mark svg { width: 62%; height: 62%; }
+.icon-btn { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--dim); cursor: pointer; }
+.icon-btn:hover { border-color: var(--line-2); background: var(--panel-2); color: var(--text); }
+.icon-btn svg { width: 16px; height: 16px; }
+/* 미니 창 하단 상태바 (Orca 같은 한 줄 요약) */
+.statusbar { position: fixed; right: 0; bottom: 0; left: 0; z-index: 4; display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 10px; border-top: 1px solid var(--line); background: #0d0d0d; color: var(--dim); font: 11px var(--mono); white-space: nowrap; overflow: hidden; }
+.statusbar .grow { flex: 1; }
+.sb-live { display: inline-flex; align-items: center; gap: 5px; color: var(--faint); font-weight: 600; letter-spacing: .06em; }
+.sb-live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sb-live.on { color: var(--accent); }
+.sb-agent { display: inline-flex; align-items: center; gap: 5px; color: var(--text); }
+.sb-agent .mark { width: 16px; height: 16px; border-radius: 4px; }
+.sb-dim { color: var(--faint); }
+.sb-btn { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--dim); cursor: pointer; }
+.sb-btn:hover { background: var(--panel-2); color: var(--text); }
+.sb-btn svg { width: 13px; height: 13px; }
 .agent .name { font-weight: 650; }
 .chip { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line-2); border-radius: 999px; color: var(--faint); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .chip.ok { border-color: rgba(52, 211, 153, .4); background: rgba(52, 211, 153, .08); color: var(--ok); }
@@ -205,14 +217,9 @@ footer .grow { margin-right: auto; }
 /* 미니 창 (agent-orbit mini · ?view=mini): 궤도가 남는 높이를 채우고 핵심만 */
 body.mini .seg, body.mini #banners, body.mini #onboard, body.mini #agents-panel, body.mini #sessions-panel,
 body.mini .privacy, body.mini footer, body.mini .panels .panel:nth-child(2),
-body.mini .card:nth-child(3), body.mini .card:nth-child(5), body.mini .card:nth-child(6),
-body.mini .card .s, body.mini .card svg, body.mini #feed li:nth-child(n+4) { display: none !important; }
+body.mini #feed li:nth-child(n+4) { display: none !important; }
 body.mini .top .wrap { height: 44px; padding: 0 12px; }
 body.mini main { padding: 8px 10px 10px; }
-body.mini .tape { gap: 10px; margin-top: 6px; padding: 8px 12px; font-size: 13px; }
-body.mini .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
-body.mini .card { padding: 8px 10px; }
-body.mini .card .v { margin: 2px 0 0; font-size: 16px; }
 body.mini .panels { grid-template-columns: 1fr; margin-top: 6px; }
 body.mini .panel { padding: 10px 12px; }
 body.mini #feed { margin-top: 6px; }
@@ -220,9 +227,8 @@ body.mini #feed li { grid-template-columns: 10px 40px minmax(0, 1fr); align-item
 body.mini #feed .dot { margin-top: 0; }
 body.mini #feed p { grid-column: auto; }
 body.mini .brand span { display: inline; }
-body.embed .top { display: none; }
+body.embed .top, body.mini .cards, body.mini #refresh { display: none; }  /* 미니 창은 상태바에 새로고침 */
 
-@keyframes blink { 50% { opacity: 0; } }
 @keyframes pulse { 50% { opacity: .3; } }
 @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
 @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
@@ -238,7 +244,6 @@ body.embed .top { display: none; }
   .seg button { padding: 5px 9px; }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .panels { grid-template-columns: 1fr; }
-  .tape { gap: 10px; padding: 10px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -256,6 +261,7 @@ body.embed .top { display: none; }
       <button role="tab" data-range="7d" aria-selected="false">7일</button>
     </nav>
     <span class="pill off" id="mode"><i></i><span>…</span></span>
+    <button class="icon-btn" id="refresh" type="button" title="새로고침" aria-label="새로고침"></button>
     <a class="btn small" id="bigger" href="/" target="_blank" rel="noopener" hidden>크게 보기</a>
   </div>
 </header>
@@ -269,10 +275,6 @@ body.embed .top { display: none; }
     <canvas id="orbit" role="img" aria-label="지금 일하고 있는 에이전트 세션이 궤도 위에 표시됩니다"></canvas>
     <span class="demo-mark" id="demo-mark" hidden>DEMO · 예시 데이터</span>
   </section>
-  <div class="tape">
-    <span class="k">TAPE</span>
-    <span class="t"><span id="tape">waiting for agents</span><span class="cursor"></span></span>
-  </div>
   <div class="cards" id="cards"></div>
   <div class="panels">
     <section class="panel"><h2>LIVE VERDICTS <span id="judged"></span></h2><ul id="feed"></ul></section>
@@ -299,6 +301,7 @@ body.embed .top { display: none; }
 </main>
 
 <footer><div class="wrap" id="footer"></div></footer>
+<div class="statusbar" id="statusbar" hidden role="status" aria-label="오늘 사용량"></div>
 <aside class="drawer" id="drawer" hidden aria-label="세션 기록"></aside>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

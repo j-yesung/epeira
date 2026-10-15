@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.7.0'
+VERSION = '0.8.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -43,6 +43,7 @@ CKPT_FILE = os.path.join(DATA_DIR, 'state.json')
 RESTORE_FILE = os.path.join(DATA_DIR, 'restore.json')
 SETTINGS_FILE = os.path.join(DATA_DIR, 'settings.json')
 NAMES_FILE = os.path.join(DATA_DIR, 'names.json')  # 사용자가 바꾼 세션(HUB) 이름
+LIMITS_FILE = os.path.join(DATA_DIR, 'limits.json')  # Codex 요금제 사용 한도 (마지막으로 본 값)
 LOG_FILE = os.path.join(APP_DIR, 'collector.log')
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = 'https://agent-orbit-app.vercel.app'
@@ -191,7 +192,10 @@ def parse_claude(s, o):
         mid = m.get('id')
         if mid and mid not in s['msgs']:  # 응답 하나가 블록별로 여러 줄에 나뉘어 기록됨 → 토큰은 한 번만
             s['msgs'].append(mid)
-            s['tokens'] += (m.get('usage') or {}).get('output_tokens') or 0
+            u = m.get('usage') or {}
+            s['tokens'] += u.get('output_tokens') or 0
+            s['tin'] += (u.get('input_tokens') or 0) + (u.get('cache_creation_input_tokens') or 0)
+            s['tcache'] += u.get('cache_read_input_tokens') or 0
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use':
                 raw = b.get('name', '')
@@ -226,7 +230,13 @@ def parse_codex(s, o):
         s['label'] = base(p.get('cwd') or '') or s['label']
         return []
     if t == 'token_count':
-        s['tokens'] = ((p.get('info') or {}).get('total_token_usage') or {}).get('output_tokens') or s['tokens']
+        u = (p.get('info') or {}).get('total_token_usage') or {}
+        if u:  # 세션 누적값. 입력에는 캐시 읽기가 포함되어 있어 나눠 센다
+            cached = u.get('cached_input_tokens') or 0
+            s['tokens'] = u.get('output_tokens') or s['tokens']
+            s['tin'] = max(0, (u.get('input_tokens') or 0) - cached) or s['tin']
+            s['tcache'] = cached or s['tcache']
+        note_limits(p.get('rate_limits'), ts_of(o))
         return [('stat', '', None)]
     if t == 'task_complete':
         return [('done', 'turn complete', None)]
@@ -255,6 +265,15 @@ def parse_codex(s, o):
 
 
 PARSERS = {'claude': parse_claude, 'codex': parse_codex}
+limits = {}  # Codex 요금제 사용 한도: primary(보통 5시간) · secondary(주간). 가장 최근 기록만
+
+
+def note_limits(rl, ts):
+    if not isinstance(rl, dict) or ts <= limits.get('at', 0):
+        return
+    win = lambda w: {'used': w.get('used_percent'), 'window': w.get('window_minutes'), 'resets': w.get('resets_at')} if isinstance(w, dict) else None
+    limits.update(at=ts, primary=win(rl.get('primary')), secondary=win(rl.get('secondary')))
+    write_text(LIMITS_FILE, json.dumps(limits))
 
 
 # ---------- 로그 감시 + 기록 저장 ----------
@@ -266,8 +285,8 @@ names = {}  # 세션 id → 사용자가 직접 붙인 이름 (화면에서 원�
 history, ended = deque(maxlen=300), deque(maxlen=500)
 lock = threading.Lock()
 seq = 0
-CKPT_KEYS = ('id', 'agent', 'label', 'parent', 'tokens', 'tok_sent', 'ended', 'offset')
-STORE_KEYS = ('id', 'parent', 'agent', 'label', 'kind', 'text', 'st', 'dtok', 'ts')
+CKPT_KEYS = ('id', 'agent', 'label', 'parent', 'tokens', 'tok_sent', 'tin', 'tin_sent', 'tcache', 'tcache_sent', 'ended', 'offset')
+STORE_KEYS = ('id', 'parent', 'agent', 'label', 'kind', 'text', 'st', 'dtok', 'din', 'dcache', 'ts')
 
 
 def watched():
@@ -283,7 +302,8 @@ def watched():
 
 def register(path, agent, size):
     s = {'path': path, 'id': os.path.basename(path)[:-6], 'agent': agent, 'label': '', 'parent': None,
-         'tokens': 0, 'tok_sent': 0, 'msgs': deque(maxlen=16), 'ended': None, 'offset': size, 'floor': 0,
+         'tokens': 0, 'tok_sent': 0, 'tin': 0, 'tin_sent': 0, 'tcache': 0, 'tcache_sent': 0,
+         'msgs': deque(maxlen=16), 'ended': None, 'offset': size, 'floor': 0,
          'touched': False, 'tids': {}}
     if os.path.basename(os.path.dirname(path)) == 'subagents':
         s['parent'] = os.path.basename(os.path.dirname(os.path.dirname(path)))
@@ -339,19 +359,21 @@ def poll():
 
 
 def emit(s, kind, text, ts, st=None):
-    if ts < s['floor']:
-        s['tok_sent'] = s['tokens']  # 오늘 이전 토큰은 오늘 합계에 넣지 않음
+    if ts < s['floor']:  # 오늘 이전 토큰은 오늘 합계에 넣지 않음
+        s['tok_sent'], s['tin_sent'], s['tcache_sent'] = s['tokens'], s['tin'], s['tcache']
         return
     if kind in ('say', 'you') and not text:
         return
     if s['label']:
         labels.setdefault(s['id'], s['label'])
-    dtok = max(0, s['tokens'] - s['tok_sent'])
-    s['tok_sent'] = s['tokens']
-    if kind == 'stat' and not dtok:
+    dtok = max(0, s['tokens'] - s['tok_sent'])  # 출력
+    din = max(0, s['tin'] - s['tin_sent'])  # 입력
+    dcache = max(0, s['tcache'] - s['tcache_sent'])  # 캐시 읽기
+    s['tok_sent'], s['tin_sent'], s['tcache_sent'] = s['tokens'], s['tin'], s['tcache']
+    if kind == 'stat' and not (dtok or din or dcache):
         return
     publish({'id': s['id'], 'parent': s['parent'], 'agent': s['agent'], 'label': s['label'] or s['agent'],
-             'kind': kind, 'text': text, 'st': st, 'dtok': dtok, 'ts': ts}, store=True)
+             'kind': kind, 'text': text, 'st': st, 'dtok': dtok, 'din': din, 'dcache': dcache, 'ts': ts}, store=True)
 
 
 def store_append(e):
@@ -385,10 +407,12 @@ def summarize(events):
         if x is None:
             x = out[e['id']] = {'id': e['id'], 'agent': e['agent'], 'parent': e['parent'], 'label': e['label'],
                                 'first': e['ts'], 'last': e['ts'], 'tools': 0, 'read': 0, 'edit': 0, 'run': 0,
-                                'other': 0, 'turns': 0, 'errors': 0, 'tokens': 0, 'kind': None, 'text': '', 'st': {}}
+                                'other': 0, 'turns': 0, 'errors': 0, 'tokens': 0, 'tin': 0, 'tcache': 0, 'kind': None, 'text': '', 'st': {}}
         k = e['kind']
         x['label'], x['last'] = e['label'], max(x['last'], e['ts'])
-        x['tokens'] += e.get('dtok') or 0
+        x['tokens'] += e.get('dtok') or 0  # 출력
+        x['tin'] += e.get('din') or 0  # 입력 (캐시 쓰기 포함)
+        x['tcache'] += e.get('dcache') or 0  # 캐시 읽기
         if k in TOOL_KINDS:
             x['tools'] += 1
             x[k if k in ('read', 'edit', 'run') else 'other'] += 1
@@ -786,6 +810,7 @@ def status():
     return {'version': VERSION, 'protocol': PROTOCOL, 'port': PORT, 'boot': BOOT, 'platform': sys.platform,
             'autostart': autostart_state(), 'retentionDays': RETENTION_DAYS,
             'autoMini': setting('autoMini') if MAC else None,
+            'limits': {'codex': dict(limits)} if limits else {},
             'agents': {k: agent_state(k) for k in AGENTS}}
 
 
@@ -1057,6 +1082,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve():
     checkpoint.update((read_json(CKPT_FILE) or {}).get('files') or {})
     names.update(read_json(NAMES_FILE) or {})
+    limits.update(read_json(LIMITS_FILE) or {})
     os.makedirs(EVENTS_DIR, exist_ok=True)
     prune()
     load_history()

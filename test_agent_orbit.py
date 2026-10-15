@@ -22,18 +22,18 @@ NOW = datetime.now().isoformat()
 
 
 def new_session(**kw):
-    return dict({'id': 'S', 'agent': 'claude', 'label': '', 'tokens': 0, 'tok_sent': 0, 'msgs': ao.deque(maxlen=16),
+    return dict({'id': 'S', 'agent': 'claude', 'label': '', 'tokens': 0, 'tok_sent': 0, 'tin': 0, 'tin_sent': 0, 'tcache': 0, 'tcache_sent': 0, 'msgs': ao.deque(maxlen=16),
                  'ended': None, 'parent': None, 'floor': 0, 'tids': {}}, **kw)
 
 
 def test_parsers():
     s = new_session()
     a = {'type': 'assistant', 'cwd': '/x/proj', 'message': {
-        'id': 'm1', 'stop_reason': 'end_turn', 'usage': {'output_tokens': 7},
+        'id': 'm1', 'stop_reason': 'end_turn', 'usage': {'output_tokens': 7, 'input_tokens': 3, 'cache_creation_input_tokens': 100, 'cache_read_input_tokens': 900},
         'content': [{'type': 'tool_use', 'id': 'tu1', 'name': 'MultiEdit', 'input': {'file_path': '/x/proj/a.ts'}}, {'type': 'text', 'text': 'hi'}]}}
     assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None), ('done', 'turn complete', None)]
     assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None)]  # 같은 응답의 다음 줄: 토큰·done 중복 없음
-    assert s['tokens'] == 7 and s['label'] == 'proj'
+    assert (s['tokens'], s['tin'], s['tcache'], s['label']) == (7, 103, 900, 'proj'), '입력(캐시 쓰기 포함)·캐시 읽기·출력'
     ao.parse_claude(s, {'type': 'user', 'cwd': '/x/proj/sub', 'message': {'content': 'cd 했어요'}})
     assert s['label'] == 'proj', 'cd 해도 세션 이름은 시작 폴더 그대로'
     err = {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'tu1', 'is_error': True, 'content': 'boom'}]}}
@@ -50,8 +50,13 @@ def test_parsers():
                                    'parsed_cmd': [{'type': 'read'}]})) == [('read', 'cat a', 'Bash')]
     assert ao.parse_codex(c, item({'type': 'CommandExecution', 'command': ['zsh', '-lc', 'npm test'], 'exit_code': 1}))[0][0] == 'error'
     assert ao.parse_codex(c, item({'type': 'FileChange', 'changes': {'/y/app/b.py': {}}})) == [('edit', 'b.py', 'Edit')]
-    ao.parse_codex(c, {'payload': {'type': 'token_count', 'info': {'total_token_usage': {'output_tokens': 42}}}})
-    assert c['tokens'] == 42
+    tc = lambda used, ts: {'timestamp': ts, 'payload': {'type': 'token_count', 'info': {'total_token_usage': {'output_tokens': 42, 'input_tokens': 1000, 'cached_input_tokens': 800}},
+                                                     'rate_limits': {'primary': {'used_percent': used, 'window_minutes': 300, 'resets_at': 1}, 'secondary': {'used_percent': 41.0, 'window_minutes': 10080}}}}
+    ao.parse_codex(c, tc(23.0, '2026-10-15T10:00:00Z'))
+    assert (c['tokens'], c['tin'], c['tcache']) == (42, 200, 800)
+    assert ao.limits['primary']['used'] == 23.0 and ao.limits['secondary']['window'] == 10080
+    ao.parse_codex(c, tc(5.0, '2026-10-15T09:00:00Z'))
+    assert ao.limits['primary']['used'] == 23.0, '옛 기록이 최신 한도를 덮지 않음'
 
 
 def test_hook_mapping():
@@ -114,6 +119,7 @@ def test_store_and_resume():
     x = ao.summary(ao.day_start(), None)['sessions'][0]
     assert (x['id'], x['label'], x['tools'], x['run'], x['read'], x['tokens']) == ('sess-1', 'api', 2, 1, 1, 150)
     assert x['st'] == {'Bash': 1, 'Read': 1}, '노드별 횟수'
+    assert 'tin' in x and 'tcache' in x
     # 재시작: 체크포인트에서 이어 읽기 → 꺼져 있던 동안의 줄만 새로, 중복 없음
     ao.save_checkpoint()
     ao.sessions.clear()

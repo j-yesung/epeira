@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.7.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.8.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -16,6 +16,7 @@ const LOCAL_URL = `http://127.0.0.1:${PORT}`;
 const SAFARI = !LOCAL && /^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent);
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MINI = params.get('view') === 'mini';  // agent-orbit mini 가 여는 작은 창 · 앱의 궤도 패널
+const EMBED = !!params.get('embed');          // 앱의 궤도 패널: 요약·상태바는 앱이 그린다
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
 const FOLLOW_QUIET = 8;           // 보던 세션이 이만큼(초) 조용해야 다른 세션으로 HUB 를 옮긴다
 const MAX_SUBS = 4;
@@ -30,12 +31,28 @@ const KIND = {
 const TOOL = new Set(['read', 'edit', 'run', 'web', 'sub', 'tool']);
 const bucket = k => ['read', 'edit', 'run'].includes(k) ? k : 'other';
 const AGENTS = {
-  claude: {name: 'Claude Code', mark: 'C', c: '#3b9eff', file: '~/.claude/settings.json'},
-  codex: {name: 'Codex', mark: 'X', c: '#8b9cff', file: '~/.codex/hooks.json'},
+  claude: {name: 'Claude Code', c: '#D97757', file: '~/.claude/settings.json'},
+  codex: {name: 'Codex', c: '#8b9cff', file: '~/.codex/hooks.json'},
 };
+// 에이전트 마크 (24×24). Claude 는 simple-icons(CC0)의 Claude 로고.
+// Codex 는 OpenAI 로고가 공개 아이콘 모음에서 빠져 있어 중립 마크(터미널 프롬프트) — 공식 로고 파일을 받으면 이 경로만 바꾸면 된다
+const LOGO = {
+  claude: {d: 'm4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z', stroke: false},
+  codex: {d: 'M5 7l5 5-5 5M12.5 17H19', stroke: true},
+};
+function agentIcon(key) {
+  const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), path = document.createElementNS(NS, 'path'), L = LOGO[key] || LOGO.codex;
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+  path.setAttribute('d', L.d);
+  if (L.stroke) { path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '2.4'); path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round'); }
+  else path.setAttribute('fill', 'currentColor');
+  svg.append(path);
+  return svg;
+}
+const mark = key => h('span', {class: 'mark', style: `--c:${(AGENTS[key] || AGENTS.claude).c}`, title: (AGENTS[key] || AGENTS.claude).name}, agentIcon(key));
 const SOON = ['Gemini CLI', 'GitHub Copilot CLI', 'Cursor CLI'];
 const CARDS = [
-  ['claude', 'CLAUDE', '#3b9eff', 'tool calls'],
+  ['claude', 'CLAUDE', '#D97757', 'tool calls'],
   ['codex', 'CODEX', '#8b9cff', 'tool calls'],
   ['active', 'ACTIVE', '#7dd3fc', 'sessions · 2 min'],
   ['tokens', 'TOKENS', '#34d399', 'output tokens'],
@@ -167,7 +184,10 @@ async function refreshStatus() {
 
 async function boot() {
   if (MINI) { document.body.classList.add('mini'); $('bigger').hidden = false; resize(); }
-  if (params.get('embed')) { document.body.classList.add('embed'); resize(); }  // 앱의 궤도 패널: 앱이 헤더를 그린다
+  if (EMBED) { document.body.classList.add('embed'); resize(); }  // 앱의 궤도 패널: 헤더·요약·상태바는 앱이 그린다
+  $('statusbar').hidden = !MINI || EMBED;
+  $('refresh').onclick = refreshAll;
+  $('refresh').append(refreshIcon());
   renderStatic();
   if (!LOCAL) loadAnalytics();
   if (LOCAL) return goLive();
@@ -315,7 +335,6 @@ function onHook(e) {  // 훅: 도구 실행 시작/끝 → 선을 붙잡아 두�
       s.flash = now();
       if (root.id === S.focus) S.hubFlash = now();
       follow(root);
-      tape({id: s.id, label: s.label, text: '▶ ' + e.text}, true);
     }
   } else {
     const r = s.running.get(e.tool);
@@ -346,7 +365,6 @@ function onEvent(e) {
     S.feed.unshift(e);
     S.feed.length = Math.min(S.feed.length, 6);
     S.feedVer++;
-    tape(e, live);
     S.chipsDirty = true;
   }
   if (live) {
@@ -409,8 +427,8 @@ function applySummary(e) {  // 수집기의 summarize()와 같은 규칙
   const [since, until] = S.bounds;
   if (until !== null || e.ts < since) return;
   let x = S.summary.get(e.id);
-  if (!x) S.summary.set(e.id, x = {id: e.id, agent: e.agent, parent: e.parent, label: e.label, first: e.ts, last: e.ts, tools: 0, read: 0, edit: 0, run: 0, other: 0, turns: 0, errors: 0, tokens: 0, kind: null, text: ''});
-  x.label = e.label; x.last = Math.max(x.last, e.ts); x.tokens += e.dtok || 0;
+  if (!x) S.summary.set(e.id, x = {id: e.id, agent: e.agent, parent: e.parent, label: e.label, first: e.ts, last: e.ts, tools: 0, read: 0, edit: 0, run: 0, other: 0, turns: 0, errors: 0, tokens: 0, tin: 0, tcache: 0, kind: null, text: ''});
+  x.label = e.label; x.last = Math.max(x.last, e.ts); x.tokens += e.dtok || 0; x.tin += e.din || 0; x.tcache += e.dcache || 0;
   if (TOOL.has(e.kind)) { x.tools++; x[bucket(e.kind)]++; }
   else if (e.kind === 'done') x.turns++;
   else if (e.kind === 'error') x.errors++;
@@ -418,13 +436,23 @@ function applySummary(e) {  // 수집기의 summarize()와 같은 규칙
   S.listDirty = true;
 }
 
-function totals() {
-  const t = {claude: 0, codex: 0, tokens: 0, turns: 0, errors: 0, tools: 0, read: 0, edit: 0, run: 0, other: 0};
+function totals() {  // tokens = 출력, tin = 입력, tcache = 캐시 읽기. by = 에이전트별 {도구 횟수, 입력+출력 토큰}
+  const t = {claude: 0, codex: 0, tokens: 0, tin: 0, tcache: 0, turns: 0, errors: 0, tools: 0, read: 0, edit: 0, run: 0, other: 0,
+    by: {claude: {calls: 0, tok: 0}, codex: {calls: 0, tok: 0}}};
   for (const x of S.summary.values()) {
     t[x.agent] = (t[x.agent] || 0) + x.tools;
-    for (const k of ['tokens', 'turns', 'errors', 'tools', 'read', 'edit', 'run', 'other']) t[k] += x[k] || 0;
+    for (const k of ['tokens', 'tin', 'tcache', 'turns', 'errors', 'tools', 'read', 'edit', 'run', 'other']) t[k] += x[k] || 0;
+    const b = t.by[x.agent];
+    if (b) { b.calls += x.tools; b.tok += (x.tokens || 0) + (x.tin || 0); }
   }
   return t;
+}
+
+function limitText() {  // Codex 요금제 사용 한도 — 로그에 남은 마지막 값
+  const L = S.status && S.status.limits && S.status.limits.codex;
+  if (!L) return '';
+  const w = x => x && x.used != null ? `${x.window >= 1440 ? '주간' : x.window ? `${Math.round(x.window / 60)}시간` : ''} ${Math.round(x.used)}%` : null;
+  return [w(L.primary), w(L.secondary)].filter(Boolean).join(' · ');
 }
 
 const activeCount = () => { let a = 0; const t = epoch(); for (const s of S.sess.values()) if (t - s.last < IDLE || s.running.size) a++; return a; };
@@ -433,7 +461,7 @@ const activeCount = () => { let a = 0; const t = epoch(); for (const s of S.sess
 function renderStatic() {
   $('cards').replaceChildren(...CARDS.map(([k, n, c, s]) => {
     const card = h('div', {class: 'card', style: `--c:${c}`},
-      h('div', {class: 'h'}, n), h('div', {class: 'v', id: `v-${k}`}, '0'), h('div', {class: 's'}, s));
+      h('div', {class: 'h'}, n), h('div', {class: 'v', id: `v-${k}`}, '0'), h('div', {class: 's', id: `s-${k}`}, s));
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 56 16'); svg.setAttribute('aria-hidden', 'true');
     const pl = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
@@ -468,8 +496,13 @@ let feedDrawn = {ver: -1, mode: null, top: null};
 function renderPanels() {
   const t = totals(), act = activeCount();
   const v = {claude: t.claude.toLocaleString(), codex: t.codex.toLocaleString(), active: `${act}/${S.summary.size}`,
-    tokens: fmtK(t.tokens), turns: t.turns.toLocaleString(), errors: t.errors.toLocaleString()};
+    tokens: fmtK(t.tin + t.tokens), turns: t.turns.toLocaleString(), errors: t.errors.toLocaleString()};
   for (const k in v) $(`v-${k}`).textContent = v[k];
+  $('s-tokens').textContent = `입력 ${fmtK(t.tin)} · 출력 ${fmtK(t.tokens)}`;
+  $('s-tokens').title = `캐시에서 읽은 토큰 ${fmtK(t.tcache)}`;
+  $('s-codex').textContent = limitText() || 'tool calls';
+  $('s-codex').title = limitText() ? 'Codex 요금제 사용 한도 (마지막으로 기록된 값)' : '';
+  renderStatusbar(t);
   $('judged').textContent = `${t.tools.toLocaleString()} tool calls`;
   const sum = t.read + t.edit + t.run + t.other || 1;
   for (const [k] of BARS) { const pc = Math.round(t[k] / sum * 100); $(`p-${k}`).textContent = pc + '%'; $(`f-${k}`).style.width = pc + '%'; }
@@ -492,7 +525,7 @@ function renderChips() {  // 지금 움직이는 세션들: 누르면 그 세션
     const busy = [...S.sess.values()].some(x => (x === s || x.parent === s.id) && x.running.size);
     return h('button', {class: on ? 'chip-btn on' : 'chip-btn', type: 'button', 'aria-pressed': String(on), onclick: () => pickFocus(s.id),
       title: on && S.pinned ? '고정됨 — 다시 누르면 자동으로 따라가요' : `${nameOf(s.id, s.label)} — HUB로 보기`},
-      h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark), clip(nameOf(s.id, s.label), 18), busy ? h('i', {class: 'spin'}) : null, on && S.pinned ? h('b', {}, '고정') : null);
+      mark(s.agent), clip(nameOf(s.id, s.label), 18), busy ? h('i', {class: 'spin'}) : null, on && S.pinned ? h('b', {}, '고정') : null);
   }));
 }
 
@@ -507,10 +540,10 @@ function renderSessions() {
   box.replaceChildren(...list.slice(0, 200).map(x => {
     const k = KIND[x.kind] || KIND.tool, a = AGENTS[x.agent] || AGENTS.claude;
     return h('button', {class: 'row', type: 'button', onclick: () => openDrawer(x.id)},
-      h('span', {class: 'mark', style: `--c:${a.c}`, title: a.name}, a.mark),
+      mark(x.agent),
       h('span', {class: 'label'}, x.parent ? h('small', {}, '↳ ') : null, nameOf(x.id, x.label)),
       h('span', {class: 'act', style: `--c:${k.c}`}, x.kind ? h('b', {}, x.kind) : null, x.text || ''),
-      h('span', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, fmtK(x.tokens)), ' tok'),
+      h('span', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {title: `입력 ${fmtK(x.tin || 0)} · 출력 ${fmtK(x.tokens)} · 캐시 ${fmtK(x.tcache || 0)}`}, h('b', {}, fmtK((x.tin || 0) + x.tokens)), ' tok'),
         h('span', {}, x.errors ? [h('b', {}, x.errors), ' err'] : '')),
       h('span', {class: 'ago'}, ago(x.last)));
   }));
@@ -578,7 +611,7 @@ function agentCard(key) {
     }
   }
   return h('div', {class: 'agent'},
-    h('div', {class: 'hd'}, h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark), h('span', {class: 'name'}, a.name), chip),
+    h('div', {class: 'hd'}, mark(key), h('span', {class: 'name'}, a.name), chip),
     h('div', {class: 'desc'}, desc || h('code', {}, a.file)),
     acts.length ? h('div', {class: 'acts'}, ...acts) : null);
 }
@@ -644,6 +677,37 @@ async function openAction(agent, action) {
       await refreshStatus();
     },
   });
+}
+
+// ── 새로고침 · 미니 창 상태바 ──
+async function refreshAll() {
+  if (S.mode !== 'live') return;
+  const ok = await refreshStatus();
+  if (!S.connected) openStream(); else loadSummary();
+  toast(ok ? '새로고침했어요' : '수집기에 연결할 수 없어요');
+}
+
+function renderStatusbar(t) {  // 미니 창 맨 아래: Orca 처럼 한 줄 요약 (앱 안에선 앱이 그린다)
+  const bar = $('statusbar');
+  if (bar.hidden) return;
+  const live = S.mode === 'live' && S.connected, lim = limitText();
+  const agent = key => h('span', {class: 'sb-agent', title: `${AGENTS[key].name} · 오늘 도구 ${t.by[key].calls}회 · 입력+출력 ${fmtK(t.by[key].tok)} 토큰`},
+    mark(key), h('b', {}, t.by[key].calls.toLocaleString()), h('span', {class: 'sb-dim'}, `· ${fmtK(t.by[key].tok)}`));
+  bar.replaceChildren(
+    h('span', {class: live ? 'sb-live on' : 'sb-live'}, h('i'), S.mode === 'demo' ? 'DEMO' : live ? 'LIVE' : 'OFFLINE'),
+    agent('claude'), agent('codex'),
+    lim ? h('span', {class: 'sb-dim', title: 'Codex 요금제 사용 한도'}, lim) : null,
+    h('span', {class: 'grow'}),
+    h('button', {class: 'sb-btn', type: 'button', title: '새로고침', 'aria-label': '새로고침', onclick: refreshAll}, refreshIcon()));
+}
+
+function refreshIcon() {
+  const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), p = document.createElementNS(NS, 'path');
+  svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('aria-hidden', 'true');
+  p.setAttribute('d', 'M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', 'currentColor');
+  p.setAttribute('stroke-width', '1.6'); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round');
+  svg.append(p);
+  return svg;
 }
 
 // ── 세션(HUB) 이름 바꾸기 ──
@@ -723,10 +787,10 @@ async function openDrawer(id) {
   S.drawer = {id, list, prev, title, label: x.label, parent: x.parent};
   close.onclick = closeDrawer;
   d.replaceChildren(
-    h('div', {class: 'hd'}, h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark),
+    h('div', {class: 'hd'}, mark(x.agent),
       h('div', {}, title, h('div', {class: 'sub'}, `${a.name} · ${RANGES[S.range].label} · 마지막 활동 ${ago(x.last)}`)), ren, close),
-    h('div', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, fmtK(x.tokens)), ' tokens'),
-      h('span', {}, h('b', {}, x.turns), ' turns'), h('span', {}, h('b', {}, x.errors), ' errors')),
+    h('div', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, x.turns), ' turns'), h('span', {}, h('b', {}, x.errors), ' errors')),
+    h('div', {class: 'nums'}, h('span', {}, '입력 ', h('b', {}, fmtK(x.tin || 0))), h('span', {}, '출력 ', h('b', {}, fmtK(x.tokens))), h('span', {}, '캐시 ', h('b', {}, fmtK(x.tcache || 0)))),
     list);
   d.hidden = false;
   close.focus();
@@ -760,15 +824,6 @@ function closeDrawer() {
 }
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && S.drawer && $('modal').hidden) closeDrawer(); });
 
-// ── 테이프 ──
-let tapeTimer;
-function tape(e, animate) {
-  const full = `${nameOf(e.id, e.label)}  ${e.text}`;
-  clearInterval(tapeTimer);
-  if (!animate || CALM) { $('tape').textContent = full; return; }
-  let i = 0;
-  tapeTimer = setInterval(() => { i += 2; $('tape').textContent = full.slice(0, i); if (i >= full.length) clearInterval(tapeTimer); }, 16);
-}
 
 // ── 데모: 설치 전 방문자에게 영상처럼 움직이는 예시를 보여준다 ──
 const DEMO = {
@@ -834,7 +889,6 @@ function stopDemo() {
   S.sess.clear(); S.summary.clear(); S.links = []; S.focus = null; S.pinned = false;
   S.feed = []; S.feedVer++; S.demoLog = [];
   for (const k in S.spark) S.spark[k].fill(0);
-  $('tape').textContent = 'waiting for agents';
 }
 
 function loadAnalytics() {  // 배포 사이트에서만: 쿠키 없는 페이지 조회 수 (에이전트 데이터는 수집하지 않음)
@@ -863,6 +917,7 @@ const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono
 const SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans');
 const PAL = ['#ffffff', '#d4d4d4', '#a3a3a3', '#3b9eff', '#7dd3fc', '#c084fc'];  // 궤도 입자: 무채색 위주 + 약간의 강조색
 const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+const LOGO_PATH = {claude: new Path2D(LOGO.claude.d), codex: new Path2D(LOGO.codex.d)};
 const parts = Array.from({length: 72}, () => ({a: Math.random() * 6.283, sp: (Math.random() * .12 + .03) * (Math.random() < .2 ? -1 : 1), j: (Math.random() - .5) * 14, r: Math.random() * 1.6 + .8, c: pick(PAL)}));
 let W = 0, H = 0, Z = 1, stars = [], rot = 0, lastFrame = now(), working = false, lastList = 0, lastChips = 0;
 
@@ -870,7 +925,7 @@ function resize() {
   const dpr = devicePixelRatio || 1;
   W = cv.clientWidth; Z = W < 600 ? .82 : Math.max(.7, Math.min(1, W / 760));  // 좁은 화면도 노드 글자가 읽히게
   if (MINI) {  // 미니 창: 다른 요소를 뺀 나머지 높이를 궤도가 채운다
-    const rest = document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - cv.offsetHeight;
+    const rest = document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - cv.offsetHeight + $('statusbar').offsetHeight;
     H = Math.max(200, Math.round(innerHeight - rest));
   } else H = Math.round(W < 600 ? W * 1.1 : Math.max(340, Math.min(540, W * .56)));
   cv.style.height = H + 'px'; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -933,9 +988,15 @@ function drawHub(g, t, focus, toolCount) {
   ctx.shadowBlur = 0;
   rrect(-bw / 2 + 7, -bh / 2 + 7, bw - 14, bh - 14, 8, null, 'rgba(59,158,255,.35)', 1);
   ctx.textAlign = 'center';
-  if (focus) {
-    const a = AGENTS[focus.agent] || AGENTS.claude;
-    ctx.fillStyle = a.c; ctx.font = `600 10px ${MONO}`; ctx.fillText(a.name.toUpperCase(), 0, -20);
+  if (focus) {  // 에이전트 로고 + 이름
+    const a = AGENTS[focus.agent] || AGENTS.claude, L = LOGO[focus.agent] || LOGO.codex, name = a.name.toUpperCase();
+    ctx.font = `600 10px ${MONO}`;
+    const tw = ctx.measureText(name).width, x0 = -(tw + 15) / 2;
+    ctx.save(); ctx.translate(x0, -29); ctx.scale(11 / 24, 11 / 24);
+    if (L.stroke) { ctx.strokeStyle = a.c; ctx.lineWidth = 2.6; ctx.lineCap = ctx.lineJoin = 'round'; ctx.stroke(LOGO_PATH[focus.agent]); }
+    else { ctx.fillStyle = a.c; ctx.fill(LOGO_PATH[focus.agent]); }
+    ctx.restore();
+    ctx.fillStyle = a.c; ctx.textAlign = 'left'; ctx.fillText(name, x0 + 15, -20); ctx.textAlign = 'center';
   }
   ctx.fillStyle = '#fff'; ctx.font = `700 ${focus ? 21 : 30}px ${SANS}`; ctx.fillText(label, 0, focus ? 6 : 6);
   ctx.fillStyle = '#a3a3a3'; ctx.font = `11px ${MONO}`;  // 이 세션이 지금까지 실행한 도구 횟수 (노드 숫자의 합)
@@ -1053,7 +1114,7 @@ function frame() {
   }
   if (S.dirty) {
     S.dirty = false; renderPanels();
-    if (MINI && Math.abs(document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - innerHeight) > 2) resize();  // 미니 창은 스크롤 없이 꽉 차게
+    if (MINI && Math.abs(document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight + $('statusbar').offsetHeight - innerHeight) > 2) resize();  // 미니 창은 스크롤 없이 꽉 차게
   }
   if (S.listDirty && t - lastList > .5) { S.listDirty = false; lastList = t; renderSessions(); }
   if (S.chipsDirty && t - lastChips > .3) { S.chipsDirty = false; lastChips = t; renderChips(); }
