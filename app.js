@@ -975,7 +975,7 @@ function frame() {
     if (type === 'st') {
       const k = KIND[n.kind] || KIND.tool;
       drawCard(n, t, (n.mcp ? 'MCP · ' : '') + n.label,
-        n.live ? `▶ ${Math.max(0, Math.floor(nowS - n.since))}s ${n.arg || ''}` : `×${n.count}${n.sub ? ' · ' + n.sub : ''}`,
+        n.live ? `▶ ${Math.max(0, Math.floor(nowS - n.since))}s ${n.arg || ''}` : [n.count ? `×${n.count}` : '', n.sub].filter(Boolean).join(' · ') || 'idle',
         {live: n.live, idle: nowS - n.last > IDLE, code: n.kind ? k.code : null, codeColor: k.c, idleEdge: focus.agent === 'codex' ? 'rgba(139,156,255,.45)' : null});
     } else {
       const job = n.running.size && [...n.running.values()].pop();
