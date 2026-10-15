@@ -206,8 +206,9 @@ function renderSideFoot() {
 
 // ── 레이아웃: 패널 너비 · 열고 닫기 ──
 const appEl = $('app');
-function setOrbitWidth(w) {
-  w = Math.max(320, Math.min(820, Math.round(w)));
+function setOrbitWidth(w) {  // 터미널이 최소 360px 는 남도록, 그 안에서는 마음껏
+  const side = appEl.classList.contains('no-side') ? 0 : $('projects').closest('.side').offsetWidth;
+  w = Math.max(320, Math.min(window.innerWidth - side - 5 - 360, Math.round(w)));
   appEl.style.setProperty('--orbit-w', w + 'px');
   store.set('orbitW', w);
 }
