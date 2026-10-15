@@ -385,7 +385,7 @@ function renderBanners() {
   const st = S.status;
   if (st && (st.protocol < MIN_PROTOCOL || newer(LATEST, st.version))) {
     out.push(h('div', {class: 'banner'},
-      h('p', {}, st.protocol < MIN_PROTOCOL ? `수집기(v${st.version})가 오래되어 업데이트가 필요해요.` : `새 수집기 v${LATEST}가 있어요 (지금 v${st.version}). 같은 명령으로 업데이트돼요.`),
+      h('p', {}, st.protocol < MIN_PROTOCOL ? `수집기(v${st.version})가 오래되어 업데이트가 필요해요.` : `수집기 업데이트가 있어요 (v${st.version} → v${LATEST}). 설치할 때와 같은 명령으로 업데이트돼요.`),
       cmdBox()));
   }
   box.replaceChildren(...out);
