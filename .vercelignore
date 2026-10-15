@@ -1,4 +1,4 @@
 # 배포: 대시보드(index.html, app.js) + 설치 파일(install.sh, agent_orbit.py)만. 테스트는 제외
 test_*.py
 __pycache__
-app/
+desktop/

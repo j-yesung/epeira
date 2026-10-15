@@ -1,5 +1,5 @@
 __pycache__/
 .vercel/
 .vercel
-app/node_modules/
-app/dist/
+desktop/node_modules/
+desktop/dist/

@@ -163,6 +163,7 @@ async function refreshStatus() {
 
 async function boot() {
   if (MINI) { document.body.classList.add('mini'); $('bigger').hidden = false; resize(); }
+  if (params.get('embed')) { document.body.classList.add('embed'); resize(); }  // 앱의 궤도 패널: 앱이 헤더를 그린다
   renderStatic();
   if (!LOCAL) loadAnalytics();
   if (LOCAL) return goLive();

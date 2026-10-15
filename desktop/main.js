@@ -45,8 +45,9 @@ ipcMain.handle('projects:touch', (_, dir) => {
 function shellEnv(id) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
-    // 앱을 띄운 환경(npm·Electron·다른 Claude 세션)의 흔적은 넘기지 않는다 — 안에서 claude 가 "중첩 세션"으로 오해하지 않게
-    if (/^(ELECTRON_|npm_|CLAUDECODE$|CLAUDE_CODE_|CODEX_)/.test(k)) continue;
+    // 앱을 띄운 환경(npm·Electron·다른 에이전트 세션·다른 터미널 앱)의 흔적은 넘기지 않는다
+    // — 안의 claude 가 "중첩 세션"으로 오해하거나, 다른 앱의 훅이 이 탭을 제 것으로 착각하지 않게
+    if (/^(ELECTRON_|npm_|CLAUDECODE$|CLAUDE_CODE_|CLAUDE_PID$|CLAUDE_EFFORT$|CODEX_|ORCA_|ITERM_|VSCODE_|TMUX|KITTY_|WEZTERM_|GHOSTTY_|TERM_PROGRAM_VERSION$)/.test(k)) continue;
     env[k] = v;
   }
   return {...env, AGENT_ORBIT_TAB: id, TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'AgentOrbit', LANG: env.LANG || 'ko_KR.UTF-8'};
@@ -141,7 +142,7 @@ function createWindow() {
   win.webContents.on('will-attach-webview', (e, prefs, params) => {
     delete prefs.preload;
     prefs.nodeIntegration = false; prefs.contextIsolation = true; prefs.sandbox = true;
-    if (!params.src.startsWith(ORBIT + '/')) e.preventDefault();
+    if (params.src !== 'about:blank' && !params.src.startsWith(ORBIT + '/')) e.preventDefault();
   });
   win.webContents.on('will-navigate', e => e.preventDefault());
 }
