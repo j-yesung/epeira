@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src http://127.0.0.1:47777; child-src http://127.0.0.1:47777">
+<title>Agent Orbit</title>
+<link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" aria-label="프로젝트">
+    <div class="drag side-top">
+      <span class="brand"><img src="assets/mark.svg" alt="" width="18" height="18">Agent Orbit</span>
+    </div>
+    <div class="side-hd">
+      <span>PROJECTS</span>
+      <button class="icon-btn" id="add-project" type="button" title="폴더 열기 (⌘O)" aria-label="폴더 열기">+</button>
+    </div>
+    <ul class="projects" id="projects"></ul>
+    <div class="side-ft" id="side-ft"></div>
+  </aside>
+
+  <section class="center" aria-label="터미널">
+    <div class="tabbar drag">
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <button class="icon-btn no-drag" id="new-shell" type="button" title="새 터미널 탭 (⌘T)" aria-label="새 터미널 탭">+</button>
+      <div class="tab-actions no-drag">
+        <button class="btn" id="new-claude" type="button" title="Claude 새 세션 (⇧⌘C)"><span class="k k-claude">C</span>Claude</button>
+        <button class="btn" id="new-codex" type="button" title="Codex 새 세션 (⇧⌘X)"><span class="k k-codex">X</span>Codex</button>
+        <button class="icon-btn" id="toggle-orbit" type="button" title="궤도 패널 (⌘J)" aria-label="궤도 패널 열고 닫기">◎</button>
+      </div>
+    </div>
+    <div class="terms" id="terms"></div>
+    <div class="welcome" id="welcome">
+      <img src="assets/mark.svg" alt="" width="64" height="64">
+      <h1>Agent Orbit</h1>
+      <p>왼쪽에서 프로젝트를 고르거나 폴더를 추가하세요. 터미널에서 Claude Code · Codex와 대화하면 오른쪽 궤도에 실시간으로 나타나요.</p>
+      <div class="welcome-acts" id="welcome-acts"></div>
+      <p class="keys"><kbd>⌘O</kbd> 폴더 열기 · <kbd>⌘T</kbd> 새 탭 · <kbd>⇧⌘C</kbd> Claude · <kbd>⇧⌘X</kbd> Codex · <kbd>⌘J</kbd> 궤도 패널</p>
+    </div>
+  </section>
+
+  <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="궤도 패널 너비"></div>
+
+  <section class="orbit" aria-label="에이전트 궤도">
+    <div class="orbit-hd drag">
+      <span>AGENT ORBIT</span>
+      <span class="grow"></span>
+      <button class="icon-btn no-drag" id="orbit-big" type="button" title="대시보드 크게 보기" aria-label="대시보드 크게 보기">↗</button>
+    </div>
+    <webview id="orbit-view" src="about:blank" partition="persist:orbit" allowpopups hidden></webview>
+    <div class="orbit-off" id="orbit-off" hidden></div>
+  </section>
+</div>
+<script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+<script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+<script src="node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>

@@ -82,6 +82,12 @@ def test_session_start_opens_mini():
         ao.hook('codex', {'hook_event_name': 'SessionStart'})
         assert len(opened) == 3, '사용자가 끄면 띄우지 않는다'
         ao.save_setting('autoMini', True)
+        ao.hook('claude', {'hook_event_name': 'SessionStart', 'transcript_path': '/p/T1.jsonl'}, tab='tab-1')
+        assert len(opened) == 3, '앱 터미널 탭에서 시작한 세션은 미니 창을 띄우지 않는다'
+        assert ao.tabs['tab-1'] == 'T1'
+        ao.hook('claude', {'hook_event_name': 'PreToolUse', 'tool_use_id': 'x1', 'agent_id': 'a9', 'session_id': 'T1',
+                           'transcript_path': '/p/T1.jsonl', 'tool_name': 'Read'}, tab='tab-1')
+        assert ao.tabs['tab-1'] == 'T1', '서브에이전트 실행도 부모 세션으로 짝지음'
     finally:
         ao.open_mini = real
 
@@ -146,7 +152,8 @@ def test_connect_restores_bytes():
 
 def test_legacy_and_missing_file():
     path = os.path.join(TMP, '.codex/hooks.json')
-    legacy = {'hooks': {'PreToolUse': [{'hooks': [{'type': 'command', 'command': ao.hook_cmd('codex').replace(str(ao.PORT), '7777')}]}]}}
+    old_cmd = "curl -s -m 1 -H 'Content-Type: application/json' --data-binary @- 'http://127.0.0.1:7777/hook?agent=codex' >/dev/null 2>&1 || true"
+    legacy = {'hooks': {'PreToolUse': [{'hooks': [{'type': 'command', 'command': old_cmd}]}]}}
     ao.write_text(path, json.dumps(legacy, indent=2) + '\n')
     assert ao.hooks_state('codex') == 'legacy'
     r = ao.act('codex', 'connect')

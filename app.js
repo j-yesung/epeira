@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.5.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.6.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -15,7 +15,7 @@ const API = LOCAL ? '' : /^http:\/\/127\.0\.0\.1:\d+$/.test(params.get('api') ||
 const LOCAL_URL = `http://127.0.0.1:${PORT}`;
 const SAFARI = !LOCAL && /^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent);
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const MINI = params.get('view') === 'mini';  // agent-orbit mini 가 여는 작은 창
+const MINI = params.get('view') === 'mini';  // agent-orbit mini 가 여는 작은 창 · 앱의 궤도 패널
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
 const FOLLOW_QUIET = 8;           // 보던 세션이 이만큼(초) 조용해야 다른 세션으로 HUB 를 옮긴다
 const MAX_STATIONS = MINI ? 7 : 10, MAX_SUBS = 4;
@@ -65,6 +65,7 @@ const S = {
   summary: new Map(), summarySeq: 0, summaryReady: false, pending: [],
   sess: new Map(),           // 세션(HUB 후보)과 서브에이전트. 각자 쓰는 도구 노드(stations)를 가진다
   focus: null, pinned: false, // HUB 로 보고 있는 세션, 사용자가 고정했는지
+  tabs: new Map(), tab: null, // Agent Orbit 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
   links: [],                 // 방금 끝난 실행: HUB(또는 서브에이전트) → 도구 노드로 쏘는 선
   feed: [], feedVer: 0, hubFlash: -9, bursts: [],
   spark: Object.fromEntries(CARDS.map(([k]) => [k, Array(SPARK_N).fill(0)])),
@@ -212,8 +213,23 @@ function onMessage(e) {
     return;
   }
   if (e.kind === 'start' || e.kind === 'end') return onHook(e);
+  if (e.kind === 'tab') { S.tabs.set(e.tab, e.id); if (e.tab === S.tab) focusTab(e.tab); return; }
   onEvent(e);
 }
+
+// Agent Orbit 앱이 지금 보고 있는 터미널 탭을 알려준다 → 그 탭의 세션을 HUB 로 고정
+function focusTab(tab) {
+  S.tab = tab || null;
+  const id = S.tab && S.tabs.get(S.tab);
+  if (id) {
+    const x = S.summary.get(id) || {};
+    sess({id, agent: x.agent || 'claude', label: x.label, ts: x.last || epoch()});
+    S.focus = id; S.pinned = true;
+  }
+  else if (S.tab) S.pinned = false;  // 아직 에이전트를 실행하지 않은 탭: 자동 따라가기
+  S.chipsDirty = true;
+}
+window.aoFocusTab = focusTab;
 
 // ── 궤도 모델: 세션 · 도구 노드 · HUB 따라가기 ──
 function sess(e) {

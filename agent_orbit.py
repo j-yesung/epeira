@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.5.0'
+VERSION = '0.6.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -259,6 +259,7 @@ PARSERS = {'claude': parse_claude, 'codex': parse_codex}
 # ---------- 로그 감시 + 기록 저장 ----------
 
 sessions, checkpoint, clients, running = {}, {}, set(), {}
+tabs = {}  # 앱 터미널 탭 ID → 그 탭에서 실행 중인 세션 id
 history, ended = deque(maxlen=300), deque(maxlen=500)
 lock = threading.Lock()
 seq = 0
@@ -419,6 +420,8 @@ def publish(e, store=False):
         elif k == 'end':
             running.pop(e['tool'], None)
             ended.append(e['tool'])
+        elif k == 'tab':
+            pass  # tabs 에만 기록 (저장 안 함)
         else:
             seq += 1
             e['seq'] = seq
@@ -477,18 +480,22 @@ def watch():
 HOOK_PHASE = {'PreToolUse': 'start', 'PostToolUse': 'end', 'PostToolUseFailure': 'end'}
 
 
-def hook(agent, h):
+def hook(agent, h, tab=''):
+    aid, tp = h.get('agent_id'), str(h.get('transcript_path') or '')
+    # 노드 id 를 로그 쪽과 맞춘다: 서브에이전트 agent-<id>, 그 외엔 로그 파일 이름
+    main = base(tp)[:-6] if tp.endswith('.jsonl') else h.get('session_id', '?')
+    sid = 'agent-' + aid.replace('agent-', '', 1) if aid else main
+    if tab and tabs.get(tab) != main:  # 앱의 어느 탭이 어느 세션인지 (서브에이전트는 부모 세션으로)
+        tabs[tab] = main
+        publish({'kind': 'tab', 'tab': tab, 'id': main, 'ts': time.time()})
     if h.get('hook_event_name') == 'SessionStart':
-        # 새로 시작하거나 이어 열 때만. 대화 압축·/clear 로 다시 시작될 땐 사용자가 닫은 창을 다시 띄우지 않는다
-        if h.get('source', 'startup') in ('startup', 'resume') and setting('autoMini') and MAC:
+        # 새로 시작하거나 이어 열 때만 (대화 압축·/clear 땐 닫은 창을 다시 띄우지 않음). 앱 안의 세션이면 앱이 이미 궤도를 보여준다
+        if not tab and h.get('source', 'startup') in ('startup', 'resume') and setting('autoMini') and MAC:
             open_mini()
         return
     phase, tid = HOOK_PHASE.get(h.get('hook_event_name')), h.get('tool_use_id')
     if not phase or not tid:
         return
-    aid, tp = h.get('agent_id'), str(h.get('transcript_path') or '')
-    # 노드 id 를 로그 쪽과 맞춘다: 서브에이전트 agent-<id>, 그 외엔 로그 파일 이름
-    sid = 'agent-' + aid.replace('agent-', '', 1) if aid else (base(tp)[:-6] if tp.endswith('.jsonl') else h.get('session_id', '?'))
     inp = h.get('tool_input') if isinstance(h.get('tool_input'), dict) else {}
     name = str(h.get('tool_name') or '').split('__')[-1]
     publish({'id': sid, 'parent': h.get('session_id') if aid else None, 'agent': agent,
@@ -504,12 +511,13 @@ act_lock = threading.Lock()
 
 def hook_cmd(agent):
     # 수집기가 꺼져 있어도 조용히 통과: 백그라운드(async), 1초 제한, 항상 exit 0
+    # AGENT_ORBIT_TAB: Agent Orbit 앱 터미널 탭에서 실행된 세션이면 그 탭 ID (앱 밖에선 빈 값)
     return ("curl -s -m 1 -H 'Content-Type: application/json' --data-binary @- "
-            "'http://127.0.0.1:%d/hook?agent=%s' >/dev/null 2>&1 || true" % (PORT, agent))
+            '"http://127.0.0.1:%d/hook?agent=%s&tab=${AGENT_ORBIT_TAB:-}" >/dev/null 2>&1 || true' % (PORT, agent))
 
 
-def is_our_cmd(cmd):  # 이전 버전(포트 7777)이 넣은 훅도 우리 것으로 인식해 교체
-    return isinstance(cmd, str) and "'http://127.0.0.1:" in cmd and '/hook?agent=' in cmd
+def is_our_cmd(cmd):  # 이전 버전(포트 7777, 탭 없는 명령)이 넣은 훅도 우리 것으로 인식해 교체
+    return isinstance(cmd, str) and 'http://127.0.0.1:' in cmd and '/hook?agent=' in cmd
 
 
 def is_ours(group):
@@ -940,10 +948,11 @@ class Handler(BaseHTTPRequestHandler):
             # 훅은 에이전트가 curl 로만 보낸다. 브라우저발 요청(Origin 있음)은 거부: 다른 사이트의 가짜 이벤트 주입 차단
             if self.headers.get('Origin'):
                 return self.send_error(403)
-            agent = parse_qs(u.query).get('agent', [''])[0]
+            q = parse_qs(u.query)
+            agent, tab = q.get('agent', [''])[0], q.get('tab', [''])[0][:64]
             try:
                 if agent in AGENTS:
-                    hook(agent, json.loads(body))
+                    hook(agent, json.loads(body), tab)
             except (ValueError, AttributeError):
                 pass
             self.send_response(204)
@@ -998,6 +1007,7 @@ class Handler(BaseHTTPRequestHandler):
             backlog = [{'kind': 'hello', 'boot': BOOT, 'version': VERSION, 'protocol': PROTOCOL}]
             backlog += [dict(e, replay=True) for e in list(history)[-80:] if e['ts'] >= today]
             backlog += [dict(e, replay=True) for e in running.values() if now - e['ts'] < 1800]  # 끝 신호 유실 대비 30분
+            backlog += [{'kind': 'tab', 'tab': k, 'id': v, 'replay': True} for k, v in tabs.items()]
             clients.add(q)
         try:
             for e in backlog:
