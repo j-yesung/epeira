@@ -59,7 +59,7 @@ main { padding-top: 16px; padding-bottom: 40px; }
 .btn.danger { border-color: rgba(255, 107, 129, .45); color: var(--err); }
 .btn.small { padding: 4px 10px; font-size: 12px; }
 .btn[disabled] { opacity: .5; cursor: default; }
-:is(.btn, .seg button, .row, summary, .switch, a):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+:is(.btn, .seg button, .row, summary, .switch, .chip-btn, a):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
 /* 설치 안내 */
 .onboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; margin-bottom: 14px; }
@@ -80,7 +80,17 @@ main { padding-top: 16px; padding-bottom: 40px; }
 /* 궤도 */
 .stage { position: relative; }
 #orbit { display: block; width: 100%; }
-.demo-mark { position: absolute; top: 8px; left: 8px; padding: 3px 9px; border: 1px solid rgba(167, 139, 250, .35); border-radius: 6px; background: rgba(167, 139, 250, .1); color: var(--violet); font: 600 11px var(--mono); letter-spacing: .06em; }
+.chips { position: absolute; top: 8px; right: 8px; left: 8px; z-index: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips:empty { display: none; }
+.chip-btn { display: inline-flex; flex: none; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border: 1px solid var(--line-2); border-radius: 999px; background: rgba(10, 19, 36, .82); color: var(--dim); font-size: 12px; cursor: pointer; }
+.chip-btn:hover { border-color: rgba(59, 158, 255, .5); color: var(--text); }
+.chip-btn.on { border-color: rgba(59, 158, 255, .65); background: rgba(59, 158, 255, .16); color: var(--text); }
+.chip-btn .mark { width: 20px; height: 20px; border-radius: 6px; font-size: 10px; }
+.chip-btn b { color: var(--accent-2); font-size: 10px; }
+.chip-btn .spin { width: 10px; height: 10px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.demo-mark { position: absolute; bottom: 8px; left: 8px; padding: 3px 9px; border: 1px solid rgba(167, 139, 250, .35); border-radius: 6px; background: rgba(167, 139, 250, .1); color: var(--violet); font: 600 11px var(--mono); letter-spacing: .06em; }
 
 .tape { display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: 14px var(--mono); }
 .tape .k { color: var(--dim); font-size: 12px; letter-spacing: .08em; }
@@ -248,6 +258,7 @@ body.mini .brand span { display: inline; }
   <section class="onboard" id="onboard" hidden aria-label="시작하기"></section>
 
   <section class="stage" aria-label="에이전트 활동 궤도">
+    <div class="chips" id="chips" aria-label="HUB로 볼 세션"></div>
     <canvas id="orbit" role="img" aria-label="지금 일하고 있는 에이전트 세션이 궤도 위에 표시됩니다"></canvas>
     <span class="demo-mark" id="demo-mark" hidden>DEMO · 예시 데이터</span>
   </section>

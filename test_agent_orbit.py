@@ -23,28 +23,31 @@ NOW = datetime.now().isoformat()
 
 def new_session(**kw):
     return dict({'id': 'S', 'agent': 'claude', 'label': '', 'tokens': 0, 'tok_sent': 0, 'msgs': ao.deque(maxlen=16),
-                 'ended': None, 'parent': None, 'floor': 0}, **kw)
+                 'ended': None, 'parent': None, 'floor': 0, 'tids': {}}, **kw)
 
 
 def test_parsers():
     s = new_session()
     a = {'type': 'assistant', 'cwd': '/x/proj', 'message': {
         'id': 'm1', 'stop_reason': 'end_turn', 'usage': {'output_tokens': 7},
-        'content': [{'type': 'tool_use', 'name': 'Edit', 'input': {'file_path': '/x/proj/a.ts'}}, {'type': 'text', 'text': 'hi'}]}}
-    assert ao.parse_claude(s, a) == [('edit', 'Edit a.ts'), ('say', 'hi'), ('done', 'turn complete')]
-    assert ao.parse_claude(s, a) == [('edit', 'Edit a.ts'), ('say', 'hi')]  # 같은 응답의 다음 줄: 토큰·done 중복 없음
+        'content': [{'type': 'tool_use', 'id': 'tu1', 'name': 'MultiEdit', 'input': {'file_path': '/x/proj/a.ts'}}, {'type': 'text', 'text': 'hi'}]}}
+    assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None), ('done', 'turn complete', None)]
+    assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None)]  # 같은 응답의 다음 줄: 토큰·done 중복 없음
     assert s['tokens'] == 7 and s['label'] == 'proj'
-    assert ao.parse_claude(s, {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'is_error': True, 'content': 'boom'}]}}) == [('error', 'boom')]
+    err = {'type': 'user', 'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'tu1', 'is_error': True, 'content': 'boom'}]}}
+    assert ao.parse_claude(s, err) == [('error', 'boom', 'Edit')], '실패한 도구의 노드를 안다'
+    mcp = {'type': 'assistant', 'message': {'id': 'm2', 'content': [{'type': 'tool_use', 'name': 'mcp__asana__get_tasks', 'input': {}}]}}
+    assert ao.parse_claude(s, mcp) == [('tool', 'get_tasks', 'mcp:asana')]
     assert ao.parse_claude(s, {'type': 'user', 'message': {'content': '<command-name>/x'}}) == []
     assert ao.parse_claude(s, {'type': 'user', 'isCompactSummary': True, 'message': {'content': 'This session is being continued'}}) == []
-    assert ao.parse_claude(s, {'type': 'user', 'message': {'content': '버튼 색 바꿔줘'}}) == [('you', '버튼 색 바꿔줘')]
+    assert ao.parse_claude(s, {'type': 'user', 'message': {'content': '버튼 색 바꿔줘'}}) == [('you', '버튼 색 바꿔줘', None)]
     c = new_session(agent='codex')
     item = lambda it: {'type': 'event_msg', 'payload': {'type': 'item_completed', 'item': it}}
     assert ao.parse_codex(c, {'type': 'session_meta', 'payload': {'cwd': '/y/app'}}) == [] and c['label'] == 'app'
     assert ao.parse_codex(c, item({'type': 'CommandExecution', 'command': ['zsh', '-lc', 'cat a'], 'exit_code': 0,
-                                   'parsed_cmd': [{'type': 'read'}]})) == [('read', 'cat a')]
+                                   'parsed_cmd': [{'type': 'read'}]})) == [('read', 'cat a', 'Bash')]
     assert ao.parse_codex(c, item({'type': 'CommandExecution', 'command': ['zsh', '-lc', 'npm test'], 'exit_code': 1}))[0][0] == 'error'
-    assert ao.parse_codex(c, item({'type': 'FileChange', 'changes': {'/y/app/b.py': {}}})) == [('edit', 'b.py')]
+    assert ao.parse_codex(c, item({'type': 'FileChange', 'changes': {'/y/app/b.py': {}}})) == [('edit', 'b.py', 'Edit')]
     ao.parse_codex(c, {'payload': {'type': 'token_count', 'info': {'total_token_usage': {'output_tokens': 42}}}})
     assert c['tokens'] == 42
 
@@ -54,7 +57,9 @@ def test_hook_mapping():
            'transcript_path': '/p/S.jsonl', 'cwd': '/x/proj', 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}
     ao.hook('claude', pre)
     r = ao.running['t1']
-    assert (r['id'], r['parent'], r['label'], r['text']) == ('agent-a1', 'S', 'Explore', 'Bash ls')
+    assert (r['id'], r['parent'], r['label'], r['text'], r['st']) == ('agent-a1', 'S', 'Explore', 'Bash ls', 'Bash')
+    ao.hook('codex', {'hook_event_name': 'PreToolUse', 'tool_use_id': 't9', 'transcript_path': '/s/r.jsonl', 'tool_name': 'apply_patch'})
+    assert ao.running['t9']['st'] == 'Edit'
     ao.hook('claude', dict(pre, hook_event_name='PostToolUseFailure'))
     assert 't1' not in ao.running
     ao.hook('codex', {'hook_event_name': 'PostToolUse', 'tool_use_id': 't2', 'transcript_path': '/s/rollout-x.jsonl'})
@@ -97,6 +102,7 @@ def test_store_and_resume():
     ao.poll()
     x = ao.summary(ao.day_start(), None)['sessions'][0]
     assert (x['id'], x['label'], x['tools'], x['run'], x['read'], x['tokens']) == ('sess-1', 'api', 2, 1, 1, 150)
+    assert x['st'] == {'Bash': 1, 'Read': 1}, '노드별 횟수'
     # 재시작: 체크포인트에서 이어 읽기 → 꺼져 있던 동안의 줄만 새로, 중복 없음
     ao.save_checkpoint()
     ao.sessions.clear()

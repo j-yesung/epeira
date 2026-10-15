@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.4.0'
+VERSION = '0.5.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -147,6 +147,16 @@ SUB = {'Agent', 'Task'}
 ARG_KEYS = ('command', 'cmd', 'pattern', 'query', 'url', 'file_path', 'notebook_path', 'description', 'path', 'prompt')
 PATH_KEYS = {'file_path', 'notebook_path', 'path'}
 TOOL_KINDS = {'read', 'edit', 'run', 'web', 'sub', 'tool'}
+# 궤도 노드 이름: 같은 일을 하는 도구는 한 노드로 (Codex 셸 → Bash, apply_patch → Edit, MCP 는 서버별)
+STATION = {'MultiEdit': 'Edit', 'NotebookEdit': 'Edit', 'apply_patch': 'Edit', 'exec_command': 'Bash', 'shell': 'Bash',
+           'write_stdin': 'Bash', 'LS': 'Glob', 'Task': 'Agent', 'view_image': 'Read', 'web__run': 'WebSearch'}
+
+
+def station(name):
+    name = str(name or '')
+    if name.startswith('mcp__'):
+        return 'mcp:' + name.split('__')[1]
+    return STATION.get(name, name) or None
 
 
 def tool_kind(name):
@@ -183,23 +193,28 @@ def parse_claude(s, o):
             s['tokens'] += (m.get('usage') or {}).get('output_tokens') or 0
         for b in c if isinstance(c, list) else []:
             if b.get('type') == 'tool_use':
-                name = b.get('name', '').split('__')[-1]  # mcp__server__tool → tool
-                out.append((tool_kind(name), (name + ' ' + tool_arg(b.get('input') or {})).strip()))
+                raw = b.get('name', '')
+                name, st = raw.split('__')[-1], station(raw)  # mcp__server__tool → tool
+                if b.get('id'):  # 실패 결과가 어느 도구 것인지 알 수 있게
+                    s['tids'][b['id']] = st
+                    if len(s['tids']) > 256:
+                        s['tids'].pop(next(iter(s['tids'])))
+                out.append((tool_kind(name), (name + ' ' + tool_arg(b.get('input') or {})).strip(), st))
             elif b.get('type') == 'text' and b.get('text', '').strip():
-                out.append(('say', short(b['text'])))
+                out.append(('say', short(b['text']), None))
         if m.get('stop_reason') == 'end_turn' and s['ended'] != mid:
             s['ended'] = mid
-            out.append(('done', 'turn complete'))
+            out.append(('done', 'turn complete', None))
     elif t == 'user' and not o.get('isMeta') and not o.get('isCompactSummary'):  # 대화 압축 요약은 사용자 입력이 아님
         for b in c if isinstance(c, list) else [{'type': 'text', 'text': c or ''}]:
             if b.get('type') == 'tool_result' and b.get('is_error'):
-                out.append(('error', short(text_of(b.get('content')))))
+                out.append(('error', short(text_of(b.get('content'))), s['tids'].get(b.get('tool_use_id'))))
             elif b.get('type') == 'text':
                 txt = b.get('text', '').strip()
                 if txt.startswith('[Request interrupted'):
-                    out.append(('error', 'interrupted'))
+                    out.append(('error', 'interrupted', None))
                 elif txt and not txt.startswith('<') and not s['parent']:
-                    out.append(('you', short(txt)))
+                    out.append(('you', short(txt), None))
     return out
 
 
@@ -211,30 +226,30 @@ def parse_codex(s, o):
         return []
     if t == 'token_count':
         s['tokens'] = ((p.get('info') or {}).get('total_token_usage') or {}).get('output_tokens') or s['tokens']
-        return [('stat', '')]
+        return [('stat', '', None)]
     if t == 'task_complete':
-        return [('done', 'turn complete')]
+        return [('done', 'turn complete', None)]
     if t == 'turn_aborted':
-        return [('error', p.get('reason') or 'aborted')]
+        return [('error', p.get('reason') or 'aborted', None)]
     it = p.get('item') if t == 'item_completed' and isinstance(p.get('item'), dict) else {}
     k = it.get('type')
     if k == 'CommandExecution':
         cmd = it.get('command')
         cmd = cmd[-1] if isinstance(cmd, list) and cmd else str(cmd or '')
         if it.get('exit_code') not in (None, 0):
-            return [('error', 'exit %s · %s' % (it['exit_code'], short(cmd, 44)))]
+            return [('error', 'exit %s · %s' % (it['exit_code'], short(cmd, 44)), 'Bash')]
         kinds = {c.get('type') for c in it.get('parsed_cmd') or [] if isinstance(c, dict)}
-        return [('read' if kinds and kinds <= {'read', 'search', 'list_files'} else 'run', short(cmd, 56))]
+        return [('read' if kinds and kinds <= {'read', 'search', 'list_files'} else 'run', short(cmd, 56), 'Bash')]
     if k == 'FileChange':
-        return [('edit', short(', '.join(base(f) for f in it.get('changes') or {}), 56))]
+        return [('edit', short(', '.join(base(f) for f in it.get('changes') or {}), 56), 'Edit')]
     if k == 'AgentMessage':
-        return [('say', short(text_of(it.get('content'))))]
+        return [('say', short(text_of(it.get('content'))), None)]
     if k == 'UserMessage':
-        return [('you', short(text_of(it.get('content'))))]
+        return [('you', short(text_of(it.get('content'))), None)]
     if k == 'Extension':
-        return [('web', short(it.get('query') or it.get('kind') or 'extension', 56))]
+        return [('web', short(it.get('query') or it.get('kind') or 'extension', 56), 'WebSearch')]
     if k == 'ImageView':
-        return [('read', base(it.get('path') or 'image'))]
+        return [('read', base(it.get('path') or 'image'), 'Read')]
     return []
 
 
@@ -248,7 +263,7 @@ history, ended = deque(maxlen=300), deque(maxlen=500)
 lock = threading.Lock()
 seq = 0
 CKPT_KEYS = ('id', 'agent', 'label', 'parent', 'tokens', 'tok_sent', 'ended', 'offset')
-STORE_KEYS = ('id', 'parent', 'agent', 'label', 'kind', 'text', 'dtok', 'ts')
+STORE_KEYS = ('id', 'parent', 'agent', 'label', 'kind', 'text', 'st', 'dtok', 'ts')
 
 
 def watched():
@@ -265,7 +280,7 @@ def watched():
 def register(path, agent, size):
     s = {'path': path, 'id': os.path.basename(path)[:-6], 'agent': agent, 'label': '', 'parent': None,
          'tokens': 0, 'tok_sent': 0, 'msgs': deque(maxlen=16), 'ended': None, 'offset': size, 'floor': 0,
-         'touched': False}
+         'touched': False, 'tids': {}}
     if os.path.basename(os.path.dirname(path)) == 'subagents':
         s['parent'] = os.path.basename(os.path.dirname(os.path.dirname(path)))
         s['label'] = (read_json(path[:-6] + '.meta.json') or {}).get('agentType', '')
@@ -314,12 +329,12 @@ def poll():
             except ValueError:
                 continue
             if isinstance(o, dict):
-                for kind, text in parse(s, o):
-                    emit(s, kind, text, ts_of(o))
+                for kind, text, st in parse(s, o):
+                    emit(s, kind, text, ts_of(o), st)
     return dirty
 
 
-def emit(s, kind, text, ts):
+def emit(s, kind, text, ts, st=None):
     if ts < s['floor']:
         s['tok_sent'] = s['tokens']  # 오늘 이전 토큰은 오늘 합계에 넣지 않음
         return
@@ -330,7 +345,7 @@ def emit(s, kind, text, ts):
     if kind == 'stat' and not dtok:
         return
     publish({'id': s['id'], 'parent': s['parent'], 'agent': s['agent'], 'label': s['label'] or s['agent'],
-             'kind': kind, 'text': text, 'dtok': dtok, 'ts': ts}, store=True)
+             'kind': kind, 'text': text, 'st': st, 'dtok': dtok, 'ts': ts}, store=True)
 
 
 def store_append(e):
@@ -364,13 +379,15 @@ def summarize(events):
         if x is None:
             x = out[e['id']] = {'id': e['id'], 'agent': e['agent'], 'parent': e['parent'], 'label': e['label'],
                                 'first': e['ts'], 'last': e['ts'], 'tools': 0, 'read': 0, 'edit': 0, 'run': 0,
-                                'other': 0, 'turns': 0, 'errors': 0, 'tokens': 0, 'kind': None, 'text': ''}
+                                'other': 0, 'turns': 0, 'errors': 0, 'tokens': 0, 'kind': None, 'text': '', 'st': {}}
         k = e['kind']
         x['label'], x['last'] = e['label'], max(x['last'], e['ts'])
         x['tokens'] += e.get('dtok') or 0
         if k in TOOL_KINDS:
             x['tools'] += 1
             x[k if k in ('read', 'edit', 'run') else 'other'] += 1
+            if e.get('st'):  # 도구 노드별 횟수 (새로고침해도 궤도 노드 숫자 유지)
+                x['st'][e['st']] = x['st'].get(e['st'], 0) + 1
         elif k == 'done':
             x['turns'] += 1
         elif k == 'error':
@@ -476,7 +493,7 @@ def hook(agent, h):
     name = str(h.get('tool_name') or '').split('__')[-1]
     publish({'id': sid, 'parent': h.get('session_id') if aid else None, 'agent': agent,
              'label': (h.get('agent_type') if aid else base(h.get('cwd') or '')) or agent,
-             'kind': phase, 'tool': tid, 'ok': h.get('hook_event_name') != 'PostToolUseFailure',
+             'kind': phase, 'tool': tid, 'st': station(h.get('tool_name')), 'ok': h.get('hook_event_name') != 'PostToolUseFailure',
              'text': (name + ' ' + tool_arg(inp)).strip(), 'ts': time.time()})
 
 

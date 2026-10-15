@@ -1,8 +1,9 @@
 'use strict';
-/* Agent Orbit 대시보드 — 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다. */
+/* Agent Orbit 대시보드 — 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다.
+   궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.4.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.5.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -14,9 +15,10 @@ const API = LOCAL ? '' : /^http:\/\/127\.0\.0\.1:\d+$/.test(params.get('api') ||
 const LOCAL_URL = `http://127.0.0.1:${PORT}`;
 const SAFARI = !LOCAL && /^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent);
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const HUB = (params.get('hub') || 'HUB').slice(0, 6).toUpperCase();
 const MINI = params.get('view') === 'mini';  // agent-orbit mini 가 여는 작은 창
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
+const FOLLOW_QUIET = 8;           // 보던 세션이 이만큼(초) 조용해야 다른 세션으로 HUB 를 옮긴다
+const MAX_STATIONS = MINI ? 7 : 10, MAX_SUBS = 4;
 
 const KIND = {
   read: {c: '#8fb3ff', code: 'RD'}, edit: {c: '#3b9eff', code: 'EDT'}, run: {c: '#22c3ee', code: 'RUN'},
@@ -61,11 +63,14 @@ const S = {
   connected: false,          // 이벤트 스트림 연결 여부
   range: 'today', bounds: [dayStart(0), null], day: dayStart(0),
   summary: new Map(), summarySeq: 0, summaryReady: false, pending: [],
-  nodes: new Map(), feed: [], feedVer: 0, hubFlash: -9, bursts: [],
+  sess: new Map(),           // 세션(HUB 후보)과 서브에이전트. 각자 쓰는 도구 노드(stations)를 가진다
+  focus: null, pinned: false, // HUB 로 보고 있는 세션, 사용자가 고정했는지
+  links: [],                 // 방금 끝난 실행: HUB(또는 서브에이전트) → 도구 노드로 쏘는 선
+  feed: [], feedVer: 0, hubFlash: -9, bursts: [],
   spark: Object.fromEntries(CARDS.map(([k]) => [k, Array(SPARK_N).fill(0)])),
   drawer: null, boot: null, es: null,
   demoTimer: 0, demoSeq: 0, demoLog: [],
-  dirty: true, listDirty: true,
+  dirty: true, listDirty: true, chipsDirty: true,
 };
 
 // ── 도우미 ──
@@ -201,7 +206,7 @@ function onMessage(e) {
   if (e.kind === 'hello') {
     const restarted = S.boot && S.boot !== e.boot;
     S.boot = e.boot; S.feed = []; S.feedVer++;
-    for (const n of S.nodes.values()) n.running.clear();
+    for (const s of S.sess.values()) s.running.clear();
     loadSummary();
     if (restarted) refreshStatus();
     return;
@@ -210,37 +215,116 @@ function onMessage(e) {
   onEvent(e);
 }
 
-function node(e) {
-  let n = S.nodes.get(e.id);
-  if (!n) S.nodes.set(e.id, n = {id: e.id, agent: e.agent, parent: e.parent, label: e.label, act: '', kind: null, last: e.ts, flash: -9, fail: -9, off: null, running: new Map()});
-  n.label = e.label || n.label;
-  n.last = Math.max(n.last, e.ts);
-  return n;
+// ── 궤도 모델: 세션 · 도구 노드 · HUB 따라가기 ──
+function sess(e) {
+  let s = S.sess.get(e.id);
+  if (!s) {
+    S.sess.set(e.id, s = {id: e.id, agent: e.agent, parent: e.parent || null, label: e.label || e.agent, last: e.ts || 0,
+      kind: null, act: '', running: new Map(), stations: new Map(), flash: -9, fail: -9, off: null});
+  }
+  if (e.label) s.label = e.label;
+  if (e.ts) s.last = Math.max(s.last, e.ts);
+  return s;
 }
 
-function onHook(e) {  // 훅: 도구 실행 시작/끝 → 노드 "작업 중" 상태
-  const n = node(e);
-  if (e.kind === 'start') {
-    n.running.set(e.tool, {text: e.text, t: e.ts});
-    if (!e.replay) { n.flash = S.hubFlash = now(); burst(n); tape({label: n.label, text: '▶ ' + e.text}, true); }
-  } else {
-    n.running.delete(e.tool);
-    if (!e.ok) n.fail = now();
+function rootOf(s) {  // 서브에이전트의 일은 부모 세션의 궤도에 그린다
+  if (!s.parent) return s;
+  const p = S.sess.get(s.parent) || sess({id: s.parent, agent: s.agent, label: (S.summary.get(s.parent) || {}).label || s.agent, ts: s.last});
+  p.last = Math.max(p.last, s.last);
+  return p;
+}
+
+function stKey(e) {  // 이벤트가 어느 도구 노드 것인지. 수집기가 붙인 st, 없으면(예전 기록) 짐작
+  if (e.st) return e.st;
+  if (!TOOL.has(e.kind) && e.kind !== 'start') return null;
+  if (e.agent === 'codex') return e.kind === 'edit' ? 'Edit' : e.kind === 'web' ? 'WebSearch' : 'Bash';
+  return (e.text || '').split(' ')[0] || null;
+}
+
+function station(root, key) {
+  let n = root.stations.get(key);
+  if (!n) {
+    root.stations.set(key, n = {key, label: key.startsWith('mcp:') ? key.slice(4) : key, mcp: key.startsWith('mcp:'),
+      count: 0, sub: '', last: 0, kind: null, flash: -9, fail: -9, off: null, order: root.stations.size, live: false, since: 0});
   }
-  S.dirty = true;
+  return n;
+}
+const argOf = (text, key) => !text || text === key ? '' : text.startsWith(key + ' ') ? text.slice(key.length + 1) : text;
+
+function activity(root) {  // 세션과 그 서브에이전트 중 가장 최근 움직임 (실행 중이면 지금)
+  let t = root.last;
+  for (const x of S.sess.values()) {
+    if (x !== root && x.parent !== root.id) continue;
+    if (x.running.size) return epoch();
+    t = Math.max(t, x.last);
+  }
+  return t;
+}
+
+function follow(root) {  // 자동 따라가기: 보던 세션이 잠잠할 때만 새로 움직인 세션으로 HUB 를 옮긴다 (번갈아 튀지 않게)
+  if (S.pinned || root.id === S.focus) return;
+  const cur = S.sess.get(S.focus);
+  if (!cur || epoch() - activity(cur) > FOLLOW_QUIET) { S.focus = root.id; S.chipsDirty = true; }
+}
+
+function ensureFocus() {
+  const cur = S.sess.get(S.focus), t = epoch();
+  if (cur && (S.pinned || t - activity(cur) < ORBIT_WINDOW)) return;
+  let best = null, bestAt = 0;
+  for (const s of S.sess.values()) if (!s.parent) { const a = activity(s); if (a > bestAt) { best = s; bestAt = a; } }
+  if (best && t - bestAt < ORBIT_WINDOW && best !== cur) { S.focus = best.id; S.pinned = false; S.chipsDirty = true; }
+}
+
+function pickFocus(id) {  // 칩 클릭: 그 세션을 HUB 로 고정. 고정된 칩을 다시 누르면 자동 따라가기
+  if (S.focus === id && S.pinned) S.pinned = false;
+  else { S.focus = id; S.pinned = true; }
+  S.chipsDirty = true;
+}
+
+function onHook(e) {  // 훅: 도구 실행 시작/끝 → 선을 붙잡아 두고 점이 흐르게
+  const s = sess(e), root = rootOf(s);
+  if (e.kind === 'start') {
+    const key = stKey(e), k = key && key !== 'Agent' ? key : null;
+    s.running.set(e.tool, {text: e.text, t: e.ts, key: k});
+    if (k) { const n = station(root, k); n.sub = argOf(e.text, k); n.last = Math.max(n.last, e.ts); }
+    if (!e.replay) {
+      if (k) { const n = station(root, k); n.flash = now(); burst(n); }
+      s.flash = now();
+      if (root.id === S.focus) S.hubFlash = now();
+      follow(root);
+      tape({label: s.label, text: '▶ ' + e.text}, true);
+    }
+  } else {
+    const r = s.running.get(e.tool);
+    s.running.delete(e.tool);
+    if (!e.ok) { s.fail = now(); if (r && r.key) station(root, r.key).fail = now(); }
+  }
+  S.chipsDirty = S.dirty = true;
 }
 
 function onEvent(e) {
   const live = !e.replay;
   if (e.kind !== 'stat') {
-    const n = node(e);
-    n.kind = e.kind; n.act = e.text;
-    if (e.kind === 'done') n.running.clear();
-    if (live) { n.flash = S.hubFlash = now(); burst(n); }
+    const s = sess(e), root = rootOf(s), key = stKey(e);
+    s.kind = e.kind; s.act = e.text;
+    if (e.kind === 'done') s.running.clear();
+    if (key && key !== 'Agent') {
+      const n = station(root, key);
+      n.last = Math.max(n.last, e.ts); n.sub = argOf(e.text, key); n.kind = e.kind;
+      if (live) n.count++;
+      if (e.kind === 'error') n.fail = now();
+      else if (live) { n.flash = now(); burst(n); S.links.push({root: root.id, from: s.id, to: key, t: now()}); }
+    }
+    if (live) {
+      s.flash = now();
+      if (root.id === S.focus) S.hubFlash = now();
+      follow(root);
+    }
     S.feed.unshift(e);
     S.feed.length = Math.min(S.feed.length, 6);
     S.feedVer++;
     tape(e, live);
+    S.chipsDirty = true;
   }
   if (live) {
     bumpSpark(e);
@@ -277,16 +361,25 @@ async function loadSummary() {
     S.summary = new Map(r.sessions.map(x => [x.id, x]));
     S.summarySeq = r.seq;
     for (const e of S.pending) if (e.seq > S.summarySeq) applySummary(e);
-    if (until === null) for (const x of S.summary.values()) if (epoch() - x.last < ORBIT_WINDOW) seedNode(x);
+    if (key === 'today') seedOrbit(r.sessions);
   } catch {
     toast('수집기에서 기록을 불러오지 못했어요');
   }
-  S.pending = []; S.summaryReady = true; S.dirty = S.listDirty = true;
+  S.pending = []; S.summaryReady = true; S.dirty = S.listDirty = S.chipsDirty = true;
+  ensureFocus();
 }
 
-function seedNode(x) {  // 새로고침해도 최근 30분 안에 움직인 세션은 궤도에 그대로
-  const fresh = !S.nodes.has(x.id), n = node({id: x.id, agent: x.agent, parent: x.parent, label: x.label, ts: x.last});
-  if (fresh || !n.act) { n.kind = x.kind; n.act = x.text; }
+function seedOrbit(list) {  // 새로고침해도 최근 30분 세션과 그 도구 노드 숫자가 그대로
+  const t = epoch(), counts = new Map();
+  for (const x of list) {
+    if (t - x.last > ORBIT_WINDOW) continue;
+    const s = sess({id: x.id, agent: x.agent, parent: x.parent, label: x.label, ts: x.last});
+    if (!s.act) { s.kind = x.kind; s.act = x.text; }
+    const root = rootOf(s), c = counts.get(root) || {};
+    for (const [k, v] of Object.entries(x.st || {})) if (k !== 'Agent') c[k] = (c[k] || 0) + v;
+    counts.set(root, c);
+  }
+  for (const [root, c] of counts) for (const [k, v] of Object.entries(c)) station(root, k).count = v;
 }
 
 function applySummary(e) {  // 수집기의 summarize()와 같은 규칙
@@ -311,7 +404,7 @@ function totals() {
   return t;
 }
 
-const activeCount = () => { let a = 0; const t = epoch(); for (const n of S.nodes.values()) if (t - n.last < IDLE || n.running.size) a++; return a; };
+const activeCount = () => { let a = 0; const t = epoch(); for (const s of S.sess.values()) if (t - s.last < IDLE || s.running.size) a++; return a; };
 
 // ── 화면 ──
 function renderStatic() {
@@ -349,6 +442,7 @@ function setMode() {
   $('demo-mark').hidden = S.mode !== 'demo';
 }
 
+let feedDrawn = {ver: -1, mode: null, top: null};
 function renderPanels() {
   const t = totals(), act = activeCount();
   const v = {claude: t.claude.toLocaleString(), codex: t.codex.toLocaleString(), active: `${act}/${S.summary.size}`,
@@ -364,7 +458,21 @@ function renderPanels() {
   if (!S.feed.length) feed.append(h('li', {class: 'empty'}, S.mode === 'live' ? '에이전트가 일하면 여기에 바로 나타나요' : '…'));
   feedDrawn = {ver: S.feedVer, mode: S.mode, top: S.feed[0]};
 }
-let feedDrawn = {ver: -1, mode: null, top: null};
+
+function renderChips() {  // 지금 움직이는 세션들: 누르면 그 세션이 HUB 가 된다
+  const t = epoch();
+  const roots = [...S.sess.values()].filter(s => !s.parent && (t - activity(s) < ORBIT_WINDOW || s.id === S.focus))
+    .sort((a, b) => activity(b) - activity(a)).slice(0, MINI ? 4 : 7);
+  const box = $('chips');
+  if (roots.length < 2 && !S.pinned) return box.replaceChildren();  // 세션이 하나뿐이면 고를 필요가 없다
+  box.replaceChildren(...roots.map(s => {
+    const a = AGENTS[s.agent] || AGENTS.claude, on = s.id === S.focus;
+    const busy = [...S.sess.values()].some(x => (x === s || x.parent === s.id) && x.running.size);
+    return h('button', {class: on ? 'chip-btn on' : 'chip-btn', type: 'button', 'aria-pressed': String(on), onclick: () => pickFocus(s.id),
+      title: on && S.pinned ? '고정됨 — 다시 누르면 자동으로 따라가요' : `${s.label}를 HUB로 보기`},
+      h('span', {class: 'mark', style: `--c:${a.c}`}, a.mark), clip(s.label, 18), busy ? h('i', {class: 'spin'}) : null, on && S.pinned ? h('b', {}, '고정') : null);
+  }));
+}
 
 function renderSessions() {
   const list = [...S.summary.values()].sort((a, b) => b.last - a.last);
@@ -408,8 +516,7 @@ function renderOnboard() {
   const step = (n, title, state, ...body) => h('div', {class: `step ${state}`}, h('h3', {}, h('b', {}, state === 'done' ? '✓' : n), title), ...body);
   const check = h('button', {class: 'btn primary', type: 'button', onclick: checkCollector, disabled: S.checking},
     S.checking ? '확인 중…' : st === 'install' ? '설치했어요 · 연결하기' : '다시 확인');
-  const s2 = live ? [h('p', {}, `수집기 v${S.status.version}에 연결됐어요.`)] :
-    st === 'safari' ? [h('p', {}, 'Safari는 보안 정책상 배포된 사이트에서 내 컴퓨터의 수집기에 접속할 수 없어요. 설치한 뒤 로컬 주소로 열면 같은 화면을 쓸 수 있어요.'),
+  const s2 = st === 'safari' ? [h('p', {}, 'Safari는 보안 정책상 배포된 사이트에서 내 컴퓨터의 수집기에 접속할 수 없어요. 설치한 뒤 로컬 주소로 열면 같은 화면을 쓸 수 있어요.'),
       h('div', {class: 'actions'}, h('a', {class: 'btn primary', href: LOCAL_URL}, '로컬 주소로 열기'))] :
     st === 'denied' ? [h('p', {class: 'warn'}, '이 사이트의 로컬 접근이 차단되어 있어요.'),
       h('p', {}, '주소창 왼쪽 아이콘 → 사이트 설정에서 "이 기기의 앱"(로컬 네트워크 액세스)을 허용으로 바꾼 뒤 다시 확인하세요.'), h('div', {class: 'actions'}, check)] :
@@ -424,12 +531,11 @@ function renderOnboard() {
       h('div', {class: 'mini'}, ...Object.keys(AGENTS).map(agentCard))));
   }
   box.replaceChildren(
-    step(1, '수집기 설치', live ? 'done' : st === 'install' || st === 'safari' ? 'active' : '',
+    step(1, '수집기 설치', st === 'install' || st === 'safari' ? 'active' : '',
       h('p', {}, '터미널에 붙여넣으세요. macOS · Linux, Python 3.9 이상.'), cmdBox(),
       h('p', {class: 'note'}, '에이전트 기록은 이 컴퓨터 밖으로 나가지 않아요. 바뀌는 파일은 아래 "개인정보와 설치 내용"에 있어요.')),
-    step(2, '이 브라우저와 연결', live ? 'done' : st && st !== 'install' && st !== 'safari' ? 'active' : '', ...s2),
-    step(3, '에이전트 연결', live ? 'active' : '',
-      live ? h('div', {class: 'mini'}, ...Object.keys(AGENTS).map(agentCard)) : h('p', {}, '연결되면 여기서 Claude Code · Codex를 한 번에 연결할 수 있어요.')));
+    step(2, '이 브라우저와 연결', st && st !== 'install' && st !== 'safari' ? 'active' : '', ...s2),
+    step(3, '에이전트 연결', '', h('p', {}, '연결되면 여기서 Claude Code · Codex를 한 번에 연결할 수 있어요.')));
 }
 
 function agentCard(key) {
@@ -489,7 +595,7 @@ function renderFooter() {
 
 function renderAll() {
   setMode(); renderBanners(); renderOnboard(); renderAgents(); renderFooter();
-  S.dirty = S.listDirty = true;
+  S.dirty = S.listDirty = S.chipsDirty = true;
 }
 
 // ── 연결 · 해제 · 승인 확인 창 ──
@@ -616,21 +722,24 @@ function tape(e, animate) {
 // ── 데모: 설치 전 방문자에게 영상처럼 움직이는 예시를 보여준다 ──
 const DEMO = {
   sessions: [
-    {id: 'demo-api', agent: 'claude', label: 'api-server'},
-    {id: 'demo-web', agent: 'claude', label: 'web-frontend'},
-    {id: 'demo-sub', agent: 'claude', label: 'Explore', parent: 'demo-api'},
-    {id: 'demo-bill', agent: 'codex', label: 'billing'},
-    {id: 'demo-infra', agent: 'codex', label: 'infra'},
+    {id: 'demo-api', agent: 'claude', label: 'api-server', w: 6},
+    {id: 'demo-sub', agent: 'claude', label: 'Explore', parent: 'demo-api', w: 3},
+    {id: 'demo-sub2', agent: 'claude', label: 'general-purpose', parent: 'demo-api', w: 1},
+    {id: 'demo-web', agent: 'claude', label: 'web-frontend', w: 1},
+    {id: 'demo-bill', agent: 'codex', label: 'billing', w: 1},
   ],
   acts: {
     claude: [['read', 'Read src/routes.ts'], ['edit', 'Edit auth.ts'], ['run', 'Bash npm test -- auth'], ['read', 'Grep useSession'],
-      ['web', 'WebSearch zod discriminated union'], ['sub', 'Agent find callers'], ['say', '인증 흐름을 정리했어요. 테스트를 돌려볼게요'], ['tool', 'TodoWrite']],
-    codex: [['run', 'pytest -q'], ['read', 'rg invoice'], ['edit', 'invoice.py'], ['say', '테스트 통과, 다음은 마이그레이션'], ['run', 'terraform plan'], ['read', 'cat alembic.ini']],
+      ['read', 'Glob src/**/*.ts'], ['web', 'WebSearch zod discriminated union'], ['web', 'WebFetch nextjs.org/docs'],
+      ['say', '인증 흐름을 정리했어요. 테스트를 돌려볼게요'], ['tool', 'TodoWrite'], ['tool', 'get_tasks', 'mcp:asana'], ['edit', 'Write api/session.ts']],
+    codex: [['run', 'pytest -q'], ['read', 'rg invoice'], ['edit', 'invoice.py'], ['say', '테스트 통과, 다음은 마이그레이션'], ['run', 'terraform plan']],
   },
 };
+const demoPick = () => { let r = Math.random() * DEMO.sessions.reduce((a, s) => a + s.w, 0); for (const s of DEMO.sessions) if ((r -= s.w) < 0) return s; return DEMO.sessions[0]; };
 
-function demoEvent(sess, kind, text, ts = epoch()) {
-  return {id: sess.id, agent: sess.agent, parent: sess.parent || null, label: sess.label, kind, text, ts,
+function demoEvent(sess0, kind, text, ts = epoch(), st) {
+  const key = st || (TOOL.has(kind) ? (sess0.agent === 'codex' ? (kind === 'edit' ? 'Edit' : 'Bash') : text.split(' ')[0]) : null);
+  return {id: sess0.id, agent: sess0.agent, parent: sess0.parent || null, label: sess0.label, kind, text, ts, st: key,
     dtok: kind === 'say' || kind === 'done' ? 0 : 40 + (Math.random() * 600 | 0), seq: ++S.demoSeq};
 }
 
@@ -639,27 +748,28 @@ function startDemo() {
   S.demoLog = [];
   const t0 = epoch() - 3 * 3600;  // 오늘 몇 시간치 기록이 있는 것처럼
   for (let i = 0; i < 180; i++) {
-    const sess = pick(DEMO.sessions), [k, t] = pick(DEMO.acts[sess.agent]);
-    S.demoLog.push(demoEvent(sess, i % 19 === 0 ? 'done' : i % 41 === 0 ? 'error' : k, i % 41 === 0 ? 'exit 1 · npm test' : t, t0 + i * 55));
+    const s = demoPick(), [k, t, st] = pick(DEMO.acts[s.agent]);
+    S.demoLog.push(demoEvent(s, i % 19 === 0 ? 'done' : i % 41 === 0 ? 'error' : k, i % 41 === 0 ? 'exit 1 · npm test' : t, t0 + i * 55, st));
   }
+  for (const e of S.demoLog) if (e.st) station(rootOf(sess(e)), e.st).count++;  // 노드 숫자도 오늘치가 쌓인 것처럼
   renderAll(); loadSummary(); demoTick();
 }
 
 function demoTick() {
   if (S.mode !== 'demo') return;
-  const sess = pick(DEMO.sessions), r = Math.random();
-  const [kind, text] = r < .05 ? ['error', 'exit 1 · npm test'] : r < .13 ? ['done', 'turn complete'] : pick(DEMO.acts[sess.agent]);
-  const base = {id: sess.id, agent: sess.agent, parent: sess.parent || null, label: sess.label};
-  if (kind === 'run' || (TOOL.has(kind) && Math.random() < .4)) {  // 실제 훅처럼 "실행 중"을 먼저 보여준다
-    const tool = `demo-${S.demoSeq}-${r}`;
-    onMessage({...base, kind: 'start', tool, text, ts: epoch()});
+  const s = demoPick(), r = Math.random();
+  const [kind, text, st] = r < .04 ? ['error', 'exit 1 · npm test', 'Bash'] : r < .1 ? ['done', 'turn complete'] : pick(DEMO.acts[s.agent]);
+  const base = {id: s.id, agent: s.agent, parent: s.parent || null, label: s.label};
+  if (TOOL.has(kind) && (kind === 'run' || Math.random() < .75)) {  // 실제 훅처럼 "실행 중"을 먼저 보여준다 → 선이 여러 개 겹친다
+    const ev = demoEvent(s, kind, text, epoch(), st), tool = `demo-${ev.seq}`;
+    onMessage({...base, kind: 'start', tool, text, st: ev.st, ts: epoch()});
     setTimeout(() => {
       if (S.mode !== 'demo') return;
-      onMessage({...base, kind: 'end', tool, ok: true, text, ts: epoch()});
-      demoEmit(demoEvent(sess, kind, text));
-    }, 1200 + Math.random() * 3800);
-  } else demoEmit(demoEvent(sess, kind, text));
-  S.demoTimer = setTimeout(demoTick, 450 + Math.random() * 900);
+      onMessage({...base, kind: 'end', tool, ok: true, text, st: ev.st, ts: epoch()});
+      demoEmit({...ev, ts: epoch()});
+    }, 1200 + Math.random() * 3600);
+  } else demoEmit(demoEvent(s, kind, text, epoch(), st));
+  S.demoTimer = setTimeout(demoTick, 180 + Math.random() * 380);
 }
 
 function demoEmit(e) {
@@ -670,7 +780,8 @@ function demoEmit(e) {
 
 function stopDemo() {
   clearTimeout(S.demoTimer);
-  S.nodes.clear(); S.summary.clear(); S.feed = []; S.feedVer++; S.demoLog = [];
+  S.sess.clear(); S.summary.clear(); S.links = []; S.focus = null; S.pinned = false;
+  S.feed = []; S.feedVer++; S.demoLog = [];
   for (const k in S.spark) S.spark[k].fill(0);
   $('tape').textContent = 'waiting for agents';
 }
@@ -679,10 +790,11 @@ function loadAnalytics() {  // 배포 사이트에서만: 쿠키 없는 페이�
   document.head.append(h('script', {src: '/_vercel/insights/script.js', defer: true}));
 }
 
-// ── 2초마다: 스파크라인 · 날짜 바뀜 · 상대 시간 ──
+// ── 2초마다: 스파크라인 · HUB 확인 · 날짜 바뀜 · 상대 시간 ──
 function tick() {
   const t = epoch();
-  for (const n of S.nodes.values()) for (const [id, r] of n.running) if (t - r.t > 1800) n.running.delete(id);  // 끝 신호 유실 대비
+  for (const s of S.sess.values()) for (const [id, r] of s.running) if (t - r.t > 1800) s.running.delete(id);  // 끝 신호 유실 대비
+  ensureFocus();
   S.spark.active[SPARK_N - 1] = activeCount();
   for (const k in S.spark) {
     const a = S.spark[k], max = Math.max(...a) || 1;
@@ -691,7 +803,7 @@ function tick() {
     a.push(0); a.shift();
   }
   if (dayStart(0) !== S.day) { S.day = dayStart(0); loadSummary(); }  // 자정이 지나면 "오늘"을 새로
-  S.dirty = S.listDirty = true;
+  S.dirty = S.listDirty = S.chipsDirty = true;
 }
 
 // ── 궤도 캔버스 ──
@@ -701,7 +813,7 @@ const SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans
 const PAL = ['#3b9eff', '#3b9eff', '#5cc2ff', '#22c3ee', '#a78bfa', '#ffffff'];
 const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
 const parts = Array.from({length: 72}, () => ({a: Math.random() * 6.283, sp: (Math.random() * .12 + .03) * (Math.random() < .2 ? -1 : 1), j: (Math.random() - .5) * 14, r: Math.random() * 1.6 + .8, c: pick(PAL)}));
-let W = 0, H = 0, Z = 1, stars = [], rot = 0, lastFrame = now(), working = false, lastList = 0;
+let W = 0, H = 0, Z = 1, stars = [], rot = 0, lastFrame = now(), working = false, lastList = 0, lastChips = 0;
 
 function resize() {
   const dpr = devicePixelRatio || 1;
@@ -715,7 +827,7 @@ function resize() {
 }
 addEventListener('resize', resize);
 
-const geo = () => ({cx: W / 2, cy: H * .5, rx: W * .41, ry: H * .37});
+const geo = () => ({cx: W / 2, cy: H * .52, rx: W * .41, ry: H * .37});
 function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
 function circle(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); }
 function ellipse(g, k, c, lw) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.ellipse(g.cx, g.cy, g.rx * k, g.ry * k, 0, 0, 6.283); ctx.stroke(); }
@@ -728,7 +840,7 @@ function dotOn(g, a, j, r, c, alpha, k = 1) {
   ctx.globalAlpha = alpha; circle(g.cx + (g.rx * k + j) * Math.cos(a), g.cy + (g.ry * k + j * .6) * Math.sin(a), r, c); ctx.globalAlpha = 1;
 }
 
-function place(list, k, dt, g) {  // 궤도 위에 균등 배치, 세션이 늘거나 줄면 부드럽게 재배치
+function place(list, k, dt, g) {  // 궤도 위에 균등 배치, 노드가 늘거나 줄면 부드럽게 재배치
   list.forEach((n, i) => {
     const target = i / list.length * 6.283;
     if (n.off === null) n.off = target;
@@ -739,50 +851,57 @@ function place(list, k, dt, g) {  // 궤도 위에 균등 배치, 세션이 늘�
 }
 
 function burst(n) {
-  const c = (KIND[n.kind] || KIND.tool).c, k = n.parent ? .62 : 1;
-  for (let i = 0; i < 7; i++) S.bursts.push({a: n.a ?? 0, sp: (Math.random() * .9 + .3) * (i % 2 ? 1 : -1), j: (Math.random() - .5) * 10, c, k, t: now()});
+  const c = (KIND[n.kind] || KIND.tool).c;
+  for (let i = 0; i < 7; i++) S.bursts.push({a: n.a ?? Math.random() * 6.283, sp: (Math.random() * .9 + .3) * (i % 2 ? 1 : -1), j: (Math.random() - .5) * 10, c, k: 1, t: now()});
 }
 
-function drawHub(g, t) {
-  const f = Math.max(0, 1 - (t - S.hubFlash) / .8, working ? (Math.sin(t * 5) + 1) * .3 : 0);
+function drawHub(g, t, focus, toolCount) {
+  const thinking = focus && !working && epoch() - focus.last < 60 && focus.kind !== 'done';  // 도구 사이: 모델이 다음 행동을 생각하는 중
+  const f = Math.max(0, 1 - (t - S.hubFlash) / .8, working ? (Math.sin(t * 5) + 1) * .3 : 0, thinking ? (Math.sin(t * 2.4) + 1) * .22 : 0);
+  const label = focus ? clip(focus.label || focus.agent, 16) : 'HUB';
   ctx.save(); ctx.translate(g.cx, g.cy); ctx.scale(Z, Z);
+  ctx.font = `700 ${focus ? 21 : 30}px ${SANS}`;
+  const bw = Math.max(108, ctx.measureText(label).width + 40), bh = 96, rx = bw / 2 + 10, ry = bh / 2 + 10;
   ctx.strokeStyle = 'rgba(59,158,255,.55)'; ctx.lineWidth = 1.2;
-  for (let i = 0; i < 16; i++) {
-    const a = i / 16 * 6.283 + .2, r0 = 64, r1 = r0 + 8 + (i % 3) * 6 + f * 10, c = Math.cos(a), s = Math.sin(a) * .9;
-    line(c * r0, s * r0, c * r1, s * r1);
-    circle(c * r1, s * r1, 2.2, '#3b9eff');
+  for (let i = 0; i < 18; i++) {
+    const a = i / 18 * 6.283 + .2, len = 8 + (i % 3) * 6 + f * 10, c = Math.cos(a), s = Math.sin(a);
+    line(c * rx, s * ry, c * (rx + len), s * (ry + len));
+    circle(c * (rx + len), s * (ry + len), 2.2, '#3b9eff');
   }
   ctx.shadowColor = '#3b9eff'; ctx.shadowBlur = 22 + f * 24;
-  rrect(-54, -48, 108, 96, 12, '#071428', '#3b9eff', 2.5);
+  rrect(-bw / 2, -bh / 2, bw, bh, 12, '#071428', '#3b9eff', 2.5);
   ctx.shadowBlur = 0;
-  rrect(-47, -41, 94, 82, 8, null, 'rgba(59,158,255,.35)', 1);
+  rrect(-bw / 2 + 7, -bh / 2 + 7, bw - 14, bh - 14, 8, null, 'rgba(59,158,255,.35)', 1);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#fff'; ctx.font = `700 30px ${SANS}`; ctx.fillText(HUB, 0, 6);
-  ctx.fillStyle = '#9db6d8'; ctx.font = `11px ${MONO}`; ctx.fillText('#' + String(totals().tools).padStart(4, '0'), 0, 28);
+  if (focus) {
+    const a = AGENTS[focus.agent] || AGENTS.claude;
+    ctx.fillStyle = a.c; ctx.font = `600 10px ${MONO}`; ctx.fillText(a.name.toUpperCase(), 0, -20);
+  }
+  ctx.fillStyle = '#fff'; ctx.font = `700 ${focus ? 21 : 30}px ${SANS}`; ctx.fillText(label, 0, focus ? 6 : 6);
+  ctx.fillStyle = '#9db6d8'; ctx.font = `11px ${MONO}`;
+  ctx.fillText(thinking ? 'thinking…' : '#' + String(toolCount).padStart(4, '0'), 0, 28);
   ctx.restore();
 }
 
-function drawNode(n, t, nowS) {
-  const work = n.running.size > 0, job = work && [...n.running.values()].pop();
-  const s = Z * (.86 + .14 * n.depth), hot = work || t - n.flash < 2.5, failed = t - n.fail < 1.5, k = KIND[n.kind] || KIND.tool;
-  const act = job ? `▶ ${n.running.size > 1 ? n.running.size + '× ' : ''}${Math.max(0, Math.floor(nowS - job.t))}s ${job.text}` : n.act || 'idle';
-  const title = clip((n.parent ? '↳ ' : '') + (n.label || n.agent), Math.round(24 * Z)), sub = clip(`${n.agent} · ${act}`, Math.round(32 * Z));
-  ctx.save(); ctx.globalAlpha = (nowS - n.last > IDLE && !work ? .45 : 1) * (.7 + .3 * n.depth);
+function drawCard(n, t, title, sub, o) {  // 노드 카드: 도구 노드와 서브에이전트 노드 공통
+  const s = Z * (.86 + .14 * n.depth), hot = o.live || t - n.flash < 2.5, failed = t - n.fail < 1.5;
+  ctx.save(); ctx.globalAlpha = (o.idle && !o.live ? .45 : 1) * (.7 + .3 * n.depth);
+  title = clip(title, Math.round(22 * Z)); sub = clip(sub, Math.round(30 * Z));
   ctx.font = `600 ${14 * s}px ${SANS}`; const w1 = ctx.measureText(title).width;
   ctx.font = `${11 * s}px ${MONO}`; const w2 = ctx.measureText(sub).width;
   const bw = Math.max(w1, w2) + 24 * s, bh = 44 * s;
   const bx = Math.min(Math.max(n.x - bw / 2, 4), W - bw - 34), by = n.y - bh / 2;
-  const edge = failed ? '#ff6b81' : '#3b9eff';
-  if (hot || failed) { ctx.shadowColor = edge; ctx.shadowBlur = work ? 12 + 12 * (Math.sin(t * 6) + 1) / 2 : 18; }
-  rrect(bx, by, bw, bh, 6, hot ? 'rgba(10,42,84,.95)' : 'rgba(9,18,34,.92)',
-    hot || failed ? edge : n.agent === 'codex' ? 'rgba(139,156,255,.45)' : 'rgba(255,255,255,.14)', hot ? 1.6 : 1);
+  n.bx = bx; n.bw = bw;
+  const edge = failed ? '#ff6b81' : o.color || '#3b9eff';
+  if (hot || failed) { ctx.shadowColor = edge; ctx.shadowBlur = o.live ? 12 + 12 * (Math.sin(t * 6) + 1) / 2 : 18; }
+  rrect(bx, by, bw, bh, 6, hot ? 'rgba(10,42,84,.95)' : 'rgba(9,18,34,.92)', hot || failed ? edge : o.idleEdge || 'rgba(255,255,255,.14)', hot ? 1.6 : 1);
   ctx.shadowBlur = 0; ctx.textAlign = 'center';
   ctx.fillStyle = '#e7f0ff'; ctx.font = `600 ${14 * s}px ${SANS}`; ctx.fillText(title, bx + bw / 2, by + 19 * s);
-  ctx.fillStyle = work ? '#a9d6ff' : '#8aa0c2'; ctx.font = `${11 * s}px ${MONO}`; ctx.fillText(sub, bx + bw / 2, by + 35 * s);
-  if (work || n.kind) {  // 배지: 실행 중엔 스피너, 아니면 마지막 동작 (영상의 SCO / CHO / NOU 박스)
-    const x = bx + bw + 6, y = by - 6, c = work ? '#3b9eff' : k.c;
+  ctx.fillStyle = o.live ? '#a9d6ff' : '#8aa0c2'; ctx.font = `${11 * s}px ${MONO}`; ctx.fillText(sub, bx + bw / 2, by + 35 * s);
+  if (o.live || o.code) {  // 배지: 실행 중엔 스피너, 아니면 마지막 동작 (영상의 SCO / CHO / NOU 박스)
+    const x = bx + bw + 6, y = by - 6, c = o.live ? '#3b9eff' : o.codeColor;
     rrect(x, y, 24, 14, 2, 'rgba(5,10,20,.9)', c, 1);
-    ctx.fillStyle = c; ctx.font = `600 ${work ? 10 : 8}px ${MONO}`; ctx.fillText(work ? SPIN[Math.floor(t * 12) % 10] : k.code, x + 12, y + 10);
+    ctx.fillStyle = c; ctx.font = `600 ${o.live ? 10 : 8}px ${MONO}`; ctx.fillText(o.live ? SPIN[Math.floor(t * 12) % 10] : o.code, x + 12, y + 10);
   }
   ctx.restore();
 }
@@ -791,9 +910,23 @@ function frame() {
   const t = now(), dt = Math.min(.1, t - lastFrame), nowS = epoch(), g = geo();
   lastFrame = t;
   if (!CALM) rot += dt * .03;
-  const vis = [...S.nodes.values()].filter(n => nowS - n.last < ORBIT_WINDOW || n.running.size), visSet = new Set(vis);
-  place(vis.filter(n => !n.parent || !visSet.has(S.nodes.get(n.parent))), 1, dt, g);
-  place(vis.filter(n => n.parent && visSet.has(S.nodes.get(n.parent))), .62, dt, g);  // 서브에이전트는 안쪽 궤도
+  const focus = S.sess.get(S.focus) || null;
+
+  // HUB 의 노드: 최근에 쓴 도구(바깥 궤도, 처음 쓰인 순서로 자리 고정) + 일하는 서브에이전트(안쪽 궤도)
+  let stations = [], subs = [];
+  const runs = [];  // 실행 중: [보내는 쪽 세션, 실행 정보]
+  if (focus) {
+    for (const x of S.sess.values()) if (x === focus || x.parent === focus.id) for (const r of x.running.values()) runs.push([x, r]);
+    stations = [...focus.stations.values()].sort((a, b) => b.last - a.last).slice(0, MAX_STATIONS).sort((a, b) => a.order - b.order);
+    for (const n of stations) { n.live = false; n.since = 0; }
+    const byKey = new Map(stations.map(n => [n.key, n]));
+    for (const [, r] of runs) { const n = r.key && byKey.get(r.key); if (n) { n.live = true; n.since = n.since ? Math.min(n.since, r.t) : r.t; n.arg = argOf(r.text, n.key); } }
+    subs = [...S.sess.values()].filter(x => x.parent === focus.id && (nowS - x.last < ORBIT_WINDOW || x.running.size)).slice(-MAX_SUBS);
+  }
+  place(stations, 1, dt, g);
+  place(subs, .62, dt, g);
+  const byKey = new Map(stations.map(n => [n.key, n])), subSet = new Set(subs);
+  const from = x => (x && subSet.has(x) ? x : {x: g.cx, y: g.cy});
 
   ctx.clearRect(0, 0, W, H);
   const glow = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, g.rx);
@@ -806,28 +939,63 @@ function frame() {
   S.bursts = S.bursts.filter(b => t - b.t < 1.6);
   for (const b of S.bursts) { b.a += b.sp * dt; dotOn(g, b.a, b.j, 2.2, b.c, 1 - (t - b.t) / 1.6, b.k); }
 
-  working = false;
-  for (const n of vis) {  // 움직인 세션: 허브(서브에이전트면 부모)에서 선. 실행 중이면 선 유지 + 점이 계속 흐름
-    const age = t - n.flash, work = n.running.size > 0;
-    if (age > 2.5 && !work) continue;
-    working = working || work;
-    const par = n.parent && S.nodes.get(n.parent), from = par && visSet.has(par) ? par : {x: g.cx, y: g.cy};
-    ctx.strokeStyle = `rgba(59,158,255,${work ? .85 : (1 - age / 2.5) * .9})`; ctx.lineWidth = 1.5;
-    line(from.x, from.y, n.x, n.y);
-    const qs = work ? [0, 1, 2].map(i => (t * .9 + i / 3) % 1) : age < .7 ? [age / .7] : [];
-    for (const q of qs) circle(from.x + (n.x - from.x) * q, from.y + (n.y - from.y) * q, 3, '#d6ebff');
+  // 선: HUB(또는 서브에이전트) → 도구 노드. 방금 끝난 실행은 빛나다 사라지고, 실행 중이면 선이 남아 점이 흐른다
+  S.links = S.links.filter(l => t - l.t < 2.5);
+  ctx.lineWidth = 1.5;
+  for (const sub of subs) {  // HUB ↔ 서브에이전트
+    const age = t - sub.flash;
+    if (!sub.running.size && age > 2.5) continue;
+    ctx.strokeStyle = `rgba(167,139,250,${sub.running.size ? .7 : (1 - age / 2.5) * .8})`;
+    line(g.cx, g.cy, sub.x, sub.y);
   }
-  drawHub(g, t);
-  vis.sort((a, b) => a.y - b.y).forEach(n => drawNode(n, t, nowS));
-  if (!vis.length && S.mode === 'live') {
+  for (const l of S.links) {
+    const to = focus && l.root === focus.id && byKey.get(l.to);
+    if (!to) continue;
+    const a = from(S.sess.get(l.from)), age = t - l.t;
+    ctx.strokeStyle = `rgba(59,158,255,${(1 - age / 2.5) * .9})`;
+    line(a.x, a.y, to.x, to.y);
+    if (age < .7) circle(a.x + (to.x - a.x) * age / .7, a.y + (to.y - a.y) * age / .7, 3, '#d6ebff');
+  }
+  working = false;
+  for (const [x, r] of runs) {
+    const to = r.key && byKey.get(r.key);
+    if (!to) continue;
+    working = true;
+    const a = from(x);
+    ctx.strokeStyle = 'rgba(59,158,255,.85)';
+    line(a.x, a.y, to.x, to.y);
+    for (let i = 0; i < 3; i++) { const q = (t * .9 + i / 3) % 1; circle(a.x + (to.x - a.x) * q, a.y + (to.y - a.y) * q, 3, '#d6ebff'); }
+  }
+
+  let tools = 0;
+  if (focus) for (const n of focus.stations.values()) tools += n.count;
+  drawHub(g, t, focus, tools);
+  const cards = [...stations.map(n => ['st', n]), ...subs.map(x => ['sub', x])].sort((a, b) => a[1].y - b[1].y);
+  for (const [type, n] of cards) {
+    if (type === 'st') {
+      const k = KIND[n.kind] || KIND.tool;
+      drawCard(n, t, (n.mcp ? 'MCP · ' : '') + n.label,
+        n.live ? `▶ ${Math.max(0, Math.floor(nowS - n.since))}s ${n.arg || ''}` : `×${n.count}${n.sub ? ' · ' + n.sub : ''}`,
+        {live: n.live, idle: nowS - n.last > IDLE, code: n.kind ? k.code : null, codeColor: k.c, idleEdge: focus.agent === 'codex' ? 'rgba(139,156,255,.45)' : null});
+    } else {
+      const job = n.running.size && [...n.running.values()].pop();
+      drawCard(n, t, '↳ ' + n.label, job ? `▶ ${job.text}` : n.act || 'idle',
+        {live: !!job, idle: nowS - n.last > IDLE, color: '#a78bfa', idleEdge: 'rgba(167,139,250,.4)', code: 'SUB', codeColor: '#a78bfa'});
+    }
+  }
+  if (!focus && S.mode === 'live') {
     ctx.fillStyle = '#8aa0c2'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
     ctx.fillText(connectedAny() ? '최근 30분 동안 움직인 에이전트가 없어요' : '에이전트를 연결하면 여기에 나타나요', g.cx, g.cy + g.ry * .62 + 30);
+  } else if (focus && !stations.length && !subs.length) {
+    ctx.fillStyle = '#8aa0c2'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
+    ctx.fillText('도구를 실행하면 여기에 노드가 생겨요', g.cx, g.cy + g.ry * .62 + 30);
   }
   if (S.dirty) {
     S.dirty = false; renderPanels();
     if (MINI && Math.abs(document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - innerHeight) > 2) resize();  // 미니 창은 스크롤 없이 꽉 차게
   }
   if (S.listDirty && t - lastList > .5) { S.listDirty = false; lastList = t; renderSessions(); }
+  if (S.chipsDirty && t - lastChips > .3) { S.chipsDirty = false; lastChips = t; renderChips(); }
   requestAnimationFrame(frame);
 }
 
