@@ -217,13 +217,19 @@ function toggle(cls) {
   const t = tab(S.active);
   if (t) requestAnimationFrame(() => t.fit.fit());
 }
-$('resizer').addEventListener('pointerdown', e => {
+const resizer = $('resizer');
+resizer.addEventListener('pointerdown', e => {  // 포인터 캡처: 창 밖에서 버튼을 놓아도 드래그가 확실히 끝난다
+  resizer.setPointerCapture(e.pointerId);
   appEl.classList.add('dragging');
-  const move = ev => setOrbitWidth(window.innerWidth - ev.clientX);
-  const up = () => { appEl.classList.remove('dragging'); removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
-  addEventListener('pointermove', move); addEventListener('pointerup', up);
   e.preventDefault();
 });
+resizer.addEventListener('pointermove', e => { if (resizer.hasPointerCapture(e.pointerId)) setOrbitWidth(window.innerWidth - e.clientX); });
+resizer.addEventListener('lostpointercapture', () => {
+  appEl.classList.remove('dragging');
+  const t = tab(S.active);
+  if (t) t.fit.fit();
+});
+resizer.addEventListener('dblclick', () => setOrbitWidth(440));  // 두 번 누르면 기본 너비
 if (store.get('orbitW')) setOrbitWidth(+store.get('orbitW'));
 if (store.get('no-orbit') === '1') appEl.classList.add('no-orbit');
 if (store.get('no-side') === '1') appEl.classList.add('no-side');
