@@ -1,9 +1,9 @@
 'use strict';
-/* Agent Orbit 대시보드 — 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다.
+/* Tycho 대시보드 — 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다.
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.8.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.9.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -15,7 +15,7 @@ const API = LOCAL ? '' : /^http:\/\/127\.0\.0\.1:\d+$/.test(params.get('api') ||
 const LOCAL_URL = `http://127.0.0.1:${PORT}`;
 const SAFARI = !LOCAL && /^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent);
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const MINI = params.get('view') === 'mini';  // agent-orbit mini 가 여는 작은 창 · 앱의 궤도 패널
+const MINI = params.get('view') === 'mini';  // tycho mini 가 여는 작은 창 · 앱의 궤도 패널
 const EMBED = !!params.get('embed');          // 앱의 궤도 패널: 요약·상태바는 앱이 그린다
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
 const FOLLOW_QUIET = 8;           // 보던 세션이 이만큼(초) 조용해야 다른 세션으로 HUB 를 옮긴다
@@ -83,7 +83,7 @@ const S = {
   summary: new Map(), summarySeq: 0, summaryReady: false, pending: [],
   sess: new Map(),           // 세션(HUB 후보)과 서브에이전트. 각자 쓰는 도구 노드(stations)를 가진다
   focus: null, pinned: false, // HUB 로 보고 있는 세션, 사용자가 고정했는지
-  tabs: new Map(), tab: null, // Agent Orbit 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
+  tabs: new Map(), tab: null, // Tycho 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
   names: new Map(),          // 사용자가 직접 붙인 세션 이름 (수집기에 저장)
   hubRect: null,             // 캔버스 위 HUB 위치 (더블클릭으로 이름 바꾸기)
   links: [],                 // 방금 끝난 실행: HUB(또는 서브에이전트) → 도구 노드로 쏘는 선
@@ -244,7 +244,7 @@ function onMessage(e) {
   onEvent(e);
 }
 
-// Agent Orbit 앱이 지금 보고 있는 터미널 탭을 알려준다 → 그 탭의 세션을 HUB 로 고정
+// Tycho 앱이 지금 보고 있는 터미널 탭을 알려준다 → 그 탭의 세션을 HUB 로 고정
 function focusTab(tab) {
   S.tab = tab || null;
   const id = S.tab && S.tabs.get(S.tab);
@@ -576,7 +576,7 @@ function renderOnboard() {
     st === 'denied' ? [h('p', {class: 'warn'}, '이 사이트의 로컬 접근이 차단되어 있어요.'),
       h('p', {}, '주소창 왼쪽 아이콘 → 사이트 설정에서 "이 기기의 앱"(로컬 네트워크 액세스)을 허용으로 바꾼 뒤 다시 확인하세요.'), h('div', {class: 'actions'}, check)] :
     st === 'stopped' ? [h('p', {class: 'warn'}, '수집기가 꺼져 있어요.'),
-      h('p', {}, '터미널에서 agent-orbit doctor 로 상태를 확인하거나, 설치 명령을 다시 실행하세요.'), h('div', {class: 'actions'}, check)] :
+      h('p', {}, '터미널에서 tycho doctor 로 상태를 확인하거나, 설치 명령을 다시 실행하세요.'), h('div', {class: 'actions'}, check)] :
     st === 'notfound' ? [h('p', {class: 'warn'}, '수집기를 찾지 못했어요.'), h('p', {}, '설치 명령이 끝까지 실행됐는지 확인하고 다시 눌러 주세요.'), h('div', {class: 'actions'}, check)] :
     [h('p', {}, '설치가 끝나면 아래 버튼을 누르세요. 브라우저가 "이 기기의 앱 및 서비스 액세스"를 물으면 허용을 눌러 주세요.'), h('div', {class: 'actions'}, check)];
   box.classList.toggle('single', !!live);
@@ -623,7 +623,7 @@ function renderAgents() {
 }
 
 function renderFooter() {
-  const st = S.status, kids = [h('span', {class: 'grow'}, 'Agent Orbit')];
+  const st = S.status, kids = [h('span', {class: 'grow'}, 'Tycho')];
   const toggle = (label, on, flip) => {
     const sw = h('button', {class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(on)}, h('i'), label);
     sw.onclick = async () => { try { await flip(); renderFooter(); } catch { toast('설정을 바꾸지 못했어요'); } };
@@ -632,7 +632,7 @@ function renderFooter() {
   if (st && st.autoMini != null) {
     kids.push(toggle('세션 시작 시 미니 창', st.autoMini, async () => {
       st.autoMini = (await postJSON('/api/settings', {autoMini: !st.autoMini})).autoMini;
-      toast(st.autoMini ? 'Claude · Codex 세션이 시작되면 미니 창이 떠요' : '세션이 시작돼도 미니 창을 띄우지 않아요. 터미널에서 agent-orbit mini 로 열 수 있어요');
+      toast(st.autoMini ? 'Claude · Codex 세션이 시작되면 미니 창이 떠요' : '세션이 시작돼도 미니 창을 띄우지 않아요. 터미널에서 tycho mini 로 열 수 있어요');
     }));
   }
   if (st && st.autostart != null) {
@@ -641,7 +641,7 @@ function renderFooter() {
       toast(st.autostart ? '로그인할 때 자동으로 켜져요' : '자동 실행을 껐어요. 지금 실행 중인 수집기는 그대로예요');
     }));
   }
-  if (S.mode === 'live') kids.push(h('span', {}, '미니 창: agent-orbit mini'));
+  if (S.mode === 'live') kids.push(h('span', {}, '미니 창: tycho mini'));
   if (!LOCAL && S.mode === 'live') kids.push(h('a', {href: LOCAL_URL}, '로컬 주소로 열기'));
   if (FEEDBACK_URL) kids.push(h('a', {href: FEEDBACK_URL, target: '_blank', rel: 'noopener'}, '피드백'));
   kids.push(h('a', {href: '#privacy', onclick: () => { $('privacy').open = true; }}, '개인정보'));
@@ -660,8 +660,8 @@ async function openAction(agent, action) {
   if (p.error) return toast(p.error);
   const name = AGENTS[agent].name;
   const intro = {
-    connect: `아래 파일에 agent-orbit 훅이 추가돼요. ${name}가 도구를 실행할 때마다 이 컴퓨터의 수집기(127.0.0.1:${(S.status && S.status.port) || PORT})로만 신호를 보내요.`,
-    disconnect: '추가했던 agent-orbit 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.',
+    connect: `아래 파일에 Tycho 훅이 추가돼요. ${name}가 도구를 실행할 때마다 이 컴퓨터의 수집기(127.0.0.1:${(S.status && S.status.port) || PORT})로만 신호를 보내요.`,
+    disconnect: '추가했던 Tycho 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.',
     trust: 'Codex는 새 훅을 승인해야 실행해요. 아래 명령을 승인합니다 — Codex의 /hooks 화면에서 승인하는 것과 같아요.',
   }[action];
   const body = [h('p', {}, intro)];

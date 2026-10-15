@@ -187,7 +187,7 @@ async function initOrbit() {
   view.hidden = true; off.hidden = false;
   const copyBtn = h('button', {class: 'btn', type: 'button', onclick: async () => { await navigator.clipboard.writeText(INSTALL_CMD); copyBtn.textContent = '복사됨'; }}, '복사');
   off.replaceChildren(...(S.collector.installed
-    ? [h('h2', {}, '수집기를 켜지 못했어요'), h('p', {}, '터미널 탭에서 agent-orbit doctor 로 상태를 확인해 보세요.')]
+    ? [h('h2', {}, '수집기를 켜지 못했어요'), h('p', {}, '터미널 탭에서 tycho doctor 로 상태를 확인해 보세요.')]
     : [h('h2', {}, '수집기를 먼저 설치하세요'), h('p', {}, '궤도는 이 컴퓨터의 수집기가 모은 기록으로 그려요. 터미널 탭에 붙여넣으세요.'),
       h('div', {class: 'cmd'}, h('code', {}, INSTALL_CMD), copyBtn)]),
     h('button', {class: 'btn primary', type: 'button', onclick: initOrbit}, '다시 확인'));

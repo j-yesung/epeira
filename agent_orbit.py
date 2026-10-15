@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Agent Orbit collector — 이 컴퓨터의 Claude Code / Codex 세션을 모아 대시보드로 보낸다.
+"""Tycho collector — 이 컴퓨터의 Claude Code / Codex 세션을 모아 대시보드로 보낸다.
 
 데이터는 이 컴퓨터 밖으로 나가지 않는다. 127.0.0.1 에서만 열리고, 허용한 사이트(ORIGINS)만 읽을 수 있다.
 
-  agent-orbit mini [--no-top]                대시보드를 작은 창으로 (macOS: 다른 창 위에 떠 있는 창)
-  agent-orbit open                           전체 대시보드를 브라우저로
-  agent-orbit serve                          수집기 실행 (자동 실행 서비스가 호출)
-  agent-orbit connect|disconnect <agent>     훅 연결/해제 (claude | codex) — 바뀔 내용을 보여주고 확인 후 적용
-  agent-orbit doctor                         진단 정보 (피드백에 그대로 붙여넣기)
-  agent-orbit uninstall                      훅·자동 실행·설치 파일·기록 모두 제거
-  agent-orbit version
+  tycho mini [--no-top]                      대시보드를 작은 창으로 (macOS: 다른 창 위에 떠 있는 창)
+  tycho open                                 전체 대시보드를 브라우저로
+  tycho serve                                수집기 실행 (자동 실행 서비스가 호출)
+  tycho connect|disconnect <agent>           훅 연결/해제 (claude | codex) — 바뀔 내용을 보여주고 확인 후 적용
+  tycho doctor                               진단 정보 (피드백에 그대로 붙여넣기)
+  tycho uninstall                            훅·자동 실행·설치 파일·기록 모두 제거
+  tycho version                              (예전 이름 agent-orbit 도 그대로 동작)
 """
 import difflib
 import glob
@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.8.0'
+VERSION = '0.9.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -542,7 +542,7 @@ act_lock = threading.Lock()
 
 def hook_cmd(agent):
     # 수집기가 꺼져 있어도 조용히 통과: 백그라운드(async), 1초 제한, 항상 exit 0
-    # AGENT_ORBIT_TAB: Agent Orbit 앱 터미널 탭에서 실행된 세션이면 그 탭 ID (앱 밖에선 빈 값)
+    # AGENT_ORBIT_TAB: Tycho 앱 터미널 탭에서 실행된 세션이면 그 탭 ID (앱 밖에선 빈 값)
     return ("curl -s -m 1 -H 'Content-Type: application/json' --data-binary @- "
             '"http://127.0.0.1:%d/hook?agent=%s&tab=${AGENT_ORBIT_TAB:-}" >/dev/null 2>&1 || true' % (PORT, agent))
 
@@ -654,7 +654,7 @@ def act(agent, action):
                 codex_restore_config(rec)
             trust = None
             msg = '%s 연결 해제됨. ' % name + ('설정 파일을 연결 전 그대로 되돌렸습니다.' if exact
-                                           else 'agent-orbit 훅만 제거했습니다 (그 사이 다른 설정이 바뀌어 있어서).')
+                                           else 'Tycho 훅만 제거했습니다 (그 사이 다른 설정이 바뀌어 있어서).')
         write_text(RESTORE_FILE, json.dumps(recs))
         return {'ok': True, 'trust': trust, 'message': msg}
 
@@ -705,7 +705,7 @@ def codex_rpc(calls, timeout=20):
             buf[0] += chunk
 
     try:
-        send({'id': 0, 'method': 'initialize', 'params': {'clientInfo': {'name': 'agent-orbit', 'version': VERSION}}})
+        send({'id': 0, 'method': 'initialize', 'params': {'clientInfo': {'name': 'tycho', 'version': VERSION}}})
         wait(0)
         send({'method': 'initialized'})
         out = []
@@ -874,7 +874,7 @@ def install_service():
                 return True, ''
             time.sleep(0.5)
         return False, r.stderr.strip()
-    write_text(f, '[Unit]\nDescription=Agent Orbit collector\n\n[Service]\nExecStart=%s %s serve\n'
+    write_text(f, '[Unit]\nDescription=Tycho collector\n\n[Service]\nExecStart=%s %s serve\n'
                   'Environment=PATH=%s\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n' % (py, script, path_env))
     run('systemctl', '--user', 'daemon-reload')
     r = run('systemctl', '--user', 'enable', '--now', 'agent-orbit.service')
@@ -884,7 +884,7 @@ def install_service():
     os.remove(f)  # systemd 사용자 서비스가 없는 환경: 지금만 백그라운드로 실행
     with open(LOG_FILE, 'a') as lf:
         subprocess.Popen([py, script, 'serve'], stdout=lf, stderr=lf, stdin=subprocess.DEVNULL, start_new_session=True)
-    return True, '자동 실행을 등록하지 못해(systemd 사용자 서비스 없음) 지금만 실행했습니다. 재부팅 후엔 agent-orbit serve 로 켜세요.'
+    return True, '자동 실행을 등록하지 못해(systemd 사용자 서비스 없음) 지금만 실행했습니다. 재부팅 후엔 tycho serve 로 켜세요.'
 
 
 def remove_service():
@@ -917,7 +917,7 @@ def span(q):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'agent-orbit/' + VERSION
+    server_version = 'tycho/' + VERSION
 
     def log_message(self, *a):
         pass
@@ -1089,9 +1089,9 @@ def serve():
     try:
         srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     except OSError as ex:
-        sys.exit('agent-orbit: 포트 %d 를 열 수 없습니다 (%s)' % (PORT, ex))
+        sys.exit('tycho: 포트 %d 를 열 수 없습니다 (%s)' % (PORT, ex))
     threading.Thread(target=watch, daemon=True).start()
-    log('agent-orbit %s → http://127.0.0.1:%d' % (VERSION, PORT))
+    log('tycho %s → http://127.0.0.1:%d' % (VERSION, PORT))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -1101,7 +1101,7 @@ def serve():
 # ---------- CLI ----------
 
 def die(msg):
-    sys.exit('agent-orbit: ' + msg)
+    sys.exit('tycho: ' + msg)
 
 
 def confirm(prompt):
@@ -1126,7 +1126,7 @@ def port_open():
 
 
 def cmd_setup(args):
-    print('Agent Orbit %s 설치' % VERSION)
+    print('Tycho %s 설치' % VERSION)
     if local_status(3) is None and port_open():
         die('포트 %d 를 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끈 뒤 다시 설치하세요.' % PORT)
     for agent in AGENTS:
@@ -1147,7 +1147,7 @@ def cmd_setup(args):
     print('✓ 수집기 실행 중 · http://127.0.0.1:%d%s' % (PORT, ' (로그인할 때 자동 실행)' if st.get('autostart') else ''))
     print('\n다음: 브라우저에서 %s 를 열고 Claude Code · Codex 를 연결하세요.' % SITE)
     print('      Safari 라면 http://127.0.0.1:%d 로 여세요.' % PORT)
-    cli = 'agent-orbit' if shutil.which('agent-orbit') else tilde(os.path.join(APP_DIR, 'bin', 'agent-orbit'))
+    cli = 'tycho' if shutil.which('tycho') else tilde(os.path.join(APP_DIR, 'bin', 'tycho'))
     print('\n미니 창:  %s mini      전체 화면: %s open' % (cli, cli))
     print('명령:     %s doctor | uninstall' % cli)
 
@@ -1160,7 +1160,7 @@ function run(argv) {
   const app = $.NSApplication.sharedApplication;
   app.setActivationPolicy(1);  // Dock 아이콘 없이 창만
   const win = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, W, H), 1 | 2 | 4 | 8, 2, false);
-  win.title = 'Agent Orbit';
+  win.title = 'Tycho';
   win.releasedWhenClosed = false;
   win.titlebarAppearsTransparent = true;
   win.appearance = $.NSAppearance.appearanceNamed('NSAppearanceNameDarkAqua');
@@ -1206,7 +1206,7 @@ def open_mini(top=True):
 
 def cmd_mini(args):
     if local_status(3) is None:
-        die('수집기가 꺼져 있습니다. agent-orbit doctor 로 확인하세요.')
+        die('수집기가 꺼져 있습니다. tycho doctor 로 확인하세요.')
     url = 'http://127.0.0.1:%d/?view=mini' % PORT
     if sys.platform == 'darwin':
         if not open_mini('--no-top' not in args):
@@ -1222,14 +1222,14 @@ def cmd_mini(args):
 
 def cmd_open(args):
     if local_status(3) is None:
-        die('수집기가 꺼져 있습니다. agent-orbit doctor 로 확인하세요.')
+        die('수집기가 꺼져 있습니다. tycho doctor 로 확인하세요.')
     webbrowser.open('http://127.0.0.1:%d/' % PORT)
 
 
 def cmd_hooks(action, args):
     agent = args[0] if args else ''
     if agent not in AGENTS:
-        die('사용법: agent-orbit %s claude|codex' % action)
+        die('사용법: tycho %s claude|codex' % action)
     try:
         p = preview(agent, action)
     except ValueError:
@@ -1244,7 +1244,7 @@ def cmd_hooks(action, args):
 
 def cmd_doctor(args):
     st = local_status()
-    lines = ['Agent Orbit doctor',
+    lines = ['Tycho doctor',
              'version     %s (protocol %d)' % (VERSION, PROTOCOL),
              'python      %s (%s)' % (sys.version.split()[0], sys.executable),
              'platform    %s' % platform.platform(),
@@ -1265,7 +1265,7 @@ def cmd_doctor(args):
 
 
 def cmd_uninstall(args):
-    if '--yes' not in args and not confirm('Agent Orbit 을 완전히 삭제할까요? 훅 해제, 자동 실행 해제, %s(기록 포함) 삭제 [y/N] ' % tilde(APP_DIR)):
+    if '--yes' not in args and not confirm('Tycho 를 완전히 삭제할까요? 훅 해제, 자동 실행 해제, %s(기록 포함) 삭제 [y/N] ' % tilde(APP_DIR)):
         return
     for k in AGENTS:
         if hooks_state(k) != 'none':
@@ -1273,9 +1273,10 @@ def cmd_uninstall(args):
     remove_service()
     print('· 자동 실행 해제')
     for d in (os.path.join(HOME, '.local/bin'), os.path.join(HOME, 'bin'), '/opt/homebrew/bin', '/usr/local/bin'):
-        link = os.path.join(d, 'agent-orbit')  # install.sh 가 만든 바로가기만
-        if os.path.islink(link) and os.readlink(link).startswith(APP_DIR):
-            os.remove(link)
+        for name in ('tycho', 'agent-orbit'):  # install.sh 가 만든 바로가기만
+            link = os.path.join(d, name)
+            if os.path.islink(link) and os.readlink(link).startswith(APP_DIR):
+                os.remove(link)
     shutil.rmtree(APP_DIR, ignore_errors=True)
     print('· %s 삭제' % tilde(APP_DIR))
     print('설정 파일의 최초 백업(*.orbit-bak)은 남겨 두었습니다.')

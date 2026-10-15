@@ -1,4 +1,4 @@
-// Agent Orbit 앱 — 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
+// Tycho 앱 — 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
 const {app, BrowserWindow, Menu, ipcMain, dialog, shell} = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -12,7 +12,11 @@ const HOME_APP = path.join(os.homedir(), '.agent-orbit');
 const terms = new Map();  // 탭 id → pty
 let win, seq = 0;
 
-app.setName('Agent Orbit');
+app.setName('Tycho');
+{  // 이름이 Agent Orbit 이던 때의 앱 데이터(프로젝트 목록 · 패널 폭)를 처음 한 번 옮긴다
+  const oldData = path.join(app.getPath('appData'), 'Agent Orbit'), newData = path.join(app.getPath('appData'), 'Tycho');
+  if (!fs.existsSync(newData) && fs.existsSync(oldData)) try { fs.cpSync(oldData, newData, {recursive: true}); } catch { /* 새로 시작 */ }
+}
 
 // ── 프로젝트 목록 (앱 데이터 폴더의 JSON 하나) ──
 const storeFile = () => path.join(app.getPath('userData'), 'projects.json');
@@ -105,7 +109,7 @@ ipcMain.handle('collector:ensure', async () => {
   if (process.platform === 'darwin') spawn('launchctl', ['kickstart', `gui/${process.getuid()}/dev.agentorbit.collector`], {stdio: 'ignore'});
   for (let i = 0; i < 8 && !st; i++) { await sleep(400); st = await collectorStatus(); }
   if (!st) {
-    spawn(path.join(HOME_APP, 'bin', 'agent-orbit'), ['serve'], {detached: true, stdio: 'ignore'}).unref();
+    spawn(path.join(HOME_APP, 'bin', fs.existsSync(path.join(HOME_APP, 'bin', 'tycho')) ? 'tycho' : 'agent-orbit'), ['serve'], {detached: true, stdio: 'ignore'}).unref();
     for (let i = 0; i < 10 && !st; i++) { await sleep(400); st = await collectorStatus(); }
   }
   return st ? {ok: true, status: st} : {ok: false, installed: true};
@@ -148,7 +152,7 @@ function buildMenu() {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1480, height: 920, minWidth: 980, minHeight: 600, title: 'Agent Orbit', backgroundColor: '#0a0a0a',
+    width: 1480, height: 920, minWidth: 980, minHeight: 600, title: 'Tycho', backgroundColor: '#0a0a0a',
     // 신호등 버튼(높이 16) 가운데를 상단 바(52px)의 가운데 26px 에 맞춘다 — style.css 의 .side-top 과 짝
     titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 16, y: 18}, icon: path.join(__dirname, 'assets/icon.png'),
     webPreferences: {preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true,

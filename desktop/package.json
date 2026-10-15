@@ -1,7 +1,7 @@
 {
-  "name": "agent-orbit-app",
-  "productName": "Agent Orbit",
-  "version": "0.1.0",
+  "name": "tycho-app",
+  "productName": "Tycho",
+  "version": "0.2.0",
   "private": true,
   "description": "프로젝트 사이드바 + 에이전트 터미널 + 궤도 시각화",
   "main": "main.js",
@@ -22,9 +22,9 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "dev.agentorbit.app",
-    "productName": "Agent Orbit",
-    "copyright": "Agent Orbit",
+    "appId": "dev.tycho.app",
+    "productName": "Tycho",
+    "copyright": "Tycho",
     "directories": {
       "output": "dist"
     },
@@ -55,11 +55,11 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "extendInfo": {
-        "NSHumanReadableCopyright": "Agent Orbit"
+        "NSHumanReadableCopyright": "Tycho"
       }
     },
     "dmg": {
-      "title": "Agent Orbit",
+      "title": "Tycho",
       "contents": [
         {
           "x": 140,
