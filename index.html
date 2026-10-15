@@ -4,330 +4,265 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Orbit</title>
+<meta name="description" content="내 컴퓨터의 Claude Code · Codex 세션을 실시간 궤도로 보여주는 대시보드. 데이터는 내 컴퓨터 밖으로 나가지 않습니다.">
+<meta name="theme-color" content="#050a14">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23050a14'/%3E%3Cellipse cx='16' cy='16' rx='12' ry='7' fill='none' stroke='%233b9eff' stroke-width='2'/%3E%3Crect x='11' y='11' width='10' height='10' rx='3' fill='%233b9eff'/%3E%3C/svg%3E">
 <style>
 :root {
-  --bg: #0c070c; --panel: #140c14; --panel-2: #1c111b; --line: #2b1b29;
-  --text: #f2e8f0; --dim: #8c7889; --faint: #5e4b5b; --pink: #ff4f8b;
+  color-scheme: dark;
+  --bg: #050a14; --panel: #0a1324; --panel-2: #0e1a30; --line: #16274a; --line-2: #22385f;
+  --text: #e7f0ff; --dim: #8aa0c2; --faint: #5a6e90;
+  --accent: #3b9eff; --accent-2: #5cc2ff; --accent-soft: rgba(59, 158, 255, .12); --ink: #031021;
+  --ok: #34d399; --warn: #fbbf24; --err: #ff6b81; --violet: #a78bfa;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sans: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --r: 10px;
 }
 * { box-sizing: border-box; margin: 0; }
-body { min-height: 100vh; color: var(--text); font-family: var(--sans);
-  background: radial-gradient(ellipse 80% 50% at 50% 26%, #2a0f22 0%, var(--bg) 70%) var(--bg); }
-main { max-width: 1100px; margin: 0 auto; padding: 16px 16px 32px; }
-#orbit { display: block; width: 100%; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { min-height: 100vh; color: var(--text); font: 14px/1.5 var(--sans);
+  background: radial-gradient(ellipse 85% 50% at 50% 16%, #0b2446 0%, var(--bg) 68%) var(--bg); }
+a { color: var(--accent-2); }
+button { font: inherit; color: inherit; }
+code, pre { font-family: var(--mono); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
 
-.tape { display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 12px 16px;
-  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: 14px var(--mono); }
+/* 상단 바 */
+.top { position: sticky; top: 0; z-index: 5; background: rgba(5, 10, 20, .78); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 14px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 10px; margin-right: auto; font-weight: 700; font-size: 15px; letter-spacing: .01em; }
+.brand svg { width: 24px; height: 24px; flex: none; }
+.seg { display: flex; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
+.seg button { padding: 5px 12px; border: 0; border-radius: 6px; background: none; color: var(--dim); font-size: 13px; cursor: pointer; }
+.seg button[aria-selected="true"] { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px rgba(59, 158, 255, .4); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid currentColor; border-radius: 999px; font: 600 12px var(--mono); letter-spacing: .06em; white-space: nowrap; }
+.pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.live { color: var(--accent); background: rgba(59, 158, 255, .08); }
+.pill.live i { animation: pulse 1.6s infinite; }
+.pill.off { color: var(--faint); }
+.pill.demo { color: var(--violet); background: rgba(167, 139, 250, .08); }
+
+main { padding-top: 16px; padding-bottom: 40px; }
+.banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; padding: 12px 14px; border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: var(--r); background: var(--panel); }
+.banner.warn { border-left-color: var(--warn); }
+.banner p { flex: 1 1 300px; }
+.banner .cmd { flex: 1 1 320px; }
+.cmd { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 6px 6px 12px; border: 1px solid var(--line-2); border-radius: 8px; background: #040912; font: 13px var(--mono); }
+.cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.cmd code::-webkit-scrollbar { display: none; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel-2); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { border-color: var(--accent); background: var(--accent); color: var(--ink); }
+.btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.btn.danger { border-color: rgba(255, 107, 129, .45); color: var(--err); }
+.btn.small { padding: 4px 10px; font-size: 12px; }
+.btn[disabled] { opacity: .5; cursor: default; }
+:is(.btn, .seg button, .row, summary, .switch, a):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+/* 설치 안내 */
+.onboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; margin-bottom: 14px; }
+.onboard.single { grid-template-columns: 1fr; }
+.step { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.step.active { border-color: rgba(59, 158, 255, .55); box-shadow: 0 0 0 1px rgba(59, 158, 255, .12), 0 10px 30px rgba(59, 158, 255, .07); }
+.step.done { opacity: .7; }
+.step h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.step h3 b { display: inline-grid; flex: none; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line-2); border-radius: 50%; background: var(--panel-2); font: 700 12px var(--mono); }
+.step.active h3 b { border-color: var(--accent); background: var(--accent); color: var(--ink); }
+.step.done h3 b { border-color: rgba(52, 211, 153, .5); background: rgba(52, 211, 153, .15); color: var(--ok); }
+.step p { color: var(--dim); font-size: 13px; }
+.step .note { color: var(--faint); font-size: 12px; }
+.step .warn { color: var(--warn); }
+.step .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.step .mini { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+
+/* 궤도 */
+.stage { position: relative; }
+#orbit { display: block; width: 100%; }
+.demo-mark { position: absolute; top: 8px; left: 8px; padding: 3px 9px; border: 1px solid rgba(167, 139, 250, .35); border-radius: 6px; background: rgba(167, 139, 250, .1); color: var(--violet); font: 600 11px var(--mono); letter-spacing: .06em; }
+
+.tape { display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: 14px var(--mono); }
 .tape .k { color: var(--dim); font-size: 12px; letter-spacing: .08em; }
 .tape .t { flex: 1; min-width: 0; overflow: hidden; white-space: pre; text-overflow: ellipsis; }
-.cursor { display: inline-block; width: 8px; height: 16px; margin-left: 2px; vertical-align: -3px;
-  background: var(--pink); animation: blink 1s steps(1) infinite; }
-.live { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; color: var(--pink);
-  border: 1px solid var(--pink); border-radius: 6px; background: rgba(255, 79, 139, .08); }
-.live i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.6s infinite; }
-.live.off { color: var(--faint); border-color: var(--faint); background: none; }
-.live.off i { animation: none; }
+.cursor { display: inline-block; width: 8px; height: 16px; margin-left: 2px; vertical-align: -3px; background: var(--accent); animation: blink 1s steps(1) infinite; }
 
-.cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 12px; }
-.card { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-top: 2px solid var(--c);
-  border-radius: 8px; background: var(--panel); }
-.card .h { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--dim); letter-spacing: .06em; }
+.cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.card { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-top: 2px solid var(--c); border-radius: 8px; background: var(--panel); }
+.card .h { display: flex; justify-content: space-between; align-items: center; color: var(--dim); font-size: 11px; letter-spacing: .06em; }
 .card svg { width: 56px; height: 16px; }
-.card .v { margin: 8px 0 6px; font: 600 20px var(--mono); color: var(--c); }
-.card .s { font-size: 11px; color: var(--faint); }
+.card .v { margin: 8px 0 6px; color: var(--c); font: 600 20px var(--mono); }
+.card .s { color: var(--faint); font-size: 11px; }
 
 .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
-.panel { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-.panel h2 { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; letter-spacing: .1em; color: var(--dim); }
-.panel h2 span { font: 400 11px var(--mono); letter-spacing: 0; color: var(--faint); }
-#feed { list-style: none; padding: 0; margin-top: 10px; }
-#feed li { display: grid; grid-template-columns: 10px 1fr; gap: 2px 10px; padding: 7px 8px; border-radius: 6px; animation: in .35s ease-out; }
+.panel { min-width: 0; margin-top: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.panels .panel { margin-top: 0; }
+.panel h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--dim); font-size: 12px; font-weight: 600; letter-spacing: .1em; }
+.panel h2 span { color: var(--faint); font: 400 11px var(--mono); letter-spacing: 0; }
+#feed { margin-top: 10px; padding: 0; list-style: none; }
+#feed li { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 2px 10px; padding: 7px 8px; border-radius: 6px; animation: in .35s ease-out; }
 #feed li:first-child { background: var(--panel-2); }
 #feed .dot { width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--c); }
-#feed b { font-size: 13px; color: var(--c); }
-#feed p { grid-column: 2; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+#feed b { color: var(--c); font-size: 13px; }
+#feed p { grid-column: 2; overflow: hidden; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+.empty { padding: 18px 8px; color: var(--faint); font-size: 13px; text-align: center; }
 .bar { margin-top: 14px; }
-.bar .r { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; color: var(--dim); }
+.bar .r { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--dim); font-size: 13px; }
 .bar .r span:last-child { font: 12px var(--mono); }
-.track { height: 10px; overflow: hidden; border-radius: 3px; background: #221520; }
+.track { height: 10px; overflow: hidden; border-radius: 3px; background: #0d1a31; }
 .fill { width: 0; height: 100%; border-radius: 3px; transition: width .6s ease; }
+
+/* 에이전트 */
+.agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 12px; }
+.agent { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); }
+.agent .hd { display: flex; align-items: center; gap: 10px; }
+.mark { display: inline-grid; flex: none; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--c); color: var(--ink); font: 700 13px var(--mono); }
+.agent .name { font-weight: 650; }
+.chip { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line-2); border-radius: 999px; color: var(--faint); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.chip.ok { border-color: rgba(52, 211, 153, .4); background: rgba(52, 211, 153, .08); color: var(--ok); }
+.chip.warn { border-color: rgba(251, 191, 36, .4); background: rgba(251, 191, 36, .08); color: var(--warn); }
+.agent .desc { color: var(--dim); font-size: 12px; }
+.agent .desc code { color: var(--faint); }
+.agent .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent.soon { opacity: .5; }
+
+/* 세션 목록 */
+.sessions { display: flex; flex-direction: column; gap: 2px; max-height: 440px; margin-top: 10px; overflow-y: auto; }
+.row { display: grid; grid-template-columns: 28px minmax(110px, 1fr) minmax(0, 2fr) auto 76px; align-items: center; gap: 12px; width: 100%; padding: 9px 10px; border: 1px solid transparent; border-radius: 8px; background: none; text-align: left; cursor: pointer; }
+.row:hover { border-color: var(--line); background: var(--panel-2); }
+.row .label { overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.row .label small { color: var(--faint); font-weight: 400; }
+.row .act { overflow: hidden; color: var(--dim); font: 12px var(--mono); white-space: nowrap; text-overflow: ellipsis; }
+.row .act b { margin-right: 6px; color: var(--c); font-weight: 600; }
+.nums { display: flex; gap: 12px; color: var(--faint); font: 12px var(--mono); white-space: nowrap; }
+.nums b { color: var(--text); font-weight: 600; }
+.row .ago { color: var(--faint); font-size: 12px; text-align: right; white-space: nowrap; }
+.row .mark { width: 24px; height: 24px; border-radius: 7px; font-size: 11px; }
+
+/* 개인정보 */
+.privacy summary { cursor: pointer; color: var(--dim); font-size: 12px; font-weight: 600; letter-spacing: .1em; list-style: none; }
+.privacy summary::after { content: ' +'; color: var(--faint); }
+.privacy[open] summary::after { content: ' −'; }
+.privacy .body { display: grid; gap: 10px; margin-top: 12px; color: var(--dim); font-size: 13px; }
+.privacy ul { display: grid; gap: 6px; padding-left: 18px; }
+.privacy code { color: var(--text); font-size: 12px; }
+
+footer { border-top: 1px solid var(--line); color: var(--faint); font-size: 12px; }
+footer .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding-top: 16px; padding-bottom: 24px; }
+footer .grow { margin-right: auto; }
+.switch { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: var(--dim); cursor: pointer; }
+.switch i { position: relative; width: 30px; height: 18px; border-radius: 9px; background: var(--line-2); transition: background .2s; }
+.switch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text); transition: transform .2s; }
+.switch[aria-checked="true"] i { background: var(--accent); }
+.switch[aria-checked="true"] i::after { transform: translateX(12px); }
+
+/* 세션 기록 패널 */
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; width: min(440px, 100vw); border-left: 1px solid var(--line-2); background: var(--panel); box-shadow: -24px 0 48px rgba(0, 0, 0, .45); animation: slide .2s ease-out; }
+.drawer .hd { display: flex; align-items: flex-start; gap: 10px; padding: 16px; border-bottom: 1px solid var(--line); }
+.drawer .hd div { flex: 1; min-width: 0; }
+.drawer h2 { overflow: hidden; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
+.drawer .sub { color: var(--faint); font-size: 12px; }
+.drawer .nums { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.drawer ol { flex: 1; margin: 0; padding: 6px 16px 24px; overflow-y: auto; list-style: none; }
+.drawer li { display: grid; grid-template-columns: 62px 44px minmax(0, 1fr); gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.drawer li time { color: var(--faint); font: 12px var(--mono); }
+.drawer li b { color: var(--c); font: 600 11px var(--mono); }
+.drawer li span { overflow-wrap: anywhere; }
+
+/* 확인 창 · 알림 */
+.modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px; background: rgba(2, 6, 14, .72); backdrop-filter: blur(4px); }
+.sheet { display: flex; flex-direction: column; gap: 12px; width: min(680px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 20px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); box-shadow: 0 30px 60px rgba(0, 0, 0, .5); }
+.sheet h2 { font-size: 17px; }
+.sheet p { color: var(--dim); font-size: 13px; }
+.sheet .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.diff { max-height: 42vh; overflow: auto; padding: 10px 0; border: 1px solid var(--line); border-radius: 8px; background: #040912; font: 12px/1.6 var(--mono); }
+.diff div { padding: 0 12px; white-space: pre; }
+.diff .add { background: rgba(52, 211, 153, .09); color: #86efc4; }
+.diff .del { background: rgba(255, 107, 129, .09); color: #ffa3b2; }
+.diff .hunk, .diff .meta { color: var(--faint); }
+.diff .ctx { color: var(--dim); }
+.codebox { padding: 10px 12px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: #040912; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+.toast { position: fixed; bottom: 24px; left: 50%; z-index: 40; max-width: min(560px, calc(100vw - 32px)); padding: 10px 16px; border: 1px solid var(--line-2); border-radius: 10px; background: #0e2140; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); opacity: 0; transform: translate(-50%, 6px); transition: opacity .2s, transform .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes pulse { 50% { opacity: .3; } }
 @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
-@media (max-width: 820px) { .cards { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 560px) { .cards { grid-template-columns: repeat(2, 1fr); } .panels { grid-template-columns: 1fr; } }
+@keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+@media (max-width: 880px) {
+  .onboard { grid-template-columns: 1fr; }
+  .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .row { grid-template-columns: 24px minmax(0, 1fr) auto; grid-template-areas: "m l a" ". x x" ". n n"; row-gap: 4px; }
+  .row .mark { grid-area: m; } .row .label { grid-area: l; } .row .ago { grid-area: a; } .row .act { grid-area: x; } .row .nums { grid-area: n; }
+}
+@media (max-width: 560px) {
+  .top .wrap { gap: 8px; }
+  .brand span { display: none; }
+  .seg button { padding: 5px 9px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panels { grid-template-columns: 1fr; }
+  .tape { gap: 10px; padding: 10px 12px; }
+}
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<main>
-  <canvas id="orbit" aria-label="에이전트 활동 궤도"></canvas>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="16" rx="13" ry="7.5" fill="none" stroke="#3b9eff" stroke-width="2"/><rect x="11" y="11" width="10" height="10" rx="3" fill="#3b9eff"/></svg>
+      <span>Agent Orbit</span>
+    </div>
+    <nav class="seg" role="tablist" aria-label="기간">
+      <button role="tab" data-range="today" aria-selected="true">오늘</button>
+      <button role="tab" data-range="yesterday" aria-selected="false">어제</button>
+      <button role="tab" data-range="7d" aria-selected="false">7일</button>
+    </nav>
+    <span class="pill off" id="mode"><i></i><span>…</span></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="banners"></div>
+  <section class="onboard" id="onboard" hidden aria-label="시작하기"></section>
+
+  <section class="stage" aria-label="에이전트 활동 궤도">
+    <canvas id="orbit" role="img" aria-label="지금 일하고 있는 에이전트 세션이 궤도 위에 표시됩니다"></canvas>
+    <span class="demo-mark" id="demo-mark" hidden>DEMO · 예시 데이터</span>
+  </section>
   <div class="tape">
     <span class="k">TAPE</span>
     <span class="t"><span id="tape">waiting for agents</span><span class="cursor"></span></span>
-    <span class="live off" id="live"><i></i><span>OFFLINE</span></span>
   </div>
   <div class="cards" id="cards"></div>
   <div class="panels">
-    <section class="panel"><h2>LIVE VERDICTS <span id="judged">0 events</span></h2><ul id="feed"></ul></section>
+    <section class="panel"><h2>LIVE VERDICTS <span id="judged"></span></h2><ul id="feed"></ul></section>
     <section class="panel"><h2>WHERE THE WORK GOES</h2><div id="bars"></div></section>
   </div>
+  <section class="panel" aria-labelledby="agents-title"><h2 id="agents-title">에이전트 <span id="agents-note"></span></h2><div class="agents" id="agents"></div></section>
+  <section class="panel" aria-labelledby="sessions-title"><h2><span id="sessions-title">오늘의 세션</span> <span id="sessions-count"></span></h2><div class="sessions" id="sessions"></div></section>
+
+  <details class="panel privacy" id="privacy">
+    <summary>개인정보와 설치 내용</summary>
+    <div class="body">
+      <p>화면에 보이는 데이터는 <b>이 브라우저와 내 컴퓨터의 수집기(127.0.0.1:47777) 사이에서만</b> 오갑니다. 사이트 서버로는 에이전트 데이터를 보내지 않으며, 사이트는 페이지 조회 수만 쿠키 없이 집계합니다.</p>
+      <p>설치하면 이 컴퓨터에서 바뀌는 것:</p>
+      <ul>
+        <li><code>~/.agent-orbit</code> — 수집기와 최근 7일 기록 (프롬프트·명령의 앞부분, 파일 이름, 토큰 수). 7일이 지나면 자동으로 지워집니다.</li>
+        <li>로그인 시 자동 실행 — macOS <code>~/Library/LaunchAgents/dev.agentorbit.collector.plist</code>, Linux <code>~/.config/systemd/user/agent-orbit.service</code></li>
+        <li>Claude Code 연결 시 — <code>~/.claude/settings.json</code>의 hooks 항목 3개 (최초 원본은 <code>settings.json.orbit-bak</code>)</li>
+        <li>Codex 연결 시 — <code>~/.codex/hooks.json</code>의 hooks 항목 2개와 <code>~/.codex/config.toml</code>의 승인 기록</li>
+      </ul>
+      <p>모두 지우기: 터미널에서 <code>agent-orbit uninstall</code> — 훅, 자동 실행, 설치 파일, 기록을 한 번에 지웁니다. 연결 해제만 하려면 위 에이전트 카드의 해제 버튼을 쓰세요.</p>
+    </div>
+  </details>
 </main>
-<script>
-const $ = id => document.getElementById(id);
-const KIND = {
-  read: {c: '#9d8cff', code: 'RD'}, edit: {c: '#ff4f8b', code: 'EDT'}, run: {c: '#e04ad6', code: 'RUN'},
-  web: {c: '#ffb35c', code: 'WEB'}, sub: {c: '#ffb35c', code: 'SUB'}, tool: {c: '#c08bd9', code: 'TL'},
-  say: {c: '#45d6b5', code: 'SAY'}, you: {c: '#f2e8f0', code: 'YOU'}, done: {c: '#45d6b5', code: 'END'},
-  error: {c: '#ff6b6b', code: 'ERR'},
-};
-const TOOL = new Set(['read', 'edit', 'run', 'web', 'sub', 'tool']);
-const barKey = k => ['read', 'edit', 'run'].includes(k) ? k : 'other';
-const CARDS = [
-  ['claude', 'CLAUDE', '#ff4f8b', 'tool calls'],
-  ['codex', 'CODEX', '#9d8cff', 'tool calls'],
-  ['active', 'ACTIVE', '#e04ad6', 'sessions · 2 min'],
-  ['tokens', 'TOKENS', '#45d6b5', 'output tokens'],
-  ['turns', 'TURNS', '#ffb35c', 'completed turns'],
-  ['errors', 'ERRORS', '#ff6b6b', 'failed · interrupted'],
-];
-const BARS = [
-  ['read', 'read · search', '#9d8cff,#c48cff'],
-  ['edit', 'edit · write', '#ff4f8b,#e04ad6'],
-  ['run', 'run · exec', '#e04ad6,#b45cff'],
-  ['other', 'web · agents · tools', '#ff7a8a,#ffb35c'],
-];
-$('cards').innerHTML = CARDS.map(([k, n, c, s]) => `<div class="card" style="--c:${c}"><div class="h">${n}<svg viewBox="0 0 56 16"><polyline id="sp-${k}" fill="none" stroke="${c}" stroke-width="1.2"/></svg></div><div class="v" id="v-${k}">0</div><div class="s">${s}</div></div>`).join('');
-$('bars').innerHTML = BARS.map(([k, l, g]) => `<div class="bar"><div class="r"><span>${l}</span><span id="p-${k}">0%</span></div><div class="track"><div class="fill" id="f-${k}" style="background:linear-gradient(90deg,${g})"></div></div></div>`).join('');
 
-// ---------- 상태 ----------
-const nodes = new Map();  // 세션 id → node (숨김만 하고 지우지 않음: 토큰 누적이 중복되지 않게)
-const M = {claude: 0, codex: 0, tokens: 0, turns: 0, errors: 0};
-const counts = {read: 0, edit: 0, run: 0, other: 0};
-const SPARK_N = 30, spark = Object.fromEntries(CARDS.map(([k]) => [k, Array(SPARK_N).fill(0)]));
-const HUB = (new URLSearchParams(location.search).get('hub') || 'HUB').slice(0, 6).toUpperCase();
-const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const IDLE = 120, GONE = 1200;  // 2분 조용하면 흐리게, 20분이면 궤도에서 숨김
-let total = 0, lastSeq = 0, boot = null, hubFlash = -9, bursts = [], dirty = true, tapeTimer;
-const now = () => performance.now() / 1000;
-const clip = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
-const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(2) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(x);
-const shown = (n, nowS) => nowS - n.last < GONE;
-
-function node(e) {
-  let n = nodes.get(e.id);
-  if (!n) nodes.set(e.id, n = {id: e.id, agent: e.agent, parent: e.parent, act: '', kind: null, last: e.ts, flash: -9, fail: -9, tokens: 0, off: null, running: new Map()});
-  n.label = e.label; n.last = Math.max(n.last, e.ts);
-  return n;
-}
-
-function onHook(e) {  // 훅: 도구 실행 시작/끝 → 노드 "작업 중" 상태
-  const n = node(e);
-  if (e.kind === 'start') {
-    n.running.set(e.tool, {text: e.text, t: e.ts});
-    if (!e.replay) { n.flash = hubFlash = now(); burst(n); tape({label: n.label, text: '▶ ' + e.text}); }
-  } else {
-    n.running.delete(e.tool);
-    if (!e.ok) n.fail = now();
-  }
-  dirty = true;
-}
-
-function onEvent(e) {
-  if (e.kind === 'hello') { if (boot && boot !== e.boot) location.reload(); boot = e.boot; return; }
-  if (e.kind === 'start' || e.kind === 'end') return onHook(e);
-  if (e.seq) { if (e.seq <= lastSeq) return; lastSeq = e.seq; }  // 재연결 시 backlog 중복 제거
-  const n = node(e), live = !e.replay, T = SPARK_N - 1;
-  if (e.tokens > n.tokens) { M.tokens += e.tokens - n.tokens; if (live) spark.tokens[T] += e.tokens - n.tokens; n.tokens = e.tokens; }
-  dirty = true;
-  if (e.kind === 'stat') return;
-  n.kind = e.kind; n.act = e.text; total++;
-  if (TOOL.has(e.kind)) { M[e.agent] = (M[e.agent] || 0) + 1; counts[barKey(e.kind)]++; if (live && spark[e.agent]) spark[e.agent][T]++; }
-  if (e.kind === 'error') { M.errors++; if (live) spark.errors[T]++; }
-  if (e.kind === 'done') { M.turns++; if (live) spark.turns[T]++; n.running.clear(); }
-  if (live) { n.flash = hubFlash = now(); burst(n); }
-  tape(e); feed(e);
-}
-
-function tape(e) {
-  const full = `${e.label}  ${e.text}`;
-  clearInterval(tapeTimer);
-  if (e.replay || CALM) { $('tape').textContent = full; return; }
-  let i = 0;
-  tapeTimer = setInterval(() => { i += 2; $('tape').textContent = full.slice(0, i); if (i >= full.length) clearInterval(tapeTimer); }, 16);
-}
-
-function feed(e) {
-  const li = document.createElement('li'), dot = document.createElement('span'), b = document.createElement('b'), p = document.createElement('p');
-  li.style.setProperty('--c', (KIND[e.kind] || KIND.tool).c);
-  dot.className = 'dot'; b.textContent = e.kind; p.textContent = `${e.label} · ${e.text}`;  // 로그 내용은 항상 textContent 로
-  li.append(dot, b, p); $('feed').prepend(li);
-  while ($('feed').children.length > 5) $('feed').lastChild.remove();
-}
-
-function activeCount(nowS) { let a = 0; for (const n of nodes.values()) if (nowS - n.last < IDLE) a++; return a; }
-
-function renderPanels() {
-  const nowS = Date.now() / 1000;
-  const v = {claude: M.claude.toLocaleString(), codex: M.codex.toLocaleString(), active: `${activeCount(nowS)}/${[...nodes.values()].filter(n => shown(n, nowS)).length}`,
-    tokens: fmtK(M.tokens), turns: M.turns.toLocaleString(), errors: M.errors.toLocaleString()};
-  for (const k in v) $(`v-${k}`).textContent = v[k];
-  $('judged').textContent = `${total.toLocaleString()} events`;
-  const sum = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
-  for (const k in counts) { const pc = Math.round(counts[k] / sum * 100); $(`p-${k}`).textContent = pc + '%'; $(`f-${k}`).style.width = pc + '%'; }
-}
-
-function tick() {  // 2초마다 스파크라인 한 칸씩 밀기
-  const nowS = Date.now() / 1000;
-  for (const n of nodes.values()) for (const [id, r] of n.running) if (nowS - r.t > 1800) n.running.delete(id);  // 끝 신호 유실 대비
-  spark.active[SPARK_N - 1] = activeCount(nowS);
-  for (const k in spark) {
-    const a = spark[k], max = Math.max(...a) || 1;
-    $(`sp-${k}`).setAttribute('points', a.map((x, i) => `${(i / (SPARK_N - 1) * 56).toFixed(1)},${(14 - x / max * 12).toFixed(1)}`).join(' '));
-    a.push(0); a.shift();
-  }
-  dirty = true;
-}
-tick(); setInterval(tick, 2000);
-
-// ---------- 캔버스 ----------
-const cv = $('orbit'), ctx = cv.getContext('2d');
-const css = getComputedStyle(document.documentElement), MONO = css.getPropertyValue('--mono'), SANS = css.getPropertyValue('--sans');
-const PAL = ['#ff4f8b', '#ff4f8b', '#e04ad6', '#9d8cff', '#45d6b5', '#ffffff'];
-const parts = Array.from({length: 70}, () => ({a: Math.random() * 6.283, sp: (Math.random() * .12 + .03) * (Math.random() < .2 ? -1 : 1), j: (Math.random() - .5) * 14, r: Math.random() * 1.6 + .8, c: PAL[Math.random() * PAL.length | 0]}));
-const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
-let W = 0, H = 0, Z = 1, stars = [], rot = 0, last = now(), working = false;
-
-function resize() {
-  const dpr = devicePixelRatio || 1;
-  W = cv.clientWidth; Z = Math.max(.62, Math.min(1, W / 760));  // 좁은 화면: 허브·노드 축소
-  H = Math.round(W < 600 ? W * 1.15 : Math.max(340, Math.min(560, W * .62)));
-  cv.style.height = H + 'px'; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  stars = Array.from({length: 90}, () => [Math.random() * W, Math.random() * H, Math.random() * .35 + .05]);
-}
-addEventListener('resize', resize); resize();
-
-const geo = () => ({cx: W / 2, cy: H * .5, rx: W * .41, ry: H * .37});
-function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
-function circle(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); }
-function ellipse(g, k, c, lw) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.ellipse(g.cx, g.cy, g.rx * k, g.ry * k, 0, 0, 6.283); ctx.stroke(); }
-function rrect(x, y, w, h, r, fill, stroke, lw) {
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
-  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
-}
-function dotOn(g, a, j, r, c, alpha, k = 1) {
-  ctx.globalAlpha = alpha; circle(g.cx + (g.rx * k + j) * Math.cos(a), g.cy + (g.ry * k + j * .6) * Math.sin(a), r, c); ctx.globalAlpha = 1;
-}
-
-function place(list, k, dt, g) {  // 세션은 궤도 위에 균등 배치, 추가·제거 시 부드럽게 재배치
-  list.forEach((n, i) => {
-    const target = i / list.length * 6.283;
-    if (n.off === null) n.off = target;
-    n.off += (target - n.off) * Math.min(1, dt * 3);
-    n.a = rot * (k < 1 ? -1.4 : 1) + n.off;
-    n.x = g.cx + g.rx * k * Math.cos(n.a); n.y = g.cy + g.ry * k * Math.sin(n.a); n.depth = (Math.sin(n.a) + 1) / 2;
-  });
-}
-
-function burst(n) {
-  const c = (KIND[n.kind] || KIND.tool).c, k = n.parent ? .62 : 1;
-  for (let i = 0; i < 7; i++) bursts.push({a: n.a ?? 0, sp: (Math.random() * .9 + .3) * (i % 2 ? 1 : -1), j: (Math.random() - .5) * 10, c, k, t: now()});
-}
-
-function drawHub(g, t) {
-  const f = Math.max(0, 1 - (t - hubFlash) / .8, working ? (Math.sin(t * 5) + 1) * .3 : 0);
-  ctx.save(); ctx.translate(g.cx, g.cy); ctx.scale(Z, Z);
-  ctx.strokeStyle = 'rgba(255,79,139,.55)'; ctx.lineWidth = 1.2;
-  for (let i = 0; i < 16; i++) {
-    const a = i / 16 * 6.283 + .2, r0 = 64, r1 = r0 + 8 + (i % 3) * 6 + f * 10, c = Math.cos(a), s = Math.sin(a) * .9;
-    line(c * r0, s * r0, c * r1, s * r1);
-    circle(c * r1, s * r1, 2.2, '#ff4f8b');
-  }
-  ctx.shadowColor = '#ff4f8b'; ctx.shadowBlur = 22 + f * 24;
-  rrect(-54, -48, 108, 96, 12, '#1a0c17', '#ff4f8b', 2.5);
-  ctx.shadowBlur = 0;
-  rrect(-47, -41, 94, 82, 8, null, 'rgba(255,79,139,.35)', 1);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#fff'; ctx.font = `700 30px ${SANS}`; ctx.fillText(HUB, 0, 6);
-  ctx.fillStyle = '#b79bb0'; ctx.font = `11px ${MONO}`; ctx.fillText('#' + String(total).padStart(4, '0'), 0, 28);
-  ctx.restore();
-}
-
-function drawNode(n, t, nowS) {
-  const work = n.running.size > 0, job = work && [...n.running.values()].pop();
-  const s = Z * (.86 + .14 * n.depth), hot = work || t - n.flash < 2.5, failed = t - n.fail < 1.5, k = KIND[n.kind] || KIND.tool;
-  const act = job ? `▶ ${n.running.size > 1 ? n.running.size + '× ' : ''}${Math.max(0, Math.floor(nowS - job.t))}s ${job.text}` : n.act || 'idle';
-  const title = clip((n.parent ? '↳ ' : '') + n.label, Math.round(24 * Z)), sub = clip(`${n.agent} · ${act}`, Math.round(32 * Z));
-  ctx.save(); ctx.globalAlpha = (nowS - n.last > IDLE ? .4 : 1) * (.7 + .3 * n.depth);
-  ctx.font = `600 ${14 * s}px ${SANS}`; const w1 = ctx.measureText(title).width;
-  ctx.font = `${11 * s}px ${MONO}`; const w2 = ctx.measureText(sub).width;
-  const bw = Math.max(w1, w2) + 24 * s, bh = 44 * s;
-  const bx = Math.min(Math.max(n.x - bw / 2, 4), W - bw - 34), by = n.y - bh / 2;
-  const edge = failed ? '#ff6b6b' : '#ff4f8b';
-  if (hot || failed) { ctx.shadowColor = edge; ctx.shadowBlur = work ? 12 + 12 * (Math.sin(t * 6) + 1) / 2 : 18; }
-  rrect(bx, by, bw, bh, 6, hot ? 'rgba(60,14,40,.95)' : 'rgba(22,13,21,.92)',
-    hot || failed ? edge : n.agent === 'codex' ? 'rgba(157,140,255,.45)' : 'rgba(255,255,255,.16)', hot ? 1.6 : 1);
-  ctx.shadowBlur = 0; ctx.textAlign = 'center';
-  ctx.fillStyle = '#f2e8f0'; ctx.font = `600 ${14 * s}px ${SANS}`; ctx.fillText(title, bx + bw / 2, by + 19 * s);
-  ctx.fillStyle = work ? '#ffb3cf' : '#8c7889'; ctx.font = `${11 * s}px ${MONO}`; ctx.fillText(sub, bx + bw / 2, by + 35 * s);
-  if (work || n.kind) {  // 배지: 실행 중엔 스피너, 아니면 마지막 동작 (영상의 SCO / CHO / NOU 박스)
-    const x = bx + bw + 6, y = by - 6, c = work ? '#ff4f8b' : k.c;
-    rrect(x, y, 24, 14, 2, 'rgba(12,7,12,.9)', c, 1);
-    ctx.fillStyle = c; ctx.font = `600 ${work ? 10 : 8}px ${MONO}`; ctx.fillText(work ? SPIN[Math.floor(t * 12) % 10] : k.code, x + 12, y + 10);
-  }
-  ctx.restore();
-}
-
-function frame() {
-  const t = now(), dt = Math.min(.1, t - last), nowS = Date.now() / 1000, g = geo();
-  last = t; if (!CALM) rot += dt * .03;
-  const vis = [...nodes.values()].filter(n => shown(n, nowS)), visSet = new Set(vis);
-  place(vis.filter(n => !n.parent), 1, dt, g);
-  place(vis.filter(n => n.parent), .62, dt, g);  // 서브에이전트는 안쪽 궤도
-
-  ctx.clearRect(0, 0, W, H);
-  const glow = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, g.rx);
-  glow.addColorStop(0, 'rgba(255,79,139,.16)'); glow.addColorStop(1, 'rgba(255,79,139,0)');
-  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-  for (const [x, y, o] of stars) { ctx.fillStyle = `rgba(255,220,240,${o})`; ctx.fillRect(x, y, 1, 1); }
-  ellipse(g, 1, 'rgba(255,79,139,.06)', 20); ellipse(g, 1, 'rgba(255,120,170,.22)', 1);
-  ctx.setLineDash([10, 8]); ellipse(g, .62, 'rgba(255,79,139,.35)', 1.2); ctx.setLineDash([]);
-  for (const p of parts) { if (!CALM) p.a += p.sp * dt; dotOn(g, p.a, p.j, p.r, p.c, .75); }
-  bursts = bursts.filter(b => t - b.t < 1.6);
-  for (const b of bursts) { b.a += b.sp * dt; dotOn(g, b.a, b.j, 2.2, b.c, 1 - (t - b.t) / 1.6, b.k); }
-
-  working = false;
-  for (const n of vis) {  // 움직인 세션: 허브(서브에이전트면 부모)에서 선. 실행 중이면 선 유지 + 점이 계속 흐름
-    const age = t - n.flash, work = n.running.size > 0; if (age > 2.5 && !work) continue;
-    working ||= work;
-    const par = n.parent && nodes.get(n.parent), from = par && visSet.has(par) ? par : {x: g.cx, y: g.cy};
-    ctx.strokeStyle = `rgba(255,79,139,${work ? .85 : (1 - age / 2.5) * .9})`; ctx.lineWidth = 1.5;
-    line(from.x, from.y, n.x, n.y);
-    const qs = work ? [0, 1, 2].map(i => (t * .9 + i / 3) % 1) : age < .7 ? [age / .7] : [];
-    for (const q of qs) circle(from.x + (n.x - from.x) * q, from.y + (n.y - from.y) * q, 3, '#ffd1e3');
-  }
-  drawHub(g, t);
-  vis.sort((a, b) => a.y - b.y).forEach(n => drawNode(n, t, nowS));
-  if (!vis.length) {
-    ctx.fillStyle = '#8c7889'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
-    ctx.fillText(offline ? '로컬 서버에 연결할 수 없습니다 — python3 server.py 실행' : '터미널에서 claude 또는 codex를 실행하면 여기에 나타납니다', g.cx, g.cy + g.ry * .62 + 30);
-  }
-  if (dirty) { dirty = false; renderPanels(); }
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-
-// ---------- 스트림 ----------
-// 로컬 서버가 직접 띄운 페이지면 같은 출처, 배포된 사이트면 이 브라우저가 돌고 있는 맥의 로컬 서버로
-const API = ['127.0.0.1', 'localhost'].includes(location.hostname) ? '' : 'http://127.0.0.1:7777';
-const es = new EventSource(API + '/events'), liveEl = $('live');
-let offline = false;
-es.onopen = () => { offline = false; liveEl.classList.remove('off'); liveEl.lastChild.textContent = 'LIVE'; };
-es.onerror = () => { offline = true; liveEl.classList.add('off'); liveEl.lastChild.textContent = 'OFFLINE'; };
-es.onmessage = m => onEvent(JSON.parse(m.data));
-</script>
+<footer><div class="wrap" id="footer"></div></footer>
+<aside class="drawer" id="drawer" hidden aria-label="세션 기록"></aside>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<noscript><p class="wrap">이 대시보드는 JavaScript가 필요합니다.</p></noscript>
+<script src="app.js"></script>
 </body>
 </html>
