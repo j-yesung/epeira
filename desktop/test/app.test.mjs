@@ -96,10 +96,13 @@ test('탭 이름 바꾸기', async () => {
   assert.deepEqual(await labels(page), ['백엔드']);
 });
 
-test('라이트 테마로 바꾸면 터미널도 밝게', async () => {
-  await page.evaluate(() => window.orbit.setTheme('light'));
-  await until(page, () => tab(S.active).term.options.theme.background === '#fbfbfb');
-  await page.evaluate(() => window.orbit.setTheme('system'));
+test('테마: 라이트 · 다크로 바꾸면 화면과 터미널이 함께', async () => {
+  const look = () => page.evaluate(() => [getComputedStyle(document.body).backgroundColor, tab(S.active).term.options.theme.background]);
+  await page.evaluate(() => chooseTheme('dark'));
+  assert.deepEqual(await look(), ['rgb(10, 10, 10)', '#0a0a0a']);
+  await page.evaluate(() => chooseTheme('light'));
+  assert.deepEqual(await look(), ['rgb(251, 251, 251)', '#fbfbfb']);
+  await page.evaluate(() => chooseTheme('system'));
 });
 
 test('다시 켜면 프로젝트별 탭과 마지막 프로젝트가 돌아온다', async () => {

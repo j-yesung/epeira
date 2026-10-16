@@ -15,8 +15,17 @@ const LIGHT = {  // 흰 바탕: 프로그램이 "흰색"으로 강조한 글자�
   brightBlack: '#6b6b6b', brightRed: '#e03131', brightGreen: '#37b24d', brightYellow: '#e67700', brightBlue: '#339af0',
   brightMagenta: '#845ef7', brightCyan: '#1098ad', brightWhite: '#2b2b2b',
 };
+// 테마: 고른 값(시스템 · 라이트 · 다크)을 <html data-theme> 로 직접 건다
+// (Electron 의 nativeTheme.themeSource 만으로는 화면의 prefers-color-scheme 이 바뀌지 않는 경우가 있어서)
 const dark = matchMedia('(prefers-color-scheme: dark)');
-const termTheme = () => (dark.matches ? DARK : LIGHT);
+let themePref = 'system';
+const isDark = () => themePref === 'dark' || (themePref === 'system' && dark.matches);
+const termTheme = () => (isDark() ? DARK : LIGHT);
+function applyTheme() {
+  document.documentElement.dataset.theme = isDark() ? 'dark' : 'light';
+  for (const t of S.tabs) t.term.options.theme = termTheme();
+}
+async function chooseTheme(v) { themePref = await api.setTheme(v); applyTheme(); }
 const LOGO = {claude: 'assets/claude.svg', codex: 'assets/codex.svg'};  // Codex 는 중립 마크 (OpenAI 공식 로고 파일을 받으면 교체)
 const kindIcon = kind => h('span', {class: 'k'}, LOGO[kind] ? h('img', {src: LOGO[kind], alt: ''}) : '›');
 const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(Math.round(x || 0));
@@ -402,7 +411,9 @@ function unsplit() {  // ⌘⌥W: 나누기 모두 풀기 (터미널은 탭으�
   delete S.layout[S.current]; delete S.zoom[S.current];
   layoutPanes(); renderTabs(); saveTabs();
 }
-dark.addEventListener('change', () => { for (const t of S.tabs) t.term.options.theme = termTheme(); });
+dark.addEventListener('change', applyTheme);
+applyTheme();
+api.getTheme().then(t => { themePref = t; applyTheme(); });
 
 // ── 탭 저장 · 복원: 다시 켜면 탭과 Claude · Codex 대화를 이어서 연다 ──
 function saveTabs() {
@@ -797,7 +808,7 @@ async function openSettings(intro) {
   if (modal.hidden) return;
   if (!st) return showSheet('설정', [h('p', {}, '수집기에 연결할 수 없어요. 상태바의 새로고침을 눌러 보세요.')]);
   const seg = h('span', {class: 'seg', role: 'group', 'aria-label': '테마'}, ...[['system', '시스템'], ['light', '라이트'], ['dark', '다크']].map(([v, label]) =>
-    h('button', {type: 'button', 'aria-pressed': String(theme === v), onclick: async () => { await api.setTheme(v); openSettings(intro); }}, label)));
+    h('button', {type: 'button', 'aria-pressed': String(theme === v), onclick: async () => { await chooseTheme(v); openSettings(intro); }}, label)));
   showSheet('설정', [
     intro ? h('p', {class: 'intro'}, intro) : null,
     h('h3', {}, '에이전트'),
