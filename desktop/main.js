@@ -90,7 +90,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // 하단 상태바: 오늘 에이전트별 도구 횟수 · 토큰(입력 · 출력 · 캐시 읽기) · 연결 상태 · 에이전트별 사용 한도
 ipcMain.handle('collector:usage', async (_, refresh) => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const [status, sum] = await Promise.all([getJSON(refresh ? '/api/status?refresh=claude' : '/api/status'), getJSON(`/api/summary?since=${today.getTime() / 1000}`)]);  // 새로고침 버튼이면 Claude 한도도 다시
+  const [status, sum] = await Promise.all([getJSON(refresh ? '/api/status?refresh=1' : '/api/status'), getJSON(`/api/summary?since=${today.getTime() / 1000}`)]);  // 새로고침 버튼이면 한도도 다시
   if (!status) return {ok: false};
   const by = {};
   for (const [k, a] of Object.entries(status.agents || {})) by[k] = {name: a.name, installed: a.installed, connected: a.connected, trust: a.trust, calls: 0, tin: 0, tout: 0, tcache: 0};

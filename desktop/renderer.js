@@ -277,7 +277,7 @@ async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널
   const btn = e && e.currentTarget;
   if (btn) { btn.classList.add('spin'); setTimeout(() => btn.classList.remove('spin'), 600); }
   await initOrbit();
-  await loadUsage(true);  // Claude 한도도 다시 조회 (수집기가 1분에 한 번까지만)
+  await loadUsage(true);  // 사용 한도도 다시 조회 (수집기가 1분에 한 번까지만)
   if (S.orbitReady && !view.hidden) view.reload();
 }
 

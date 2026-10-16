@@ -247,6 +247,18 @@ def test_claude_limits():  # 사용량 응답 → 5시간 · 주간 한도. 만�
     assert len(calls) == 1 and L['error'] == 'expired' and L['primary']['used'] == 23.0, '만료: 조회 안 하고 이전 값은 유지'
 
 
+
+def test_codex_limits():  # Codex 공식 app-server 의 지금 한도로 로그 값을 덮는다
+    ao.codex_rpc = lambda calls, timeout=20: [{'id': 1, 'result': {'rateLimits': {'planType': 'plus',
+        'primary': {'usedPercent': 0, 'windowDurationMins': 300, 'resetsAt': 2000000000},
+        'secondary': {'usedPercent': 3, 'windowDurationMins': 10080, 'resetsAt': 2000500000}}}}] if calls == [('account/rateLimits/read', None)] else None
+    ao.fetch_codex_limits()
+    assert ao.limits['secondary'] == {'used': 3, 'window': 10080, 'resets': 2000500000} and ao.limits['plan'] == 'plus', ao.limits
+    ao.codex_rpc = lambda calls, timeout=20: None  # codex 가 없으면 이전 값 그대로
+    ao.fetch_codex_limits()
+    assert ao.limits['secondary']['used'] == 3
+
+
 if __name__ == '__main__':
     for name, fn in list(globals().items()):
         if name.startswith('test_'):

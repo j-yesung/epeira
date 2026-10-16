@@ -33,7 +33,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-VERSION = '0.12.0'
+VERSION = '0.12.1'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -311,7 +311,7 @@ def seed_limits():
 # 모델 호출이 아니라 비용 · 한도 차감 없음. 토큰은 Anthropic 으로만 보내고 저장 · 기록하지 않는다.
 CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 claude_limits = {}  # {at, primary(5시간), secondary(주간), plan} 또는 {error}
-claude_tried = [0.0]  # 마지막으로 조회한 시각 (너무 자주 부르지 않게)
+tried = {'claude': 0.0, 'codex': 0.0}  # 마지막으로 조회한 시각 (너무 자주 부르지 않게)
 
 
 def iso_ts(v):  # '2026-10-16T05:00:00Z' · 초 · 밀리초 → 초
@@ -341,7 +341,7 @@ def claude_login():
 
 
 def fetch_claude_limits():
-    claude_tried[0] = time.time()
+    tried['claude'] = time.time()
     o = claude_login()
     if not o:
         claude_limits['error'] = 'no-login'
@@ -367,9 +367,24 @@ def fetch_claude_limits():
                          plan=o.get('subscriptionType'))
 
 
-def claude_limits_loop():
+def fetch_codex_limits():
+    # 로그의 한도는 마지막으로 Codex 를 쓴 순간 값이라 늦다 (주간 사용량은 끝난 뒤에 서버에서 올라감)
+    # → Codex 공식 app-server 로 지금 값을 읽는다. Codex 가 자기 로그인으로 묻는 것이라 Tycho 는 로그인 정보를 보지 않는다
+    tried['codex'] = time.time()
+    r = codex_rpc([('account/rateLimits/read', None)], timeout=30)
+    rl = (((r or [None])[0] or {}).get('result') or {}).get('rateLimits')
+    if not isinstance(rl, dict):
+        return
+    win = lambda w: {'used': w.get('usedPercent'), 'window': w.get('windowDurationMins'), 'resets': w.get('resetsAt')} if isinstance(w, dict) else None
+    limits.update(at=time.time(), primary=win(rl.get('primary')), secondary=win(rl.get('secondary')), plan=rl.get('planType'))
+    write_text(LIMITS_FILE, json.dumps(limits))
+
+
+def limits_loop():  # 5분마다: Codex 한도(설치돼 있으면), Claude 한도(설정에서 켰을 때)
     while True:
-        if setting('claudeLimits') and time.time() - claude_tried[0] > 240:
+        if time.time() - tried['codex'] > 240 and shutil.which('codex'):
+            fetch_codex_limits()
+        if setting('claudeLimits') and time.time() - tried['claude'] > 240:
             fetch_claude_limits()
         time.sleep(60)  # ponytail: 1분마다 확인해 5분(4분+)에 한 번 조회. 더 정확한 주기가 필요하면 다음 조회 시각을 계산
 
@@ -1063,8 +1078,11 @@ class Handler(BaseHTTPRequestHandler):
         if p in STATIC:
             return self.static(*STATIC[p])
         if p == '/api/status':
-            if q.get('refresh') == 'claude' and setting('claudeLimits') and time.time() - claude_tried[0] > 60:
-                fetch_claude_limits()  # 앱의 새로고침 버튼 (1분에 한 번까지)
+            if q.get('refresh'):  # 앱의 새로고침 버튼: 한도를 다시 읽는다 (각각 1분에 한 번까지)
+                if time.time() - tried['codex'] > 60 and shutil.which('codex'):
+                    fetch_codex_limits()
+                if setting('claudeLimits') and time.time() - tried['claude'] > 60:
+                    fetch_claude_limits()
             return self.reply(200, status())
         if p == '/api/events':
             return self.stream()
@@ -1200,7 +1218,7 @@ def serve():
     except OSError as ex:
         sys.exit('tycho: 포트 %d 를 열 수 없습니다 (%s)' % (PORT, ex))
     threading.Thread(target=watch, daemon=True).start()
-    threading.Thread(target=claude_limits_loop, daemon=True).start()
+    threading.Thread(target=limits_loop, daemon=True).start()
     log('tycho %s → http://127.0.0.1:%d' % (VERSION, PORT))
     try:
         srv.serve_forever()
