@@ -1,4 +1,4 @@
-// Tycho 앱 — 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
+// Tycho 앱 → 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
 const {app, BrowserWindow, Menu, ipcMain, dialog, shell, Notification, nativeTheme, screen, clipboard, session} = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -23,7 +23,7 @@ app.setName('Tycho');
   if (!fs.existsSync(newData) && fs.existsSync(oldData)) try { fs.cpSync(oldData, newData, {recursive: true}); } catch { /* 새로 시작 */ }
 }
 
-// ── 앱 설정 (창 위치 · 테마) — 앱 데이터 폴더의 JSON 하나 ──
+// ── 앱 설정 (창 위치 · 테마) → 앱 데이터 폴더의 JSON 하나 ──
 const confFile = () => path.join(app.getPath('userData'), 'app.json');
 const conf = () => { try { return JSON.parse(fs.readFileSync(confFile(), 'utf8')); } catch { return {}; } };
 const saveConf = patch => {
@@ -72,7 +72,7 @@ function shellEnv(id) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
     // 앱을 띄운 환경(npm·Electron·다른 에이전트 세션·다른 터미널 앱)의 흔적은 넘기지 않는다
-    // — 안의 claude 가 "중첩 세션"으로 오해하거나, 다른 앱의 훅이 이 탭을 제 것으로 착각하지 않게
+    // → 안의 claude 가 "중첩 세션"으로 오해하거나, 다른 앱의 훅이 이 탭을 제 것으로 착각하지 않게
     if (/^(ELECTRON_|npm_|CLAUDECODE$|CLAUDE_CODE_|CLAUDE_PID$|CLAUDE_EFFORT$|CODEX_|ORCA_|ITERM_|VSCODE_|TMUX|KITTY_|WEZTERM_|GHOSTTY_|TERM_PROGRAM_VERSION$)/.test(k)) continue;
     env[k] = v;
   }
@@ -111,7 +111,7 @@ function confirmQuit() {
   const names = [...new Set([...terms.keys()].map(busy).filter(Boolean))];
   if (!names.length) return true;
   return dialog.showMessageBoxSync(win, {type: 'warning', buttons: ['종료', '취소'], defaultId: 1, cancelId: 1,
-    message: '실행 중인 작업이 있어요', detail: `${names.join(', ')} — 종료하면 함께 끝나요. 다음에 켜면 탭과 Claude · Codex 대화를 다시 열어요.`}) === 0;
+    message: '실행 중인 작업이 있어요', detail: `${names.join(', ')} → 종료하면 함께 끝나요. 다음에 켜면 탭과 Claude · Codex 대화를 다시 열어요.`}) === 0;
 }
 const killAll = () => { for (const p of terms.values()) p.kill(); terms.clear(); };
 
@@ -371,7 +371,7 @@ function createWindow() {
   win = new BrowserWindow({
     ...(onScreen ? b : {width: 1480, height: 920}), minWidth: 980, minHeight: 600, title: 'Tycho', show: !TEST,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0a0a' : '#f6f6f6',
-    // 신호등 버튼(높이 16) 가운데를 상단 바(52px)의 가운데 26px 에 맞춘다 — style.css 의 .side-top 과 짝
+    // 신호등 버튼(높이 16) 가운데를 상단 바(52px)의 가운데 26px 에 맞춘다 → style.css 의 .side-top 과 짝
     titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 16, y: 18}, icon: path.join(__dirname, 'assets/icon.png'),
     webPreferences: {preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true, backgroundThrottling: !TEST,
       additionalArguments: [`--agent-orbit-url=${ORBIT}`]},

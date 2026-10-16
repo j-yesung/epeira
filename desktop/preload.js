@@ -1,4 +1,4 @@
-// 화면(renderer)에 노출하는 최소 API — Node 는 화면에 직접 열지 않는다
+// 화면(renderer)에 노출하는 최소 API → Node 는 화면에 직접 열지 않는다
 const {contextBridge, ipcRenderer, webUtils} = require('electron');
 
 contextBridge.exposeInMainWorld('orbit', {

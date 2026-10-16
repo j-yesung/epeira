@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Tycho collector — 이 컴퓨터의 Claude Code / Codex 세션을 모아 대시보드로 보낸다.
+"""Tycho collector → 이 컴퓨터의 Claude Code / Codex 세션을 모아 대시보드로 보낸다.
 
 데이터는 이 컴퓨터 밖으로 나가지 않는다. 127.0.0.1 에서만 열리고, 허용한 사이트(ORIGINS)만 읽을 수 있다.
 
   tycho open                                 전체 대시보드를 브라우저로
   tycho serve                                수집기 실행 (자동 실행 서비스가 호출)
-  tycho connect|disconnect <agent>           훅 연결/해제 (claude | codex) — 바뀔 내용을 보여주고 확인 후 적용
+  tycho connect|disconnect <agent>           훅 연결/해제 (claude | codex) → 바뀔 내용을 보여주고 확인 후 적용
   tycho doctor                               진단 정보 (피드백에 그대로 붙여넣기)
   tycho uninstall                            훅·자동 실행·설치 파일·기록 모두 제거
   tycho version                              (예전 이름 agent-orbit 도 그대로 동작)
@@ -47,7 +47,7 @@ LIMITS_FILE = os.path.join(DATA_DIR, 'limits.json')  # Codex 요금제 사용 �
 LOG_FILE = os.path.join(APP_DIR, 'collector.log')
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = 'https://agent-orbit-app.vercel.app'
-# 이 주소에서 연 대시보드만 데이터를 읽고 버튼을 쓸 수 있다. 정확히 일치하는 것만 — '*' 면 아무 사이트나 로그를 읽어간다
+# 이 주소에서 연 대시보드만 데이터를 읽고 버튼을 쓸 수 있다. 정확히 일치하는 것만 → '*' 면 아무 사이트나 로그를 읽어간다
 ORIGINS = {SITE} | set(filter(None, os.environ.get('AGENT_ORBIT_ORIGINS', '').split(',')))
 LOCAL_ORIGINS = {'http://127.0.0.1:%d' % PORT, 'http://localhost:%d' % PORT}
 HOSTS = {'127.0.0.1:%d' % PORT, 'localhost:%d' % PORT}  # 다른 Host 는 거부: DNS 리바인딩 차단
@@ -92,7 +92,7 @@ def read_json(path):
 
 
 def write_text(path, text):
-    """원자적 쓰기 — 에이전트가 반쯤 쓴 설정 파일을 읽는 일이 없게. None 이면 파일 삭제."""
+    """원자적 쓰기 → 에이전트가 반쯤 쓴 설정 파일을 읽는 일이 없게. None 이면 파일 삭제."""
     if text is None:
         try:
             os.remove(path)
@@ -812,14 +812,14 @@ def act(agent, action):
 
 
 def trust_message(trust):
-    return {'trusted': '승인 완료 — 새로 시작하는 Codex 세션부터 적용됩니다.',
+    return {'trusted': '승인 완료 → 새로 시작하는 Codex 세션부터 적용됩니다.',
             'untrusted': '승인되지 않았습니다. Codex 에서 /hooks 를 열어 승인하세요.',
             'unknown': 'codex 명령을 찾지 못해 승인하지 못했습니다. Codex 에서 /hooks 를 열어 승인하세요.',
             'none': '승인할 훅이 없습니다. 먼저 연결하세요.'}.get(trust, '')
 
 
 # Codex 는 새 훅을 사용자가 승인해야 실행한다. 연결 확인 창에서 명령 원문을 보고 동의한 경우에만
-# 공식 app-server API(hooks/list + config/batchWrite — /hooks 화면과 같은 경로)로 승인한다.
+# 공식 app-server API(hooks/list + config/batchWrite → /hooks 화면과 같은 경로)로 승인한다.
 
 _trust_cache = [0.0, None]
 
@@ -1370,7 +1370,7 @@ def cmd_doctor(args):
              'platform    %s' % platform.platform(),
              'install     %s' % tilde(APP_DIR),
              'collector   %s' % ('running %s on 127.0.0.1:%d' % (st['version'], PORT) if st else
-                                 'NOT RUNNING (127.0.0.1:%d%s)' % (PORT, ' — port used by another program' if port_open() else '')),
+                                 'NOT RUNNING (127.0.0.1:%d%s)' % (PORT, ' → port used by another program' if port_open() else '')),
              'autostart   %s' % {None: 'not installed', True: 'on', False: 'off'}[autostart_state()],
              'claude lim  %s' % ('on' if setting('claudeLimits') else 'off')]
     for k in AGENTS:

@@ -29,13 +29,13 @@ async function chooseTheme(v) { themePref = await api.setTheme(v); applyTheme();
 const LOGO = {claude: 'assets/claude.svg', codex: 'assets/codex.svg'};  // Codex 는 중립 마크 (OpenAI 공식 로고 파일을 받으면 교체)
 const kindIcon = kind => h('span', {class: 'k'}, LOGO[kind] ? h('img', {src: LOGO[kind], alt: ''}) : '›');
 const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(Math.round(x || 0));
-// 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 — GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
+// 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 → GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
 const fontsReady = document.fonts.load('13px "Tycho Keys"', '⌘⌥⇧⏎↑').catch(() => {});
 
 const S = {projects: [], current: null, tabs: [], active: null, last: {}, layout: {}, zoom: {}, sessions: [], names: {}, git: {}, update: null, inbox: [], settingsTab: 'agents',
   collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
 // 터미널은 프로젝트마다 따로: 탭 줄엔 지금 프로젝트의 탭만, last 는 프로젝트별로 마지막에 보던 탭
-// layout 은 프로젝트별 칸 나누기 트리 — 칸 {tab} 또는 나눔 {dir: 'cols'(좌우) | 'rows'(위아래), ratio, a, b}, zoom 은 한 칸 크게 보기
+// layout 은 프로젝트별 칸 나누기 트리 → 칸 {tab} 또는 나눔 {dir: 'cols'(좌우) | 'rows'(위아래), ratio, a, b}, zoom 은 한 칸 크게 보기
 // tab = {id, dir, base, title, kind, sid, term, fit, search, el, exited, busy, waiting, unread, pendingRun}
 
 function h(tag, attrs = {}, ...kids) {
@@ -104,7 +104,7 @@ async function removeProject(dir) {
   renderProjects(); renderWelcome();
 }
 
-function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 시작 화면 — 터미널을 멋대로 열지 않는다)
+function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 시작 화면 → 터미널을 멋대로 열지 않는다)
   S.current = dir;
   api.touchProject(dir).then(list => { S.projects = list; renderProjects(); });
   const open = projTabs(dir), t = tab(S.last[dir]) || open[open.length - 1];
@@ -155,7 +155,7 @@ function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 쓴 토큰 + 
 }
 
 // ── 터미널 탭 ──
-// 다시 켰을 때 이어 열 명령: 세션 id 를 알면 그 대화로 (모르면 셸만 — 엉뚱한 대화를 잇지 않게)
+// 다시 켰을 때 이어 열 명령: 세션 id 를 알면 그 대화로 (모르면 셸만 → 엉뚱한 대화를 잇지 않게)
 function resumeCmd(kind, sid) {
   if (!sid || !/^[\w-]+$/.test(sid)) return null;
   if (kind === 'claude') return `claude --resume ${sid}`;
@@ -173,7 +173,7 @@ async function openTab(dir, kind = 'shell', opts = {}) {
   if (opts.resume && !pendingRun) kind = 'shell';
   const el = h('div', {class: 'term'});
   $('terms').append(el);
-  // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 — 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
+  // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 → 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
   const term = new Terminal({fontFamily: '"Tycho Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: prefs.fontSize, lineHeight: 1.2, cursorBlink: true,
     scrollback: 10000, macOptionIsMeta: prefs.optionMeta, allowProposedApi: true, theme: termTheme()});
   const fit = new FitAddon.FitAddon(), search = new SearchAddon.SearchAddon();
@@ -271,7 +271,7 @@ function renderTabs() {
   $('tabs').style.flexBasis = `${list.length * 204}px`;
   $('tabs').replaceChildren(...list.map((t, i) => {
     const label = tabLabel(t), state = t.waiting ? 'wait' : t.busy ? 'busy' : t.unread ? 'new' : '';
-    // 이미 보고 있는 탭을 누르면 다시 그리지 않는다 — 다시 그리면 두 번 누르기(이름 바꾸기)가 새 요소에 떨어져 안 먹는다
+    // 이미 보고 있는 탭을 누르면 다시 그리지 않는다 → 다시 그리면 두 번 누르기(이름 바꾸기)가 새 요소에 떨어져 안 먹는다
     const main = h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active),
       onclick: () => (S.active === t.id ? t.term.focus() : activate(t.id)), ondblclick: () => renameTab(t, main)},
       kindIcon(t.kind), h('span', {}, label), state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null, i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null);
@@ -422,7 +422,7 @@ async function splitPane(dir) {  // 지금 칸을 나누고 새 칸에 같은 �
   if (S.zoom[p]) { S.zoom[p] = false; layoutPanes(); }
   if (leaves(root).length >= MAX_PANES) return toast(`한 프로젝트에 ${MAX_PANES}칸까지 나눌 수 있어요`);
   const r = (S.layout[p] ? t.el : $('terms')).getBoundingClientRect();
-  if (dir === 'cols' ? r.width / 2 < MIN_W : r.height / 2 < MIN_H) return toast('나눌 공간이 부족해요 — 사이드바(⌘B)나 궤도 패널(⌘J)을 접으면 더 나눌 수 있어요');
+  if (dir === 'cols' ? r.width / 2 < MIN_W : r.height / 2 < MIN_H) return toast('나눌 공간이 부족해요 → 사이드바(⌘B)나 궤도 패널(⌘J)을 접으면 더 나눌 수 있어요');
   const nt = await openTab(p, 'shell', {quiet: true});
   S.layout[p] = replaceLeaf(root, t.id, {dir, ratio: .5, a: {tab: t.id}, b: {tab: nt.id}});
   activate(nt.id);
@@ -521,9 +521,9 @@ function linkTab(tabId, sid) {
   if (t && sid && t.sid !== sid) { t.sid = sid; saveTabs(); }
 }
 const seen = t => document.hasFocus() && S.active === t.id;
-function alertTab(t, msg, detail, type) {  // type: done(응답 끝) · wait(승인 · 입력 대기) — 설정에서 끌 수 있다
+function alertTab(t, msg, detail, type) {  // type: done(응답 끝) · wait(승인 · 입력 대기) → 설정에서 끌 수 있다
   if (seen(t)) return;
-  const title = `${t.base} · ${tabLabel(t)}`, body = detail ? `${msg} — ${detail}` : msg;
+  const title = `${t.base} · ${tabLabel(t)}`, body = detail ? `${msg} → ${detail}` : msg;
   S.inbox.unshift({at: Date.now(), tab: t.id, title, body, read: false});
   S.inbox.length = Math.min(S.inbox.length, 30);
   renderStatusbar();
@@ -821,7 +821,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden && mo
 const AGENT_ACTIONS = {
   connect: {title: n => `${n} 연결`, ok: '연결', intro: n => `아래 파일에 Tycho 훅이 추가돼요. ${n}가 도구를 실행하거나 승인 · 입력을 기다릴 때 이 컴퓨터의 수집기로만 신호를 보내요.`},
   disconnect: {title: n => `${n} 연결 해제`, ok: '연결 해제', intro: () => '추가했던 Tycho 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.'},
-  trust: {title: () => 'Codex 훅 승인', ok: '승인', intro: () => 'Codex 는 새 훅을 승인해야 실행해요. 아래 명령을 승인합니다 — Codex 의 /hooks 화면에서 승인하는 것과 같아요.'},
+  trust: {title: () => 'Codex 훅 승인', ok: '승인', intro: () => 'Codex 는 새 훅을 승인해야 실행해요. 아래 명령을 승인합니다 → Codex 의 /hooks 화면에서 승인하는 것과 같아요.'},
 };
 async function confirmAgent(key, action, name) {
   showSheet(AGENT_ACTIONS[action].title(name), [h('div', {class: 'spinner'})], null, () => openSettings());
@@ -910,7 +910,7 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
   ], help: [
     h('h3', {}, '문제 해결'),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `수집기 v${st.version} · 127.0.0.1:${st.port}`), h('small', {}, '정상으로 연결돼 있어요')),
-      h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; const out = await api.doctor(); await navigator.clipboard.writeText(out).catch(() => {}); toast('진단 정보를 복사했어요 — 문의할 때 붙여넣어 주세요'); openSettings(intro); }}, '진단 정보 복사'),
+      h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; const out = await api.doctor(); await navigator.clipboard.writeText(out).catch(() => {}); toast('진단 정보를 복사했어요 → 문의할 때 붙여넣어 주세요'); openSettings(intro); }}, '진단 정보 복사'),
       h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; toast('수집기를 다시 설치하고 있어요…'); const r = await api.reinstall(); toast(r.ok ? '다시 설치했어요' : `다시 설치하지 못했어요 ${r.log || ''}`.trim()); refreshAll(); }}, '다시 설치')),
     S.update ? h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `새 버전 ${S.update.version}`), h('small', {}, '받아서 응용 프로그램 폴더의 Tycho 를 바꿔 주세요')),
       h('button', {class: 'btn small primary', type: 'button', onclick: () => api.openExternal(S.update.url)}, '받기')) : null,
