@@ -159,7 +159,7 @@ function renderProjects() {
     const unfold = p.exists && isOpen(p);
     return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path, oncontextmenu: e => { e.preventDefault(); showMenu(at(e), projectMenu(p)); }},
       p.exists ? h('button', {class: `proj-fold${unfold ? ' open' : ''}`, type: 'button', 'aria-expanded': String(unfold), 'aria-label': `${p.name} 세션 ${unfold ? '접기' : '펼치기'}`, title: unfold ? '세션 접기' : '세션 펼치기', onclick: () => toggleFold(p)}, '›') : null,
-      h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
+      h('button', {class: 'proj-main', type: 'button', 'aria-expanded': p.exists ? String(unfold) : null, onclick: () => p.exists && clickProject(p)},
         h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
         h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, sub)),
         state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null,
@@ -172,7 +172,12 @@ function renderProjects() {
 // 사이드바 프로젝트 아래 세션 목록 펼치기 · 접기 (정한 적이 없으면 지금 프로젝트만 펼친다, 다시 켜도 기억)
 const folds = (() => { try { return JSON.parse(store.get('folds') || '{}'); } catch { return {}; } })();
 const isOpen = p => (Object.hasOwn(folds, p.path) ? folds[p.path] : p.path === S.current);
-function toggleFold(p) { folds[p.path] = !isOpen(p); store.set('folds', JSON.stringify(folds)); renderProjects(); }
+function toggleFold(p, open = !isOpen(p)) { folds[p.path] = open; store.set('folds', JSON.stringify(folds)); renderProjects(); }
+function clickProject(p) {  // 다른 프로젝트를 누르면 고르고 펼친다, 지금 프로젝트를 다시 누르면 펼치기 · 접기 (⋯ · › 는 따로 된 버튼이라 겹치지 않는다)
+  if (p.path === S.current) return toggleFold(p);
+  folds[p.path] = true; store.set('folds', JSON.stringify(folds));
+  selectProject(p.path);
+}
 
 function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 쓴 토큰 + 지난 세션 (누르면 이어서 열기)
   const today = (S.usage && S.usage.today) || [], byId = new Map(today.map(x => [x.id, x]));

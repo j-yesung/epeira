@@ -348,4 +348,17 @@ test('프로젝트 세션 목록 펼치기 · 접기: 지금 프로젝트가 아
   assert.equal(await shown(beta), true, '다른 프로젝트도 펼칠 수 있다');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('app.folds'))[S.projects[1].path]), true, '다시 켜도 기억');
   await page.click(`${row(beta)} .proj-fold`);
+  // 프로젝트 줄을 눌러도: 다른 프로젝트면 고르고 펼치고, 지금 프로젝트를 다시 누르면 접는다
+  await page.click(`${row(beta)} .proj-main`);
+  assert.equal(await page.evaluate(dir => S.current === dir, beta), true);
+  assert.equal(await shown(beta), true, '고르면 펼친다');
+  await page.click(`${row(beta)} .proj-main`);
+  assert.equal(await shown(beta), false, '지금 프로젝트를 다시 누르면 접는다');
+  await page.click(`${row(beta)} .proj-main`);
+  assert.equal(await shown(beta), true);
+  await page.hover(row(beta));
+  await page.click(`${row(beta)} .proj-more`);
+  assert.equal(await page.isVisible('#menu'), true, '⋯ 는 메뉴만 연다');
+  assert.equal(await shown(beta), true, '⋯ 를 눌러도 접히지 않는다');
+  await page.keyboard.press('Escape');
 });
