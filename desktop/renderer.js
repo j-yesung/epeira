@@ -125,13 +125,13 @@ function renderProjects() {
   }));
 }
 
-function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 사용량 + 지난 세션 (누르면 이어서 열기)
+function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 쓴 토큰 + 지난 세션 (누르면 이어서 열기)
   const today = (S.usage && S.usage.today) || [], byId = new Map(today.map(x => [x.id, x]));
-  let tools = 0, tok = 0;
-  for (const x of today) { const root = x.parent ? byId.get(x.parent) || x : x; if (projectOf(root) === p) { tools += x.tools; tok += x.tok; } }
+  let tok = 0;
+  for (const x of today) { const root = x.parent ? byId.get(x.parent) || x : x; if (projectOf(root) === p) tok += x.tok; }
   const list = S.sessions.filter(x => projectOf(x) === p).slice(0, 6);
   return h('div', {class: 'proj-detail'},
-    h('p', {class: 'proj-usage'}, tools || tok ? `오늘 도구 ${tools.toLocaleString()}회 · ${fmtK(tok)} tok` : '오늘은 아직 사용 기록이 없어요'),
+    h('p', {class: 'proj-usage', title: '입력 + 출력 토큰 (서브에이전트 포함)'}, tok ? `오늘 ${fmtK(tok)} tok` : '오늘은 아직 사용 기록이 없어요'),
     list.length ? h('ul', {class: 'sess-list', 'aria-label': '지난 세션'}, ...list.map(x => {
       const open = S.tabs.find(t => t.sid === x.id);
       return h('li', {}, h('button', {class: 'sess', type: 'button', title: open ? '열려 있는 탭으로 가기' : '이 대화를 새 탭에서 이어서 열기', onclick: () => openSession(x)},
@@ -299,24 +299,30 @@ api.onExit(id => {
 });
 new ResizeObserver(() => fitVisible()).observe($('terms'));
 
-// ── 화면 나누기 (⌘D): 한 프로젝트의 두 탭을 나란히 ──
+// ── 화면 나누기: ⌘D 좌우(2열) · ⌘⇧D 위아래(2행), 한 프로젝트의 두 탭을 함께 ──
 function showPanes() {
   const sp = S.split[S.current], two = sp && tab(sp.a) && tab(sp.b);
-  $('terms').classList.toggle('split', !!two);
+  const terms = $('terms');
+  terms.classList.toggle('split', !!two);
+  terms.classList.toggle('rows', !!two && sp.layout === 'rows');
   for (const x of S.tabs) {
-    const left = two && x.id === sp.a, right = two && x.id === sp.b;
-    x.el.hidden = !(left || right || (!two && x.id === S.active));
-    x.el.classList.toggle('left', !!left); x.el.classList.toggle('right', !!right);
+    const a = two && x.id === sp.a, b = two && x.id === sp.b;  // a: 왼쪽 · 위, b: 오른쪽 · 아래
+    x.el.hidden = !(a || b || (!two && x.id === S.active));
+    x.el.classList.toggle('a', !!a); x.el.classList.toggle('b', !!b);
     x.el.classList.toggle('focus', !!two && x.id === S.active);
   }
 }
 function fitVisible() { for (const x of S.tabs) if (!x.el.hidden) x.fit.fit(); }
-async function toggleSplit() {
-  const dir = S.current, t = tab(S.active);
+async function toggleSplit(layout = 'cols') {  // 같은 방향을 다시 누르면 풀고, 다른 방향이면 바꾼다
+  const dir = S.current, t = tab(S.active), sp = dir && S.split[dir];
   if (!dir || !t) return;
-  if (S.split[dir]) { delete S.split[dir]; showPanes(); renderTabs(); return requestAnimationFrame(() => { fitVisible(); t.term.focus(); }); }
+  if (sp) {
+    if (sp.layout === layout) delete S.split[dir]; else sp.layout = layout;
+    showPanes(); renderTabs();
+    return requestAnimationFrame(() => { fitVisible(); t.term.focus(); });
+  }
   const list = projTabs(dir), other = list[list.indexOf(t) - 1] || list[list.indexOf(t) + 1] || await openTab(dir, 'shell', {quiet: true});
-  S.split[dir] = {a: t.id, b: other.id};
+  S.split[dir] = {a: t.id, b: other.id, layout};
   activate(t.id);
 }
 dark.addEventListener('change', () => { for (const t of S.tabs) t.term.options.theme = termTheme(); });
@@ -795,7 +801,8 @@ api.onMenu(action => ({
   'prev-tab': () => cycleTab(-1),
   'find': openFind,
   'settings': () => openSettings(),
-  'split': toggleSplit,
+  'split': () => toggleSplit('cols'),
+  'split-rows': () => toggleSplit('rows'),
 }[action] || (() => {}))());
 addEventListener('keydown', e => {  // ⌘1–9: 지금 프로젝트의 탭 이동
   if (e.metaKey && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {

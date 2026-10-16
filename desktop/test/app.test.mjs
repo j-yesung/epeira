@@ -147,10 +147,16 @@ test('다시 켤 때 대화는 그 탭을 처음 볼 때 이어서 연다', asyn
   assert.equal(await page.evaluate(id => !!tab(id), r.id), false);
 });
 
-test('화면 나누기 (⌘D)', async () => {
-  await page.evaluate(() => toggleSplit());
-  await until(page, () => document.getElementById('terms').classList.contains('split') && [...document.querySelectorAll('.term')].filter(e => !e.hidden).length === 2);
-  await page.evaluate(() => toggleSplit());
+test('화면 나누기: ⌘D 좌우 · ⌘⇧D 위아래 · 같은 걸 다시 누르면 풀기', async () => {
+  const panes = () => page.evaluate(() => [...document.querySelectorAll('.term')].filter(e => !e.hidden).map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; }));
+  await page.evaluate(() => toggleSplit('cols'));
+  await until(page, () => [...document.querySelectorAll('.term')].filter(e => !e.hidden).length === 2);
+  let p = await panes();
+  assert.ok(p[0][1] === p[1][1] && p[0][0] !== p[1][0], `좌우: ${JSON.stringify(p)}`);
+  await page.evaluate(() => toggleSplit('rows'));
+  p = await panes();
+  assert.ok(p[0][0] === p[1][0] && p[0][1] !== p[1][1], `위아래: ${JSON.stringify(p)}`);
+  await page.evaluate(() => toggleSplit('rows'));
   await until(page, () => !document.getElementById('terms').classList.contains('split') && [...document.querySelectorAll('.term')].filter(e => !e.hidden).length === 1);
 });
 

@@ -336,7 +336,8 @@ function buildMenu() {
     {label: '보기', submenu: [
       {label: '사이드바', accelerator: 'CmdOrCtrl+B', click: () => send('toggle-side')},
       {label: '궤도 패널', accelerator: 'CmdOrCtrl+J', click: () => send('toggle-orbit')},
-      {label: '화면 나누기', accelerator: 'CmdOrCtrl+D', click: () => send('split')},
+      {label: '화면 좌우로 나누기', accelerator: 'CmdOrCtrl+D', click: () => send('split')},
+      {label: '화면 위아래로 나누기', accelerator: 'CmdOrCtrl+Shift+D', click: () => send('split-rows')},
       {label: '대시보드 크게 보기', click: () => shell.openExternal(ORBIT + '/')},
       {type: 'separator'},
       {label: '다음 탭', accelerator: 'Ctrl+Tab', click: () => send('next-tab')},
