@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.13.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.13.1';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -1000,7 +1000,8 @@ function burst(n) {
   for (let i = 0; i < 7; i++) S.bursts.push({a: n.a ?? Math.random() * 6.283, sp: (Math.random() * .9 + .3) * (i % 2 ? 1 : -1), j: (Math.random() - .5) * 10, c, k: 1, t: now()});
 }
 
-function drawHub(g, t, focus, toolCount) {
+const RAYS = Array.from({length: 18}, (_, i) => i / 18 * 6.283 + .2);  // HUB 둘레의 가시 방향
+function drawHub(g, t, focus, toolCount, reaching) {  // reaching: 노드까지 뻗어 나간 가시 번호 (짧은 가시는 그리지 않음)
   const thinking = focus && !working && epoch() - focus.last < 60 && focus.kind !== 'done';  // 도구 사이: 모델이 다음 행동을 생각하는 중
   const f = Math.max(0, 1 - (t - S.hubFlash) / .8, working ? (Math.sin(t * 5) + 1) * .3 : 0, thinking ? (Math.sin(t * 2.4) + 1) * .22 : 0);
   const label = focus ? clip(nameOf(focus.id, focus.label || focus.agent), W < 600 ? 9 : 16) : 'HUB';  // 좁으면 짧게 (전체 이름은 칩·테이프에)
@@ -1008,9 +1009,11 @@ function drawHub(g, t, focus, toolCount) {
   ctx.font = `700 ${focus ? 21 : 30}px ${SANS}`;
   const bw = Math.max(108, ctx.measureText(label).width + 40), bh = 96, rx = bw / 2 + 10, ry = bh / 2 + 10;
   S.hubRect = focus ? {x: g.cx - bw * Z / 2, y: g.cy - bh * Z / 2, w: bw * Z, h: bh * Z} : null;
+  S.hubR = {rx: rx * Z, ry: ry * Z};  // 다음 프레임에 가시 뿌리 위치를 계산하려고 (선은 HUB 보다 먼저 그린다)
   ctx.strokeStyle = 'rgba(59,158,255,.55)'; ctx.lineWidth = 1.2;
   for (let i = 0; i < 18; i++) {
-    const a = i / 18 * 6.283 + .2, len = 8 + (i % 3) * 6 + f * 10, c = Math.cos(a), s = Math.sin(a);
+    if (reaching.has(i)) continue;
+    const a = RAYS[i], len = 8 + (i % 3) * 6 + f * 10, c = Math.cos(a), s = Math.sin(a);
     line(c * rx, s * ry, c * (rx + len), s * (ry + len));
     circle(c * (rx + len), s * (ry + len), 2.2, '#3b9eff');
   }
@@ -1079,7 +1082,17 @@ function frame() {
   place(stations, 1, dt, g);
   place(subs, .62, dt, g);
   const byKey = new Map(stations.map(n => [n.key, n])), subSet = new Set(subs);
-  const from = x => (x && subSet.has(x) ? x : {x: g.cx, y: g.cy});
+  // HUB 에서 나가는 선은 그 노드 쪽을 향한 HUB 가시의 뿌리에서 시작한다 → 일하는 동안 가시가 길어져 노드에 닿는 것처럼
+  const hub = S.hubR || {rx: 64, ry: 58}, reaching = new Set();
+  const edge = to => {
+    const dx = to.x - g.cx, dy = to.y - g.cy, d = Math.hypot(dx, dy) || 1;
+    let best = 0, bk = -2;
+    RAYS.forEach((a, i) => { const x = Math.cos(a) * hub.rx, y = Math.sin(a) * hub.ry, k = (x * dx + y * dy) / (Math.hypot(x, y) * d); if (k > bk) { bk = k; best = i; } });
+    reaching.add(best);
+    return {x: g.cx + Math.cos(RAYS[best]) * hub.rx, y: g.cy + Math.sin(RAYS[best]) * hub.ry};
+  };
+  const from = (x, to) => (x && subSet.has(x) ? x : edge(to));
+  for (const n of stations) n.reach = (n.reach || 0) + ((n.live ? 1 : 0) - (n.reach || 0)) * Math.min(1, dt * (n.live ? 5 : 3));  // 뻗을 땐 빠르게, 거둘 땐 천천히
 
   ctx.clearRect(0, 0, W, H);
   const glow = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, g.rx);
@@ -1099,30 +1112,36 @@ function frame() {
     const age = t - sub.flash;
     if (!sub.running.size && age > 2.5) continue;
     ctx.strokeStyle = `rgba(167,139,250,${sub.running.size ? .7 : (1 - age / 2.5) * .8})`;
-    line(g.cx, g.cy, sub.x, sub.y);
+    const e = edge(sub);
+    line(e.x, e.y, sub.x, sub.y);
   }
   for (const l of S.links) {
     const to = focus && l.root === focus.id && byKey.get(l.to);
     if (!to) continue;
-    const a = from(S.sess.get(l.from)), age = t - l.t;
+    const a = from(S.sess.get(l.from), to), age = t - l.t;
     ctx.strokeStyle = `rgba(59,158,255,${(1 - age / 2.5) * .9})`;
     line(a.x, a.y, to.x, to.y);
     if (age < .7) circle(a.x + (to.x - a.x) * age / .7, a.y + (to.y - a.y) * age / .7, 3, '#ffffff');
   }
   working = false;
+  const reachLine = (a, to, k, dots) => {  // a → to 의 k 만큼만: 끝에 가시 끝처럼 점, 닿은 뒤엔 점이 흐른다
+    const x = a.x + (to.x - a.x) * k, y = a.y + (to.y - a.y) * k;
+    line(a.x, a.y, x, y);
+    circle(x, y, 2.4, '#3b9eff');
+    if (dots) for (let i = 0; i < 3; i++) { const q = ((t * .9 + i / 3) % 1) * k; circle(a.x + (to.x - a.x) * q, a.y + (to.y - a.y) * q, 3, '#ffffff'); }
+  };
+  ctx.strokeStyle = 'rgba(59,158,255,.85)';
   for (const [x, r] of runs) {
     const to = r.key && byKey.get(r.key);
     if (!to) continue;
     working = true;
-    const a = from(x);
-    ctx.strokeStyle = 'rgba(59,158,255,.85)';
-    line(a.x, a.y, to.x, to.y);
-    for (let i = 0; i < 3; i++) { const q = (t * .9 + i / 3) % 1; circle(a.x + (to.x - a.x) * q, a.y + (to.y - a.y) * q, 3, '#ffffff'); }
+    reachLine(from(x, to), to, to.reach, to.reach > .9);
   }
+  for (const n of stations) if (!n.live && n.reach > .02) reachLine(edge(n), n, n.reach, false);  // 도구가 끝나면 가시가 다시 줄어든다
 
   let tools = 0;
   if (focus) for (const n of focus.stations.values()) tools += n.count;
-  drawHub(g, t, focus, tools);
+  drawHub(g, t, focus, tools, reaching);
   const cards = [...stations.map(n => ['st', n]), ...subs.map(x => ['sub', x])].sort((a, b) => a[1].y - b[1].y);
   for (const [type, n] of cards) {
     if (type === 'st') {
