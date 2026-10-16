@@ -24,6 +24,7 @@
   <section class="center" aria-label="터미널">
     <div class="tabbar drag">
       <div class="tabs" id="tabs" role="tablist"></div>
+      <button class="icon-btn no-drag" id="tab-more" type="button" title="탭 목록" aria-label="탭 목록" hidden><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="icon-btn no-drag" id="new-shell" type="button" title="새 터미널 탭 (⌘T)" aria-label="새 터미널 탭"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <div class="tab-actions no-drag">
         <button class="btn" id="new-claude" type="button" title="Claude 새 세션 (⇧⌘C)"><span class="k"><img src="assets/claude.svg" alt=""></span><span class="label">Claude</span></button>
@@ -64,6 +65,7 @@
 </div>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<div class="menu" id="menu" role="menu" hidden></div>
 <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
 <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
 <script src="node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>

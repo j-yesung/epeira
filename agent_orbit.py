@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-VERSION = '0.16.0'
+VERSION = '0.17.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -550,9 +550,22 @@ def summarize(events):
             x['turns'] += 1
         elif k == 'error':
             x['errors'] += 1
+        if k == 'you' and not x.get('title'):
+            x['title'] = e['text']  # 첫 질문 = 세션 제목 (사이드바 · 명령 팔레트)
         if k != 'stat':
             x['kind'], x['text'] = k, e['text']
     return sorted(out.values(), key=lambda x: -x['last'])
+
+
+def search(q, days=7):
+    """최근 기록에서 질문 · 명령 · 파일 이름 찾기 (앱의 명령 팔레트). 최근 것부터 50개"""
+    q, out = q.strip().lower()[:100], deque(maxlen=50)
+    if len(q) < 2:
+        return []
+    for e in read_events(time.time() - days * 86400):
+        if e.get('kind') != 'stat' and q in (e.get('text') or '').lower():
+            out.append({k: e.get(k) for k in ('id', 'parent', 'agent', 'label', 'cwd', 'kind', 'text', 'ts')})
+    return list(reversed(out))
 
 
 def summary(since, until):
@@ -1116,6 +1129,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.stream()
         if p == '/api/summary':
             return self.reply(200, summary(*span(q)))
+        if p == '/api/search':
+            return self.reply(200, {'results': search(q.get('q', ''))})
         if p.startswith('/api/sessions/'):
             return self.reply(200, {'events': session_events(unquote(p[len('/api/sessions/'):]), *span(q))})
         if p == '/api/preview':

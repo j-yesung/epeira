@@ -26,6 +26,15 @@ const send = (app, e) => app.evaluate(({BrowserWindow}, ev) => BrowserWindow.get
 const answer = (app, response) => app.evaluate(({dialog}, r) => { dialog.showMessageBox = async () => ({response: r}); dialog.showMessageBoxSync = () => r; }, response);
 
 let app, page;
+const stub = () => app.evaluate(({ipcMain}, dir) => {  // 가짜 수집기 응답: 지난 세션 · 기록 검색 · 상태
+  const now = Date.now() / 1000;
+  ipcMain.removeHandler('orbit:get');
+  ipcMain.handle('orbit:get', (_, p) => (p.startsWith('/api/summary') ? {sessions: [
+    {id: 'sess-x', agent: 'claude', cwd: dir, label: 'alpha', title: '첫 질문 X', text: 'Bash ls', last: now - 3600},
+    {id: 'sess-z', agent: 'claude', cwd: dir, label: 'alpha', title: '로그인 버그 고쳐줘', text: 'Bash npm test', last: now - 7200}]}
+    : p.startsWith('/api/search') ? {results: [{id: 'sess-z', agent: 'claude', cwd: dir, label: 'alpha', kind: 'run', text: 'Bash npm test', ts: now - 60}]}
+    : p.startsWith('/api/status') ? {version: 'test', port: 9, agents: {}, claudeLimits: false} : null));
+}, alpha);
 after(async () => { if (app) await app.close().catch(() => {}); rmSync(tmp, {recursive: true, force: true}); });
 
 test('터미널은 프로젝트마다 따로: 바꿔도 새로 열리지 않고 그 프로젝트 탭만 보인다', async () => {
@@ -131,14 +140,12 @@ test('궤도 HUB 이름을 바꾸면 탭 이름도 바뀐다', async () => {
 });
 
 test('지난 세션 목록: 열려 있는 세션을 누르면 그 탭으로', async () => {
-  await app.evaluate(({ipcMain}, dir) => {
-    ipcMain.removeHandler('orbit:get');
-    ipcMain.handle('orbit:get', (_, p) => (p.startsWith('/api/summary') ? {sessions: [{id: 'sess-x', agent: 'claude', cwd: dir, label: 'alpha', text: '버그 고치기', last: Date.now() / 1000 - 3600}]} : null));
-  }, alpha);
+  await stub();
   await page.evaluate(() => selectProject(S.projects[1].path));
   await page.evaluate(() => loadSessions());
   await page.evaluate(() => selectProject(S.projects[0].path));
   await until(page, () => !!document.querySelector('.proj.on .sess'));
+  assert.deepEqual(await page.$$eval('.proj.on .sess-name', els => els.map(e => e.textContent)), ['API 서버', '로그인 버그 고쳐줘'], '직접 붙인 이름 > 첫 질문');
   await page.click('.proj.on .sess');
   assert.equal(await page.evaluate(() => tab(S.active).sid), 'sess-x');
 });
@@ -194,4 +201,46 @@ test('다시 켜면 칸 배치도 돌아온다', async () => {
   page = await app.firstWindow();
   await app.evaluate(({Notification}) => { Notification.isSupported = () => false; });
   await until(page, () => typeof S !== 'undefined' && S.tabs.length > 0 && projTabs().filter(t => !t.el.hidden).length === 2);
+});
+
+test('나눈 칸마다 이름표', async () => {
+  await until(page, () => projTabs().filter(t => !t.el.hidden).length === 2);
+  const names = await page.$$eval('.term.paned .pane-name', els => els.filter(e => e.offsetParent).map(e => e.textContent));
+  assert.equal(names.length, 2);
+  await page.evaluate(() => unsplit());
+});
+
+test('명령 팔레트 (⌘P): 프로젝트로 이동 · 기록 검색', async () => {
+  await stub();
+  await page.evaluate(() => openPalette());
+  await page.fill('.pal-q', 'beta');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => S.current === S.projects[1].path), true);
+  await page.evaluate(() => { openPalette(); });
+  await page.fill('.pal-q', 'npm');
+  await until(page, () => [...document.querySelectorAll('.pal-g')].some(e => e.textContent === '기록'));
+  await page.keyboard.press('Escape');
+});
+
+test('설정 창 목차 · 단축키 안내', async () => {
+  await page.evaluate(() => openSettings(undefined, 'terminal'));
+  await until(page, () => document.querySelector('.set-nav [aria-current]') && document.querySelector('.set-nav [aria-current]').textContent === '터미널');
+  await page.evaluate(() => openShortcuts());
+  assert.equal(await page.textContent('#modal-title'), '단축키');
+  await page.keyboard.press('Escape');
+});
+
+test('탭을 끌어 순서 바꾸기 · 넘치면 탭 목록 버튼', async () => {
+  await page.evaluate(async () => { for (let i = 0; i < 8; i++) await openTab(S.current, 'shell', {quiet: true}); renderTabs(); });
+  await until(page, () => !document.getElementById('tab-more').hidden);
+  const last = await page.evaluate(() => { const l = projTabs(); moveTab(l[l.length - 1].id, l[0].id); return l[l.length - 1].id; });
+  assert.equal(await page.evaluate(() => projTabs()[0].id), last, '마지막 탭을 맨 앞으로');
+});
+
+test('놓친 알림은 종 아이콘에 모인다', async () => {
+  const id = await page.evaluate(() => projTabs().find(t => t.id !== S.active).id);  // 보고 있지 않은 탭
+  await send(app, {kind: 'tab', tab: id, id: 'sess-y'});
+  await send(app, {kind: 'start', id: 'sess-y', agent: 'claude', tool: 't9', text: 'Bash ls', ts: Date.now() / 1000});
+  await send(app, {kind: 'done', id: 'sess-y', agent: 'claude', text: 'turn complete', ts: Date.now() / 1000});
+  await until(page, () => S.inbox.length > 0 && !!document.querySelector('.sb-count'));
 });

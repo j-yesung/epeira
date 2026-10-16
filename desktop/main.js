@@ -158,7 +158,7 @@ const collectorStatus = () => getJSON('/api/status');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // 앱 안 설정 화면: 상태 · 미리 보기는 읽기만, 쓰기는 정해진 동작만 (연결 · 해제 · 승인 · 설정)
-ipcMain.handle('orbit:get', (_, p) => (/^\/api\/(status|preview|summary)(\?|$)/.test(p) ? getJSON(p, 25000) : null));
+ipcMain.handle('orbit:get', (_, p) => (/^\/api\/(status|preview|summary|search)(\?|$)/.test(p) ? getJSON(p, 25000) : null));
 const WRITES = new Set(['/api/connect', '/api/disconnect', '/api/trust', '/api/settings', '/api/autostart', '/api/rename']);
 ipcMain.handle('orbit:post', (_, p, body) => (WRITES.has(p) ? postJSON(p, body) : null));
 
@@ -334,6 +334,9 @@ function buildMenu() {
       {label: '찾기…', accelerator: 'CmdOrCtrl+F', click: () => send('find')},
     ]},
     {label: '보기', submenu: [
+      {label: '명령 팔레트…', accelerator: 'CmdOrCtrl+P', click: () => send('palette')},
+      {label: '단축키 안내', accelerator: 'CmdOrCtrl+/', click: () => send('shortcuts')},
+      {type: 'separator'},
       {label: '사이드바', accelerator: 'CmdOrCtrl+B', click: () => send('toggle-side')},
       {label: '궤도 패널', accelerator: 'CmdOrCtrl+J', click: () => send('toggle-orbit')},
       {label: '화면 나누기', submenu: [

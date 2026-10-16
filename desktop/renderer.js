@@ -32,7 +32,7 @@ const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).t
 // 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 — GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
 const fontsReady = document.fonts.load('13px "Tycho Keys"', '⌘⌥⇧⏎↑').catch(() => {});
 
-const S = {projects: [], current: null, tabs: [], active: null, last: {}, layout: {}, zoom: {}, sessions: [], names: {}, git: {}, update: null,
+const S = {projects: [], current: null, tabs: [], active: null, last: {}, layout: {}, zoom: {}, sessions: [], names: {}, git: {}, update: null, inbox: [], settingsTab: 'agents',
   collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
 // 터미널은 프로젝트마다 따로: 탭 줄엔 지금 프로젝트의 탭만, last 는 프로젝트별로 마지막에 보던 탭
 // layout 은 프로젝트별 칸 나누기 트리 — 칸 {tab} 또는 나눔 {dir: 'cols'(좌우) | 'rows'(위아래), ratio, a, b}, zoom 은 한 칸 크게 보기
@@ -59,6 +59,11 @@ const tab = id => S.tabs.find(t => t.id === id);
 const project = dir => S.projects.find(p => p.path === dir);
 const inPath = (cwd, dir) => !!cwd && (cwd === dir || cwd.startsWith(dir.endsWith('/') ? dir : dir + '/'));
 const projectOf = x => S.projects.find(p => (x.cwd ? inPath(x.cwd, p.path) : x.label === p.name));  // 세션이 어느 프로젝트 것인지 (경로를 모르면 폴더 이름)
+const sessionName = x => S.names[x.id] || x.title || x.text || x.label;  // 직접 붙인 이름 > 첫 질문 > 마지막 동작
+function shortPath(p) {  // 홈은 ~, 길면 가운데를 줄여 마지막 폴더가 보이게
+  const parts = tilde(p).split('/');
+  return parts.length > 4 ? `${parts[0]}/…/${parts.slice(-2).join('/')}` : parts.join('/');
+}
 const ago = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
 // 앱 설정 (이 컴퓨터의 이 앱에만): 알림 · 터미널
 const PREFS = {notify: true, notifyDone: true, notifyWait: true, sound: true, fontSize: 13, copyOnSelect: false, optionMeta: true};
@@ -120,7 +125,7 @@ function renderProjects() {
     const tabs = projTabs(p.path), open = tabs.filter(t => !t.exited).length;
     // 다른 프로젝트에서 일어난 일도 보이게: 승인 대기 > 새 응답 > 일하는 중
     const state = tabs.some(t => t.waiting) ? 'wait' : tabs.some(t => t.unread) ? 'new' : tabs.some(t => t.busy) ? 'busy' : '';
-    const g = S.git[p.path], sub = !p.exists ? '폴더를 찾을 수 없어요' : g ? `⎇ ${g.branch}${g.changes ? ` · 변경 ${g.changes}` : ''}` : tilde(p.path);
+    const g = S.git[p.path], sub = !p.exists ? '폴더를 찾을 수 없어요' : g ? `⎇ ${g.branch}${g.changes ? ` · 변경 ${g.changes}` : ''}` : shortPath(p.path);
     return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path},
       h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
         h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
@@ -145,7 +150,7 @@ function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 쓴 토큰 + 
     list.length ? h('ul', {class: 'sess-list', 'aria-label': '지난 세션'}, ...list.map(x => {
       const open = S.tabs.find(t => t.sid === x.id);
       return h('li', {}, h('button', {class: 'sess', type: 'button', title: open ? '열려 있는 탭으로 가기' : '이 대화를 새 탭에서 이어서 열기', onclick: () => openSession(x)},
-        kindIcon(x.agent), h('span', {class: 'sess-name'}, S.names[x.id] || x.text || x.label), open ? h('i', {class: 'st new', title: '탭에 열려 있어요'}) : null, h('small', {}, ago(x.last))));
+        kindIcon(x.agent), h('span', {class: 'sess-name', title: sessionName(x)}, sessionName(x)), open ? h('i', {class: 'st new', title: '탭에 열려 있어요'}) : null, h('small', {}, ago(x.last))));
     })) : null);
 }
 
@@ -189,6 +194,10 @@ async function openTab(dir, kind = 'shell', opts = {}) {
     term, fit, search, el, exited: false, busy: false, waiting: false, unread: false, pendingRun};
   S.tabs.push(t);
   if (pendingRun) term.write('\x1b[90m↻ 이 탭을 열면 이전 대화를 이어서 열어요\x1b[0m\r\n');
+  // 나눈 화면에서 칸 위에 보이는 이름표 (어떤 탭인지 · 닫기)
+  t.hd = h('div', {class: 'pane-hd'}, kindIcon(kind), h('span', {class: 'pane-name'}),
+    h('button', {class: 'pane-x', type: 'button', title: '칸 닫기 (⌘W)', 'aria-label': '칸 닫기', onclick: e => { e.stopPropagation(); closeTab(id); }}, '×'));
+  el.prepend(t.hd);
   term.onSelectionChange(() => { if (prefs.copyOnSelect && term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {}); });
   el.addEventListener('mousedown', () => { if (S.active !== id) activate(id); });  // 나눈 화면: 누른 쪽이 지금 탭
   term.onData(d => api.write(id, d));
@@ -266,9 +275,37 @@ function renderTabs() {
       onclick: () => (S.active === t.id ? t.term.focus() : activate(t.id)), ondblclick: () => renameTab(t, main)},
       kindIcon(t.kind), h('span', {}, label), state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null, i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null);
     const pane = t.id !== S.active && !t.el.hidden;  // 나눈 화면의 다른 칸에 보이는 탭
-    return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${pane ? ' pane' : ''}${t.exited ? ' dead' : ''}`, title: `${t.dir}\n두 번 눌러 이름 바꾸기`}, main,
+    const div = h('div', {class: `tab${t.id === S.active ? ' on' : ''}${pane ? ' pane' : ''}${t.exited ? ' dead' : ''}`, title: `${t.dir}\n두 번 눌러 이름 바꾸기 · 끌어서 순서 바꾸기`, draggable: 'true',
+      ondragstart: e => { e.dataTransfer.setData('text/tycho-tab', t.id); e.dataTransfer.effectAllowed = 'move'; },
+      ondragover: e => { if (e.dataTransfer.types.includes('text/tycho-tab')) { e.preventDefault(); div.classList.add('drop'); } },
+      ondragleave: () => div.classList.remove('drop'),
+      ondrop: e => { e.preventDefault(); div.classList.remove('drop'); moveTab(e.dataTransfer.getData('text/tycho-tab'), t.id); }}, main,
       h('button', {class: 'tab-x', type: 'button', title: '탭 닫기 (⌘W)', 'aria-label': `${label} 탭 닫기`, onclick: () => closeTab(t.id)}, '×'));
+    return div;
   }));
+  for (const t of S.tabs) t.hd.querySelector('.pane-name').textContent = tabLabel(t);
+  requestAnimationFrame(() => {  // 탭이 넘치면 목록 버튼, 지금 탭은 보이게
+    const el = $('tabs');
+    $('tab-more').hidden = el.scrollWidth <= el.clientWidth + 1;
+    const on = el.querySelector('.tab.on');
+    if (on) on.scrollIntoView({block: 'nearest', inline: 'nearest'});
+  });
+}
+
+function moveTab(id, beforeId) {  // 끌어 놓은 자리로 (같은 프로젝트 안에서)
+  const t = tab(id), b = tab(beforeId);
+  if (!t || !b || t === b || t.dir !== b.dir) return;
+  S.tabs.splice(S.tabs.indexOf(t), 1);
+  S.tabs.splice(S.tabs.indexOf(b), 0, t);
+  renderTabs(); saveTabs();
+}
+const swapLeaves = (n, a, b) => (n.tab ? (n.tab === a ? {tab: b} : n.tab === b ? {tab: a} : n) : {...n, a: swapLeaves(n.a, a, b), b: swapLeaves(n.b, a, b)});
+function dropTabOnPane(id, x, y) {  // 탭을 칸에 끌어 놓기: 그 칸에 보여 준다 (이미 다른 칸에 있으면 자리를 바꾼다)
+  const t = tab(id), root = S.layout[S.current];
+  if (!t || t.dir !== S.current) return;
+  const target = projTabs().find(o => { if (o.el.hidden) return false; const r = o.el.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; });
+  if (root && target && target.id !== id) S.layout[S.current] = hasLeaf(root, id) ? swapLeaves(root, id, target.id) : replaceLeaf(root, target.id, {tab: id});
+  activate(id);
 }
 
 function renameTab(t, main) {  // 탭을 두 번 누르면 이름 바꾸기 (비우면 원래 이름)
@@ -350,6 +387,8 @@ function layoutPanes() {  // 지금 프로젝트의 칸 배치대로 터미널�
     const r = shown.get(t.id);
     t.el.hidden = !r;
     t.el.classList.toggle('focus', !!r && shown.size > 1 && t.id === S.active);
+    t.el.classList.toggle('paned', !!r && shown.size > 1);
+    if (r) t.hd.querySelector('.pane-name').textContent = tabLabel(t);
     if (!r) continue;
     Object.assign(t.el.style, {left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%`});
     if (t.pendingRun) { api.write(t.id, t.pendingRun + '\r'); t.pendingRun = null; }  // 다시 켠 뒤 처음 보일 때 대화를 이어 연다
@@ -482,8 +521,13 @@ function linkTab(tabId, sid) {
 }
 const seen = t => document.hasFocus() && S.active === t.id;
 function alertTab(t, msg, detail, type) {  // type: done(응답 끝) · wait(승인 · 입력 대기) — 설정에서 끌 수 있다
-  if (seen(t) || !prefs.notify || !prefs[type === 'wait' ? 'notifyWait' : 'notifyDone']) return;
-  api.notify({title: `${t.base} · ${tabLabel(t)}`, body: detail ? `${msg} — ${detail}` : msg, tab: t.id, silent: !prefs.sound});
+  if (seen(t)) return;
+  const title = `${t.base} · ${tabLabel(t)}`, body = detail ? `${msg} — ${detail}` : msg;
+  S.inbox.unshift({at: Date.now(), tab: t.id, title, body, read: false});
+  S.inbox.length = Math.min(S.inbox.length, 30);
+  renderStatusbar();
+  if (!prefs.notify || !prefs[type === 'wait' ? 'notifyWait' : 'notifyDone']) return;
+  api.notify({title, body, tab: t.id, silent: !prefs.sound});
 }
 function updateBadge() { api.badge(S.tabs.filter(t => t.waiting || t.unread).length); }
 api.onEvent(e => {
@@ -515,7 +559,7 @@ api.onEvent(e => {
   renderTabs(); renderProjects(); updateBadge();
 });
 api.onActivateTab(id => { if (tab(id)) activate(id); });
-addEventListener('focus', () => { const t = tab(S.active); if (t && t.unread) { t.unread = false; renderTabs(); updateBadge(); } });
+addEventListener('focus', () => { tellActive(); const t = tab(S.active); if (t && t.unread) { t.unread = false; renderTabs(); updateBadge(); } });
 
 // ── 터미널 찾기 (⌘F) ──
 const FIND = {decorations: {matchBackground: '#1e4f80', activeMatchBackground: '#3b9eff', matchOverviewRuler: '#3b9eff', activeMatchColorOverviewRuler: '#5cc2ff'}};
@@ -575,13 +619,17 @@ sideEl.addEventListener('drop', async e => {
 });
 $('terms').addEventListener('drop', e => {
   e.preventDefault();
+  const dragged = e.dataTransfer.getData('text/tycho-tab');
+  if (dragged) return dropTabOnPane(dragged, e.clientX, e.clientY);
   const t = tab(S.active), paths = dropped(e);
   if (t && paths.length) { t.term.paste(paths.map(shq).join(' ') + ' '); t.term.focus(); }
 });
 
 // ── 궤도 패널: 로컬 수집기의 대시보드를 그대로 띄운다 ──
 const view = $('orbit-view');
-view.addEventListener('dom-ready', () => { S.orbitReady = true; tellOrbit(); });
+const tellActive = () => S.orbitReady && view.executeJavaScript(`window.aoSetActive && aoSetActive(${document.hasFocus()})`).catch(() => {});
+view.addEventListener('dom-ready', () => { S.orbitReady = true; tellOrbit(); tellActive(); });
+addEventListener('blur', () => setTimeout(tellActive, 50));  // 앱이 뒤로 가면 궤도 애니메이션을 초당 8번으로 (배터리)
 view.addEventListener('console-message', e => {  // 궤도 패널의 "탭으로 열기 · 이 탭으로 가기" (대시보드가 콘솔로 알려 준다)
   const m = /^tycho:(open|focus) (\{.*\})$/.exec(e.message || '');
   if (!m) return;
@@ -693,24 +741,36 @@ function hidePop() { $('sb-pop').hidden = true; S.pop = null; }
 
 const ICON = {
   refresh: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  bell: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4.5 11.5V7.5a3.5 3.5 0 0 1 7 0v4l1 1H3.5zM6.8 14h2.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   gear: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
 };
+// 놓친 알림: 보고 있지 않을 때 생긴 응답 끝 · 승인 대기를 모아 둔다 (macOS 알림을 꺼도)
+function inboxBtn() {
+  const unread = S.inbox.filter(x => !x.read).length;
+  const b = iconBtn('bell', unread ? `놓친 알림 ${unread}개` : '알림 기록', () => {
+    S.inbox.forEach(x => { x.read = true; });
+    showMenu(b, S.inbox.length ? [...S.inbox.map(x => ({label: x.title, sub: `${x.body} · ${ago(x.at / 1000)}`, run: () => { if (tab(x.tab)) activate(x.tab); }})),
+      {sep: true}, {label: '모두 지우기', run: () => { S.inbox = []; renderStatusbar(); }}] : [{label: '아직 알림이 없어요', disabled: true}], true);
+    renderStatusbar();
+  });
+  if (unread) b.append(h('i', {class: 'sb-count'}, unread));
+  return b;
+}
 function iconBtn(icon, label, onclick) { const b = h('button', {class: 'sb-btn', type: 'button', title: label, 'aria-label': label, onclick}); b.innerHTML = ICON[icon]; return b; }
 
 function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트별 오늘 사용량과 한도 요약 · 새로고침 · 설정
   const u = S.usage, bar = $('statusbar');
   const refresh = iconBtn('refresh', '새로고침', refreshAll), gear = iconBtn('gear', '설정 (⌘,)', () => openSettings());
   if (!u || !u.ok) {
-    return bar.replaceChildren(h('span', {class: 'sb-item'}, h('i', {class: 'led'}), '수집기가 꺼져 있어요'), refresh, h('span', {class: 'grow'}), gear);
+    return bar.replaceChildren(h('span', {class: 'sb-item'}, h('i', {class: 'led'}), '수집기가 꺼져 있어요'), refresh, h('span', {class: 'grow'}), inboxBtn(), gear);
   }
   const agent = key => {
     const a = u.by[key];
     if (!a) return null;
     const wins = limitWindows((u.limits || {})[key]);
     const item = h('span', {class: a.connected ? 'sb-item hover' : 'sb-item hover off', tabindex: '0', onmouseenter: () => showPop(item, key), onmouseleave: hidePop, onfocus: () => showPop(item, key), onblur: hidePop},
-      h('img', {src: LOGO[key], alt: ''}), h('b', {}, a.calls.toLocaleString()), h('span', {class: 'sb-dim'}, `${fmtK(a.tin + a.tout)} tok`),
-      wins.length ? h('span', {class: 'sb-lim'}, ...wins.map((w, i) => h('span', {class: level(w.used)}, `${i ? ' · ' : ''}${w.short} ${w.used}%`))) : null,
-      a.connected ? null : h('span', {class: 'sb-dim'}, '연결 안 됨'));
+      h('img', {src: LOGO[key], alt: a.connected ? a.name : `${a.name} (연결 안 됨)`}), h('span', {class: 'sb-dim'}, '도구'), h('b', {}, a.calls.toLocaleString()), h('span', {class: 'sb-dim'}, `· ${fmtK(a.tin + a.tout)} tok`),
+      wins.length ? h('span', {class: 'sb-lim'}, ...wins.map((w, i) => h('span', {class: level(w.used)}, `${i ? ' · ' : ''}${w.short} ${w.used}%`))) : null);
     return item;
   };
   const needs = Object.values(u.by).some(a => a.installed && !a.connected);
@@ -719,8 +779,8 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
     agent('claude'), agent('codex'), refresh,
     h('span', {class: 'grow'}),
     S.update ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(S.update.url)}, `새 버전 ${S.update.version} →`) : null,
-    needs ? h('button', {class: 'link', type: 'button', onclick: () => openSettings()}, '에이전트 연결하기 →') : null,
-    gear,
+    needs ? h('button', {class: 'link', type: 'button', onclick: () => openSettings('', 'agents')}, '에이전트 연결하기 →') : null,
+    inboxBtn(), gear,
   ].filter(Boolean));
   if (S.pop) { const k = S.pop.key, el = [...bar.querySelectorAll('.sb-item.hover')].find(x => x.matches(':hover')); if (el) showPop(el, k); else hidePop(); }  // 15초마다 다시 그려도 열린 상세는 유지
 }
@@ -736,10 +796,10 @@ async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널
 // ── 설정 창: 에이전트 연결 · 해제 · 승인(바뀌는 내용을 먼저 보여 주고 동의받음), 사용 한도 · 자동 실행 · 테마 ──
 const modal = $('modal');
 let modalClose = null;
-function showSheet(title, body, actions, onClose) {
+function showSheet(title, body, actions, onClose, wide) {
   modalClose = onClose || closeModal;
   modal.hidden = false;
-  modal.replaceChildren(h('div', {class: 'sheet'},
+  modal.replaceChildren(h('div', {class: wide ? 'sheet wide' : 'sheet'},
     h('div', {class: 'sheet-hd'}, h('h2', {id: 'modal-title'}, title), h('button', {class: 'icon-btn', type: 'button', 'aria-label': '닫기', onclick: () => modalClose()}, '×')),
     h('div', {class: 'sheet-body'}, ...body.filter(Boolean)),
     actions ? h('div', {class: 'sheet-acts'}, ...actions) : null));
@@ -802,14 +862,19 @@ function toggleRow(label, desc, on, flip) {
   return h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, label), desc ? h('small', {}, desc) : null), sw);
 }
 
-async function openSettings(intro) {
-  showSheet('설정', [h('div', {class: 'spinner'})]);
+const SETTINGS = [['agents', '에이전트'], ['alerts', '알림'], ['terminal', '터미널'], ['look', '화면'], ['help', '문제 해결']];
+async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내용 (긴 목록을 스크롤하지 않게)
+  section = S.settingsTab = section || S.settingsTab || 'agents';
+  if (modal.hidden || !modal.querySelector('.set')) showSheet('설정', [h('div', {class: 'spinner'})], null, null, true);
   const [st, theme] = await Promise.all([api.get('/api/status'), api.getTheme()]);
   if (modal.hidden) return;
   if (!st) return showSheet('설정', [h('p', {}, '수집기에 연결할 수 없어요. 상태바의 새로고침을 눌러 보세요.')]);
   const seg = h('span', {class: 'seg', role: 'group', 'aria-label': '테마'}, ...[['system', '시스템'], ['light', '라이트'], ['dark', '다크']].map(([v, label]) =>
     h('button', {type: 'button', 'aria-pressed': String(theme === v), onclick: async () => { await chooseTheme(v); openSettings(intro); }}, label)));
-  showSheet('설정', [
+  const todo = {agents: Object.values(st.agents || {}).some(a => a.installed && (!a.connected || a.notify === false)), help: !!S.update};  // 할 일이 있는 목차엔 점
+  const nav = h('nav', {class: 'set-nav', 'aria-label': '설정 목차'}, ...SETTINGS.map(([k, label]) =>
+    h('button', {type: 'button', 'aria-current': k === section ? 'page' : null, onclick: () => openSettings(intro, k)}, label, todo[k] ? h('i', {class: 'st new'}) : null)));
+  const page = {agents: [
     intro ? h('p', {class: 'intro'}, intro) : null,
     h('h3', {}, '에이전트'),
     ...Object.entries(st.agents || {}).map(([key, a]) => agentRow(key, a)),
@@ -817,11 +882,14 @@ async function openSettings(intro) {
     st.claudeLimits != null ? toggleRow('Claude 사용 한도 보기', 'Claude Code 로그인 정보로 5시간 · 주간 한도를 5분마다 가져와요 (비용 없음)', st.claudeLimits,
       async v => { const r = await api.post('/api/settings', {claudeLimits: v}); await loadUsage(); return r; }) : null,
     st.autostart != null ? toggleRow('로그인할 때 수집기 실행', '꺼도 Tycho 앱을 켜면 수집기가 함께 켜져요', st.autostart, v => api.post('/api/autostart', {enabled: v})) : null,
+  ], alerts: [
     h('h3', {}, '알림'),
     prefRow('알림 받기', 'Tycho 를 보고 있지 않을 때 macOS 알림과 Dock 배지로 알려요', 'notify'),
     prefs.notify ? prefRow('응답을 마쳤을 때', '', 'notifyDone') : null,
     prefs.notify ? prefRow('승인 · 입력을 기다릴 때', 'Claude Code 는 알림 켜기가 필요해요 (Codex 는 아직 이 신호를 보내지 않아요)', 'notifyWait') : null,
     prefs.notify ? prefRow('소리', '', 'sound') : null,
+    h('p', {class: 'set-note'}, '알림을 꺼도 놓친 알림은 상태바의 종 아이콘에 모여요.'),
+  ], terminal: [
     h('h3', {}, '터미널'),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '글자 크기')),
       h('span', {class: 'seg'}, h('button', {type: 'button', 'aria-label': '작게', onclick: () => { setPref('fontSize', Math.max(10, prefs.fontSize - 1)); openSettings(intro); }}, '−'),
@@ -829,8 +897,11 @@ async function openSettings(intro) {
         h('button', {type: 'button', 'aria-label': '크게', onclick: () => { setPref('fontSize', Math.min(22, prefs.fontSize + 1)); openSettings(intro); }}, '+'))),
     prefRow('선택하면 바로 복사', '터미널에서 글자를 드래그해 고르면 클립보드로', 'copyOnSelect'),
     prefRow('Option 키를 Meta 로', '켜면 Option+←/→ 로 단어 이동 (끄면 Option 으로 특수 문자 입력)', 'optionMeta'),
+  ], look: [
     h('h3', {}, '화면'),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '테마'), h('small', {}, '궤도 패널은 늘 어두운 밤하늘로 보여요')), seg),
+    h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '단축키 안내'), h('small', {}, '⌘/ 로도 열 수 있어요')), h('button', {class: 'btn small', type: 'button', onclick: openShortcuts}, '보기')),
+  ], help: [
     h('h3', {}, '문제 해결'),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `수집기 v${st.version} · 127.0.0.1:${st.port}`), h('small', {}, '정상으로 연결돼 있어요')),
       h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; const out = await api.doctor(); await navigator.clipboard.writeText(out).catch(() => {}); toast('진단 정보를 복사했어요 — 문의할 때 붙여넣어 주세요'); openSettings(intro); }}, '진단 정보 복사'),
@@ -838,9 +909,95 @@ async function openSettings(intro) {
     S.update ? h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `새 버전 ${S.update.version}`), h('small', {}, '받아서 응용 프로그램 폴더의 Tycho 를 바꿔 주세요')),
       h('button', {class: 'btn small primary', type: 'button', onclick: () => api.openExternal(S.update.url)}, '받기')) : null,
     h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '대시보드 크게 보기 →'),
-  ]);
+  ]}[section];
+  showSheet('설정', [h('div', {class: 'set'}, nav, h('div', {class: 'set-body'}, ...page.filter(Boolean)))], null, null, true);
   function prefRow(label, desc, key) { return toggleRow(label, desc, prefs[key], v => { setPref(key, v); }); }
 }
+
+// ── 단축키 안내 (⌘/) ──
+const KEYS = [
+  ['프로젝트 · 탭', [['⌘O', '폴더 열기'], ['⌘T', '새 터미널'], ['⇧⌘C', 'Claude 새 세션'], ['⇧⌘X', 'Codex 새 세션'], ['⌘W', '탭 · 칸 닫기'], ['⌘1 – 9', '탭 이동'], ['⌃⇥  ⌃⇧⇥', '다음 · 이전 탭'], ['두 번 누르기', '탭 이름 바꾸기'], ['끌기', '탭 순서 바꾸기 · 칸에 놓기']]],
+  ['화면 나누기', [['⌘D', '지금 칸을 좌우로'], ['⇧⌘D', '지금 칸을 위아래로'], ['⌥⌘ + 방향키', '칸 이동'], ['⇧⌘↩', '지금 칸 크게 보기'], ['⌥⌘W', '나누기 모두 풀기'], ['경계선 두 번 누르기', '칸 크기 같게']]],
+  ['찾기 · 보기', [['⌘P', '명령 팔레트 (프로젝트 · 탭 · 지난 세션 · 기록)'], ['⌘F', '터미널에서 찾기'], ['⌘B', '사이드바'], ['⌘J', '궤도 패널'], ['⌘,', '설정'], ['⌘/', '단축키 안내']]],
+];
+function openShortcuts() {
+  showSheet('단축키', KEYS.flatMap(([g, rows]) => [h('h3', {}, g), h('div', {class: 'keys-grid'}, ...rows.flatMap(([k, d]) => [h('kbd', {}, k), h('span', {}, d)]))]));
+}
+
+// ── 명령 팔레트 (⌘P): 명령 · 프로젝트 · 탭 · 지난 세션 · 기록 검색 ──
+function paletteItems() {
+  const cmd = (label, hint, run) => ({group: '명령', label, hint, run});
+  return [
+    cmd('새 터미널', '⌘T', () => openTab(S.current, 'shell')), cmd('Claude 새 세션', '⇧⌘C', () => openTab(S.current, 'claude')),
+    cmd('Codex 새 세션', '⇧⌘X', () => openTab(S.current, 'codex')), cmd('지금 칸을 좌우로 나누기', '⌘D', () => splitPane('cols')),
+    cmd('지금 칸을 위아래로 나누기', '⇧⌘D', () => splitPane('rows')), cmd('나누기 모두 풀기', '⌥⌘W', unsplit),
+    cmd('터미널에서 찾기', '⌘F', openFind), cmd('사이드바 보이기 · 숨기기', '⌘B', () => toggle('no-side')),
+    cmd('궤도 패널 보이기 · 숨기기', '⌘J', () => toggle('no-orbit')), cmd('폴더 열기', '⌘O', addProject),
+    cmd('설정', '⌘,', () => openSettings()), cmd('단축키 안내', '⌘/', openShortcuts),
+    cmd('다크 테마', '', () => chooseTheme('dark')), cmd('라이트 테마', '', () => chooseTheme('light')), cmd('시스템 테마 따르기', '', () => chooseTheme('system')),
+    ...S.projects.filter(p => p.exists).map(p => ({group: '프로젝트', label: p.name, sub: shortPath(p.path), run: () => selectProject(p.path)})),
+    ...S.tabs.map(t => ({group: '탭', icon: t.kind, label: tabLabel(t), sub: t.base, run: () => activate(t.id)})),
+    ...S.sessions.slice(0, 40).map(x => ({group: '지난 세션', icon: x.agent, label: sessionName(x), sub: `${(projectOf(x) || {}).name || x.label} · ${ago(x.last)}`, run: () => openSession(x)})),
+  ];
+}
+function openPalette() {
+  const input = h('input', {class: 'pal-q', type: 'text', placeholder: '명령 · 프로젝트 · 탭 · 지난 세션 · 기록 찾기', 'aria-label': '명령 팔레트', spellcheck: 'false', autocomplete: 'off'});
+  const list = h('ul', {class: 'pal-list', role: 'listbox'});
+  let items = [], sel = 0, found = [], timer = 0, seq = 0;
+  const choose = i => { const it = items[i]; if (!it) return; closeModal(); it.run(); };
+  const render = () => {
+    const q = input.value.trim().toLowerCase();
+    items = [...paletteItems().filter(it => !q || `${it.label} ${it.sub || ''} ${it.group}`.toLowerCase().includes(q)).slice(0, 40), ...found];
+    sel = Math.max(0, Math.min(sel, items.length - 1));
+    list.replaceChildren(...(items.length ? items.map((it, i) => h('li', {role: 'option', 'aria-selected': String(i === sel), class: i === sel ? 'on' : null,
+      onmousedown: e => { e.preventDefault(); choose(i); }, onmousemove: () => { if (sel !== i) { sel = i; render(); } }},
+      it.icon ? kindIcon(it.icon) : h('span', {class: 'k'}, '›'), h('span', {class: 'pal-text'}, h('b', {}, it.label), it.sub ? h('small', {}, it.sub) : null),
+      it.hint ? h('kbd', {}, it.hint) : h('span', {class: 'pal-g'}, it.group))) : [h('li', {class: 'pal-empty'}, '찾는 것이 없어요')]));
+    const on = list.querySelector('.on');
+    if (on) on.scrollIntoView({block: 'nearest'});
+  };
+  input.addEventListener('input', () => {
+    sel = 0; found = []; render();
+    clearTimeout(timer);
+    const q = input.value.trim(), my = ++seq;
+    if (q.length >= 2) timer = setTimeout(async () => {  // 지난 7일 기록(질문 · 명령 · 파일)도 찾는다
+      const r = await api.get(`/api/search?q=${encodeURIComponent(q)}`);
+      if (my !== seq || !r) return;
+      found = r.results.slice(0, 15).map(e => {
+        const root = e.parent ? S.sessions.find(x => x.id === e.parent) || {id: e.parent, agent: e.agent} : e;
+        return {group: '기록', icon: e.agent, label: e.text, sub: `${sessionName(root) || ''} · ${ago(e.ts)}`, run: () => openSession({...root, cwd: root.cwd || e.cwd, last: e.ts})};
+      });
+      render();
+    }, 200);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(items.length - 1, sel + 1); render(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, sel - 1); render(); }
+    else if (e.key === 'Enter') { e.preventDefault(); choose(sel); }
+  });
+  modalClose = closeModal;
+  modal.hidden = false;
+  modal.replaceChildren(h('div', {class: 'palette', role: 'dialog', 'aria-label': '명령 팔레트'}, input, list));
+  render();
+  input.focus();
+}
+
+// ── 작은 메뉴 (탭 목록 · 놓친 알림) ──
+const menuEl = $('menu');
+function showMenu(anchor, items, up) {
+  menuEl.replaceChildren(...items.map(it => (it.sep ? h('div', {class: 'menu-sep'}) : h('button', {type: 'button', role: 'menuitem', class: it.cls || null, disabled: it.disabled,
+    onclick: () => { hideMenu(); if (it.run) it.run(); }}, it.icon ? kindIcon(it.icon) : null, h('span', {class: 'menu-text'}, it.label, it.sub ? h('small', {}, it.sub) : null), it.hint ? h('kbd', {}, it.hint) : null))));
+  menuEl.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  menuEl.style.left = `${Math.max(8, Math.min(innerWidth - menuEl.offsetWidth - 8, r.left))}px`;
+  menuEl.style.top = up ? '' : `${r.bottom + 4}px`;
+  menuEl.style.bottom = up ? `${innerHeight - r.top + 4}px` : '';
+}
+function hideMenu() { menuEl.hidden = true; }
+document.addEventListener('mousedown', e => { if (!menuEl.hidden && !menuEl.contains(e.target)) hideMenu(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !menuEl.hidden) { e.preventDefault(); hideMenu(); } }, true);
+$('tab-more').onclick = () => showMenu($('tab-more'), projTabs().map(t => ({icon: t.kind, label: tabLabel(t), cls: t.id === S.active ? 'on' : null,
+  sub: t.waiting ? STATE.wait : t.busy ? STATE.busy : t.unread ? STATE.new : null, run: () => activate(t.id)})));
 
 // ── 레이아웃: 패널 너비 · 열고 닫기 ──
 const appEl = $('app');
@@ -909,6 +1066,8 @@ api.onMenu(action => ({
   'pane-down': () => moveFocus('down'),
   'pane-zoom': toggleZoom,
   'unsplit': unsplit,
+  'palette': openPalette,
+  'shortcuts': openShortcuts,
 }[action] || (() => {}))());
 addEventListener('keydown', e => {  // ⌘1–9: 지금 프로젝트의 탭 이동
   if (e.metaKey && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
