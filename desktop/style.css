@@ -154,12 +154,17 @@ kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 
 .term { position: absolute; inset: 0; padding: 10px 6px 6px 14px; background: var(--bg); }
 .term .xterm { height: 100%; }
 .term .xterm-viewport { background: var(--bg) !important; }
-/* 화면 나누기: ⌘D 좌우(2열) · ⌘⇧D 위아래(2행), 지금 탭은 위쪽에 파란 선 */
-.terms.split .term.a { right: 50%; border-right: 1px solid var(--line); }
-.terms.split .term.b { left: 50%; }
-.terms.split.rows .term.a { right: 0; bottom: 50%; border-right: 0; border-bottom: 1px solid var(--line); }
-.terms.split.rows .term.b { top: 50%; left: 0; }
-.terms.split .term.focus { box-shadow: inset 0 2px 0 var(--accent); }
+/* 화면 나누기: 칸 위치는 화면이 % 로 정하고, 지금 칸은 위쪽에 파란 선. 경계선은 끌어서 크기 조절 */
+.term.focus { box-shadow: inset 0 2px 0 var(--accent); }
+.divider { position: absolute; z-index: 3; }
+.divider.cols { width: 7px; margin-left: -3px; cursor: col-resize; }
+.divider.rows { height: 7px; margin-top: -3px; cursor: row-resize; }
+.divider::after { content: ''; position: absolute; background: var(--line-2); }
+.divider.cols::after { top: 0; bottom: 0; left: 3px; width: 1px; }
+.divider.rows::after { left: 0; right: 0; top: 3px; height: 1px; }
+.divider:hover::after, .divider.active::after { background: var(--accent); }
+.divider.cols:hover::after, .divider.cols.active::after { left: 2px; width: 3px; }
+.divider.rows:hover::after, .divider.rows.active::after { top: 2px; height: 3px; }
 /* 터미널 찾기 (⌘F) */
 .find { position: absolute; top: 60px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 2px; padding: 3px 3px 3px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--pop); box-shadow: 0 10px 28px var(--shadow); }
 .find input { width: 200px; border: 0; background: none; color: var(--text); font: 12px var(--sans); outline: none; }

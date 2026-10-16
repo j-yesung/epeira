@@ -147,17 +147,28 @@ test('다시 켤 때 대화는 그 탭을 처음 볼 때 이어서 연다', asyn
   assert.equal(await page.evaluate(id => !!tab(id), r.id), false);
 });
 
-test('화면 나누기: ⌘D 좌우 · ⌘⇧D 위아래 · 같은 걸 다시 누르면 풀기', async () => {
-  const panes = () => page.evaluate(() => [...document.querySelectorAll('.term')].filter(e => !e.hidden).map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; }));
-  await page.evaluate(() => toggleSplit('cols'));
-  await until(page, () => [...document.querySelectorAll('.term')].filter(e => !e.hidden).length === 2);
+test('화면 나누기: 지금 칸을 계속 나눠 n×n · 칸 이동 · 크게 보기 · 닫기 · 풀기', async () => {
+  const panes = () => page.evaluate(() => projTabs().filter(t => !t.el.hidden).map(t => { const r = t.el.getBoundingClientRect(); return {id: t.id, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width)}; }));
+  const first = await page.evaluate(() => S.active);
+  await page.evaluate(() => splitPane('cols'));  // [A | B]
+  await page.evaluate(() => splitPane('rows'));  // [A | B 위 / C 아래]
   let p = await panes();
-  assert.ok(p[0][1] === p[1][1] && p[0][0] !== p[1][0], `좌우: ${JSON.stringify(p)}`);
-  await page.evaluate(() => toggleSplit('rows'));
-  p = await panes();
-  assert.ok(p[0][0] === p[1][0] && p[0][1] !== p[1][1], `위아래: ${JSON.stringify(p)}`);
-  await page.evaluate(() => toggleSplit('rows'));
-  await until(page, () => !document.getElementById('terms').classList.contains('split') && [...document.querySelectorAll('.term')].filter(e => !e.hidden).length === 1);
+  assert.equal(p.length, 3, '세 칸');
+  const [b, c] = p.filter(x => x.id !== first).sort((m, n) => m.y - n.y);
+  assert.ok(b.x === c.x && c.y > b.y, `오른쪽 칸이 위아래로: ${JSON.stringify(p)}`);
+  await page.evaluate(() => moveFocus('left'));
+  assert.equal(await page.evaluate(() => S.active), first, '⌘⌥← 로 왼쪽 칸');
+  await page.evaluate(() => splitPane('cols'));  // 왼쪽 칸은 좁아서 더 못 나눈다
+  assert.equal((await panes()).length, 3, '공간이 부족하면 나누지 않는다');
+  await page.evaluate(() => toggleZoom());
+  assert.equal((await panes()).length, 1, '크게 보기');
+  await page.evaluate(() => toggleZoom());
+  assert.equal((await panes()).length, 3);
+  await answer(app, 0);
+  await page.evaluate(id => closeTab(id), c.id);
+  assert.equal((await panes()).length, 2, '칸을 닫으면 옆 칸이 채운다');
+  await page.evaluate(() => unsplit());
+  assert.equal((await panes()).length, 1, '나누기 모두 풀기');
 });
 
 test('사이드바에 git 브랜치', async () => {
@@ -169,4 +180,15 @@ test('터미널 글자 크기 설정', async () => {
   await page.evaluate(() => setPref('fontSize', 15));
   assert.equal(await page.evaluate(() => tab(S.active).term.options.fontSize), 15);
   await page.evaluate(() => setPref('fontSize', 13));
+});
+
+test('다시 켜면 칸 배치도 돌아온다', async () => {
+  await page.evaluate(() => splitPane('cols'));
+  await until(page, () => projTabs().filter(t => !t.el.hidden).length === 2);
+  await answer(app, 0);
+  await app.close();
+  app = await launch();
+  page = await app.firstWindow();
+  await app.evaluate(({Notification}) => { Notification.isSupported = () => false; });
+  await until(page, () => typeof S !== 'undefined' && S.tabs.length > 0 && projTabs().filter(t => !t.el.hidden).length === 2);
 });

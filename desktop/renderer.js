@@ -23,9 +23,10 @@ const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).t
 // 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 — GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
 const fontsReady = document.fonts.load('13px "Tycho Keys"', '⌘⌥⇧⏎↑').catch(() => {});
 
-const S = {projects: [], current: null, tabs: [], active: null, last: {}, split: {}, sessions: [], names: {}, git: {}, update: null,
+const S = {projects: [], current: null, tabs: [], active: null, last: {}, layout: {}, zoom: {}, sessions: [], names: {}, git: {}, update: null,
   collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
-// 터미널은 프로젝트마다 따로: 탭 줄엔 지금 프로젝트의 탭만, last 는 프로젝트별로 마지막에 보던 탭, split 은 프로젝트별 나란히 보는 두 탭 {a, b}
+// 터미널은 프로젝트마다 따로: 탭 줄엔 지금 프로젝트의 탭만, last 는 프로젝트별로 마지막에 보던 탭
+// layout 은 프로젝트별 칸 나누기 트리 — 칸 {tab} 또는 나눔 {dir: 'cols'(좌우) | 'rows'(위아래), ratio, a, b}, zoom 은 한 칸 크게 보기
 // tab = {id, dir, base, title, kind, sid, term, fit, search, el, exited, busy, waiting, unread, pendingRun}
 
 function h(tag, attrs = {}, ...kids) {
@@ -57,7 +58,7 @@ function setPref(k, v) {
   prefs[k] = v;
   store.set('prefs', JSON.stringify(prefs));
   for (const t of S.tabs) { t.term.options.fontSize = prefs.fontSize; t.term.options.macOptionIsMeta = prefs.optionMeta; }
-  fitVisible();
+  layoutPanes();
 }
 const projTabs = (dir = S.current) => S.tabs.filter(t => t.dir === dir);
 let toastTimer;
@@ -95,7 +96,7 @@ function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 �
   const open = projTabs(dir), t = tab(S.last[dir]) || open[open.length - 1];
   if (t) return activate(t.id);
   S.active = null;
-  showPanes();
+  layoutPanes();
   if (!$('find').hidden) closeFind();
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); saveTabs();
 }
@@ -194,12 +195,13 @@ async function openTab(dir, kind = 'shell', opts = {}) {
 function activate(id) {
   const t = tab(id);
   if (!t) return;
-  const sp = S.split[t.dir];
-  if (sp && id !== sp.a && id !== sp.b) { if (S.active === sp.a) sp.b = id; else sp.a = id; }  // 나눈 화면에 다른 탭을 고르면 지금 쪽 옆에
+  const root = S.layout[t.dir];
+  if (root && !hasLeaf(root, id)) {  // 칸에 없는 탭을 고르면 지금 칸에 그 탭을 보여 준다
+    S.layout[t.dir] = replaceLeaf(root, hasLeaf(root, S.active) ? S.active : firstLeaf(root), {tab: id});
+  }
   S.active = id; S.current = t.dir; S.last[t.dir] = id; t.unread = false;
-  showPanes();
-  if (t.pendingRun) { api.write(id, t.pendingRun + '\r'); t.pendingRun = null; }
-  requestAnimationFrame(() => { fitVisible(); t.term.focus(); });
+  layoutPanes();
+  requestAnimationFrame(() => t.term.focus());
   if (!$('find').hidden) { for (const x of S.tabs) x.search.clearDecorations(); find(1); }
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); updateBadge(); saveTabs();
 }
@@ -212,11 +214,16 @@ async function closeTab(id = S.active) {
   const list = projTabs(t.dir), i = list.indexOf(t);
   S.tabs.splice(S.tabs.indexOf(t), 1);
   if (S.last[t.dir] === id) delete S.last[t.dir];
-  const sp = S.split[t.dir];
-  if (sp && (sp.a === id || sp.b === id)) { delete S.split[t.dir]; showPanes(); }  // 나눈 화면의 한쪽을 닫으면 나누기를 푼다
+  let next = list[i + 1] || list[i - 1];  // 같은 프로젝트의 옆 탭으로
+  const root = S.layout[t.dir];
+  if (root && hasLeaf(root, id)) {  // 칸을 닫으면 옆 칸이 자리를 채운다
+    let sibling = null;
+    const rest = removeLeaf(root, id, s => { sibling = s; });
+    S.layout[t.dir] = rest && !rest.tab ? rest : null;
+    if (sibling) next = tab(firstLeaf(sibling)) || next;
+  }
   saveTabs(); updateBadge();
-  const next = list[i + 1] || list[i - 1];  // 같은 프로젝트의 옆 탭으로
-  if (S.active !== id) return renderTabs(), renderProjects();
+  if (S.active !== id) return layoutPanes(), renderTabs(), renderProjects();
   if (next) return activate(next.id);
   S.active = null;
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit();
@@ -249,7 +256,7 @@ function renderTabs() {
     const main = h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active),
       onclick: () => (S.active === t.id ? t.term.focus() : activate(t.id)), ondblclick: () => renameTab(t, main)},
       kindIcon(t.kind), h('span', {}, label), state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null, i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null);
-    const sp = S.split[t.dir], pane = sp && t.id !== S.active && (t.id === sp.a || t.id === sp.b);
+    const pane = t.id !== S.active && !t.el.hidden;  // 나눈 화면의 다른 칸에 보이는 탭
     return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${pane ? ' pane' : ''}${t.exited ? ' dead' : ''}`, title: `${t.dir}\n두 번 눌러 이름 바꾸기`}, main,
       h('button', {class: 'tab-x', type: 'button', title: '탭 닫기 (⌘W)', 'aria-label': `${label} 탭 닫기`, onclick: () => closeTab(t.id)}, '×'));
   }));
@@ -299,51 +306,133 @@ api.onExit(id => {
 });
 new ResizeObserver(() => fitVisible()).observe($('terms'));
 
-// ── 화면 나누기: ⌘D 좌우(2열) · ⌘⇧D 위아래(2행), 한 프로젝트의 두 탭을 함께 ──
-function showPanes() {
-  const sp = S.split[S.current], two = sp && tab(sp.a) && tab(sp.b);
-  const terms = $('terms');
-  terms.classList.toggle('split', !!two);
-  terms.classList.toggle('rows', !!two && sp.layout === 'rows');
-  for (const x of S.tabs) {
-    const a = two && x.id === sp.a, b = two && x.id === sp.b;  // a: 왼쪽 · 위, b: 오른쪽 · 아래
-    x.el.hidden = !(a || b || (!two && x.id === S.active));
-    x.el.classList.toggle('a', !!a); x.el.classList.toggle('b', !!b);
-    x.el.classList.toggle('focus', !!two && x.id === S.active);
+// ── 화면 나누기 (iTerm2 처럼): ⌘D 지금 칸을 좌우로 · ⌘⇧D 위아래로, 계속 나눠 n×n 까지 (프로젝트당 9칸) ──
+const MAX_PANES = 9, MIN_W = 320, MIN_H = 150;  // 칸이 너무 작으면 Claude Code 화면이 깨진다
+const leaves = n => (!n ? [] : n.tab ? [n.tab] : [...leaves(n.a), ...leaves(n.b)]);
+const hasLeaf = (n, id) => leaves(n).includes(id);
+const firstLeaf = n => leaves(n)[0];
+const replaceLeaf = (n, id, to) => (n.tab ? (n.tab === id ? to : n) : {...n, a: replaceLeaf(n.a, id, to), b: replaceLeaf(n.b, id, to)});
+function removeLeaf(n, id, onSibling) {  // 그 칸을 빼고 남은 트리 (옆 칸을 알려 준다)
+  if (n.tab) return n.tab === id ? null : n;
+  if (n.a.tab === id) { onSibling(n.b); return n.b; }
+  if (n.b.tab === id) { onSibling(n.a); return n.a; }
+  return {...n, a: removeLeaf(n.a, id, onSibling), b: removeLeaf(n.b, id, onSibling)};
+}
+const weight = (n, d) => (n.tab ? 1 : n.dir === d ? weight(n.a, d) + weight(n.b, d) : 1);
+function equalize(n) {  // 같은 방향으로 늘어선 칸들을 같은 크기로
+  if (!n || n.tab) return;
+  n.ratio = weight(n.a, n.dir) / (weight(n.a, n.dir) + weight(n.b, n.dir));
+  equalize(n.a); equalize(n.b);
+}
+
+function layoutPanes() {  // 지금 프로젝트의 칸 배치대로 터미널을 놓는다 (% 위치) + 경계선
+  const terms = $('terms'), root = S.layout[S.current], zoomed = root && S.zoom[S.current];
+  terms.querySelectorAll('.divider').forEach(d => d.remove());
+  const shown = new Map(), full = {x: 0, y: 0, w: 100, h: 100};
+  const place = (n, r) => {
+    if (n.tab) return shown.set(n.tab, r);
+    const cols = n.dir === 'cols', cut = cols ? r.w * n.ratio : r.h * n.ratio;
+    place(n.a, cols ? {...r, w: cut} : {...r, h: cut});
+    place(n.b, cols ? {...r, x: r.x + cut, w: r.w - cut} : {...r, y: r.y + cut, h: r.h - cut});
+    terms.append(divider(n, r, cols ? r.x + cut : r.y + cut));
+  };
+  if (root && !zoomed) place(root, full); else if (S.active) shown.set(S.active, full);
+  for (const t of S.tabs) {
+    const r = shown.get(t.id);
+    t.el.hidden = !r;
+    t.el.classList.toggle('focus', !!r && shown.size > 1 && t.id === S.active);
+    if (!r) continue;
+    Object.assign(t.el.style, {left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%`});
+    if (t.pendingRun) { api.write(t.id, t.pendingRun + '\r'); t.pendingRun = null; }  // 다시 켠 뒤 처음 보일 때 대화를 이어 연다
   }
+  terms.classList.toggle('zoomed', !!zoomed);
+  requestAnimationFrame(fitVisible);
+}
+function divider(n, r, at) {  // 칸 경계선: 끌어서 크기 조절, 두 번 누르면 모두 같은 크기로
+  const cols = n.dir === 'cols', el = h('div', {class: `divider ${n.dir}`, role: 'separator', 'aria-orientation': cols ? 'vertical' : 'horizontal',
+    style: cols ? `left:${at}%;top:${r.y}%;height:${r.h}%` : `top:${at}%;left:${r.x}%;width:${r.w}%`});
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); el.classList.add('active'); e.preventDefault(); });
+  el.addEventListener('pointermove', e => {
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    const box = $('terms').getBoundingClientRect(), size = cols ? box.width * r.w / 100 : box.height * r.h / 100;
+    const pos = cols ? (e.clientX - box.left) / box.width * 100 : (e.clientY - box.top) / box.height * 100;
+    const min = (cols ? 160 : 90) / size;  // 한쪽이 너무 작아지지 않게
+    n.ratio = Math.max(min, Math.min(1 - min, (pos - (cols ? r.x : r.y)) / (cols ? r.w : r.h)));
+    layoutPanes();
+  });
+  el.addEventListener('lostpointercapture', () => { el.classList.remove('active'); saveTabs(); });
+  el.addEventListener('dblclick', () => { equalize(S.layout[S.current]); layoutPanes(); saveTabs(); });
+  return el;
 }
 function fitVisible() { for (const x of S.tabs) if (!x.el.hidden) x.fit.fit(); }
-async function toggleSplit(layout = 'cols') {  // 같은 방향을 다시 누르면 풀고, 다른 방향이면 바꾼다
-  const dir = S.current, t = tab(S.active), sp = dir && S.split[dir];
-  if (!dir || !t) return;
-  if (sp) {
-    if (sp.layout === layout) delete S.split[dir]; else sp.layout = layout;
-    showPanes(); renderTabs();
-    return requestAnimationFrame(() => { fitVisible(); t.term.focus(); });
+
+async function splitPane(dir) {  // 지금 칸을 나누고 새 칸에 같은 프로젝트의 새 터미널
+  const p = S.current, t = tab(S.active);
+  if (!p || !t) return;
+  const root = S.layout[p] || {tab: t.id};
+  if (S.zoom[p]) { S.zoom[p] = false; layoutPanes(); }
+  if (leaves(root).length >= MAX_PANES) return toast(`한 프로젝트에 ${MAX_PANES}칸까지 나눌 수 있어요`);
+  const r = (S.layout[p] ? t.el : $('terms')).getBoundingClientRect();
+  if (dir === 'cols' ? r.width / 2 < MIN_W : r.height / 2 < MIN_H) return toast('나눌 공간이 부족해요 — 사이드바(⌘B)나 궤도 패널(⌘J)을 접으면 더 나눌 수 있어요');
+  const nt = await openTab(p, 'shell', {quiet: true});
+  S.layout[p] = replaceLeaf(root, t.id, {dir, ratio: .5, a: {tab: t.id}, b: {tab: nt.id}});
+  activate(nt.id);
+}
+function moveFocus(way) {  // ⌘⌥ + 방향키: 그 방향의 가장 가까운 칸으로
+  const cur = tab(S.active);
+  if (!cur) return;
+  const c = cur.el.getBoundingClientRect(), cx = c.left + c.width / 2, cy = c.top + c.height / 2;
+  let best = null, bd = Infinity;
+  for (const t of projTabs()) {
+    if (t === cur || t.el.hidden) continue;
+    const r = t.el.getBoundingClientRect();
+    const ok = {left: r.right <= c.left + 2, right: r.left >= c.right - 2, up: r.bottom <= c.top + 2, down: r.top >= c.bottom - 2}[way];
+    const d = Math.abs(r.left + r.width / 2 - cx) + Math.abs(r.top + r.height / 2 - cy);
+    if (ok && d < bd) { bd = d; best = t; }
   }
-  const list = projTabs(dir), other = list[list.indexOf(t) - 1] || list[list.indexOf(t) + 1] || await openTab(dir, 'shell', {quiet: true});
-  S.split[dir] = {a: t.id, b: other.id, layout};
-  activate(t.id);
+  if (best) activate(best.id);
+}
+function toggleZoom() {  // ⌘⇧↩: 지금 칸만 크게, 다시 누르면 원래대로
+  if (!S.layout[S.current]) return;
+  S.zoom[S.current] = !S.zoom[S.current];
+  layoutPanes(); renderTabs();
+}
+function unsplit() {  // ⌘⌥W: 나누기 모두 풀기 (터미널은 탭으로 남는다)
+  if (!S.layout[S.current]) return;
+  delete S.layout[S.current]; delete S.zoom[S.current];
+  layoutPanes(); renderTabs(); saveTabs();
 }
 dark.addEventListener('change', () => { for (const t of S.tabs) t.term.options.theme = termTheme(); });
 
 // ── 탭 저장 · 복원: 다시 켜면 탭과 Claude · Codex 대화를 이어서 연다 ──
 function saveTabs() {
   if (S.restoring) return;
-  const list = S.tabs.filter(t => !t.exited).map(t => ({dir: t.dir, kind: t.kind, title: t.title, sid: t.sid, last: S.last[t.dir] === t.id}));
-  store.set('tabs', JSON.stringify({current: S.current, list}));
+  const live = S.tabs.filter(t => !t.exited), index = new Map(live.map((t, i) => [t.id, i]));
+  const list = live.map(t => ({dir: t.dir, kind: t.kind, title: t.title, sid: t.sid, last: S.last[t.dir] === t.id}));
+  const ser = n => (n.tab ? (index.has(n.tab) ? {t: index.get(n.tab)} : null) : {dir: n.dir, ratio: n.ratio, a: ser(n.a), b: ser(n.b)});  // 탭 id 대신 순번으로
+  const layouts = Object.fromEntries(Object.entries(S.layout).filter(([, n]) => n).map(([d, n]) => [d, ser(n)]));
+  store.set('tabs', JSON.stringify({current: S.current, list, layouts}));
 }
 async function restoreTabs() {
   let saved = null;
   try { saved = JSON.parse(store.get('tabs') || 'null'); } catch { /* 깨진 값이면 새로 시작 */ }
   if (!saved || !Array.isArray(saved.list) || !saved.list.length) return false;
   S.restoring = true;
+  const ids = [];
   for (const s of saved.list) {
     const p = project(s.dir);
-    if (!p || !p.exists) continue;
+    if (!p || !p.exists) { ids.push(null); continue; }
     const t = await openTab(s.dir, s.kind, {sid: s.sid, title: s.title, resume: true, quiet: true});
+    ids.push(t.id);
     if (s.last) S.last[s.dir] = t.id;
   }
+  const de = n => {  // 순번 → 탭 id (없어진 탭의 칸은 빼고 옆 칸이 채운다)
+    if (!n) return null;
+    if ('t' in n) return ids[n.t] ? {tab: ids[n.t]} : null;
+    const a = de(n.a), b = de(n.b);
+    return a && b ? {dir: n.dir, ratio: n.ratio, a, b} : a || b;
+  };
+  for (const [d, n] of Object.entries(saved.layouts || {})) { const l = de(n); if (l && !l.tab) S.layout[d] = l; }
   S.restoring = false;
   if (project(saved.current)) selectProject(saved.current);
   else if (S.tabs.length) activate(S.tabs[S.tabs.length - 1].id);
@@ -801,8 +890,14 @@ api.onMenu(action => ({
   'prev-tab': () => cycleTab(-1),
   'find': openFind,
   'settings': () => openSettings(),
-  'split': () => toggleSplit('cols'),
-  'split-rows': () => toggleSplit('rows'),
+  'split': () => splitPane('cols'),
+  'split-rows': () => splitPane('rows'),
+  'pane-left': () => moveFocus('left'),
+  'pane-right': () => moveFocus('right'),
+  'pane-up': () => moveFocus('up'),
+  'pane-down': () => moveFocus('down'),
+  'pane-zoom': toggleZoom,
+  'unsplit': unsplit,
 }[action] || (() => {}))());
 addEventListener('keydown', e => {  // ⌘1–9: 지금 프로젝트의 탭 이동
   if (e.metaKey && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
