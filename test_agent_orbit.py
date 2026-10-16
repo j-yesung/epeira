@@ -216,6 +216,21 @@ def test_http_security():
     srv.shutdown()
 
 
+
+def test_seed_limits():  # 이미 읽은 Codex 로그라도 처음 켤 때 마지막 한도 값을 찾아 둔다
+    d = os.path.join(TMP, '.codex', 'sessions', datetime.now().strftime('%Y/%m/%d'))
+    os.makedirs(d, exist_ok=True)
+    rl = lambda used: {'primary': {'used_percent': used, 'window_minutes': 300, 'resets_at': 2000000000},
+                       'secondary': {'used_percent': 7.0, 'window_minutes': 10080, 'resets_at': 2000500000}, 'plan_type': 'plus'}
+    write_lines(os.path.join(d, 'rollout-seed.jsonl'), {'type': 'session_meta', 'payload': {'cwd': '/w/x'}},
+                {'timestamp': NOW, 'type': 'event_msg', 'payload': {'type': 'token_count', 'rate_limits': rl(10.0)}},
+                {'timestamp': NOW, 'type': 'event_msg', 'payload': {'type': 'token_count', 'rate_limits': None}},
+                {'timestamp': NOW, 'type': 'event_msg', 'payload': {'type': 'token_count', 'rate_limits': rl(42.0)}})
+    ao.limits.clear()
+    ao.seed_limits()
+    assert ao.limits['primary']['used'] == 42.0 and ao.limits['secondary']['window'] == 10080 and ao.limits['plan'] == 'plus', ao.limits
+
+
 if __name__ == '__main__':
     for name, fn in list(globals().items()):
         if name.startswith('test_'):

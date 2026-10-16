@@ -204,7 +204,42 @@ async function loadUsage() {
   renderStatusbar();
 }
 
-function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트별 오늘 사용량 · Codex 한도 · 새로고침
+// 사용 한도: 초기화 시각이 지났으면 이미 초기화된 것으로 본다 (마지막 기록이 그 전 값이라서)
+function limitWindows(L) {
+  return L ? [L.primary, L.secondary].filter(w => w && w.used != null).map(w => {
+    const weekly = (w.window || 300) >= 1440, reset = w.resets && w.resets * 1000 < Date.now();
+    return {name: weekly ? '주간' : `${Math.round((w.window || 300) / 60)}시간`, short: weekly ? '주' : `${Math.round((w.window || 300) / 60)}h`,
+      used: reset ? 0 : Math.round(w.used), resets: reset ? null : w.resets};
+  }) : [];
+}
+const span = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m >= 1440 ? `${Math.floor(m / 1440)}일 ${Math.floor(m % 1440 / 60)}시간` : m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`; };
+const level = p => p >= 95 ? 'err' : p >= 80 ? 'warn' : '';
+
+function popContent(key) {  // 상태바 항목에 마우스를 올리면 뜨는 상세: 연결 · 한도(막대 · 초기화) · 오늘 사용량
+  const u = S.usage, a = u && u.by[key];
+  if (!a) return null;
+  const L = (u.limits || {})[key], wins = limitWindows(L);
+  const state = !a.installed ? '설치 안 됨' : !a.connected ? '연결 안 됨' : key === 'codex' && a.trust && a.trust !== 'trusted' ? '승인 필요' : '연결됨';
+  return [
+    h('h4', {}, h('img', {src: LOGO[key], alt: ''}), a.name, L && L.plan ? h('span', {class: 'plan'}, L.plan.toUpperCase()) : null, h('span', {class: 'grow'}), h('small', {}, state)),
+    ...(wins.length ? wins.flatMap(w => [
+      h('div', {class: 'lim'}, h('span', {}, w.name), h('span', {class: 'bar'}, h('i', {class: level(w.used), style: `width:${w.used}%`})), h('b', {class: level(w.used)}, `${w.used}%`)),
+      h('p', {class: 'reset'}, w.resets ? `${span(w.resets * 1000 - Date.now())} 후 초기화 · ${new Date(w.resets * 1000).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false})}` : '초기화됨 · 다음 사용 때 새로 기록돼요'),
+    ]) : [h('p', {class: 'note'}, key === 'claude' ? '사용 한도 정보가 아직 없어요' : '아직 기록된 사용 한도가 없어요 · Codex 를 한 번 사용하면 나타나요')]),
+    h('p', {class: 'meta'}, `오늘 도구 ${a.calls.toLocaleString()}회`, h('br'), `입력 ${fmtK(a.tin)} · 출력 ${fmtK(a.tout)} · 캐시 읽기 ${fmtK(a.tcache)}`),
+    L && L.at ? h('p', {class: 'meta dim'}, `한도는 ${span(Date.now() - L.at * 1000)} 전 기록 기준`) : null,
+  ];
+}
+function showPop(item, key) {
+  const pop = $('sb-pop'), kids = popContent(key);
+  if (!kids) return;
+  pop.replaceChildren(...kids.filter(Boolean));
+  pop.hidden = false; S.pop = {item, key};
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, item.getBoundingClientRect().left - 8)) + 'px';
+}
+function hidePop() { $('sb-pop').hidden = true; S.pop = null; }
+
+function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트별 오늘 사용량과 한도 요약 · 새로고침
   const u = S.usage, bar = $('statusbar');
   const refresh = h('button', {class: 'sb-btn', type: 'button', title: '새로고침', 'aria-label': '새로고침', onclick: refreshAll});
   refresh.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -214,21 +249,21 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
   const agent = key => {
     const a = u.by[key];
     if (!a) return null;
-    const state = !a.installed ? '설치 안 됨' : !a.connected ? '연결 안 됨' : key === 'codex' && a.trust && a.trust !== 'trusted' ? '승인 필요' : '연결됨';
-    return h('span', {class: a.connected ? 'sb-item' : 'sb-item off',
-      title: `${a.name} · ${state}\n오늘 도구 ${a.calls.toLocaleString()}회\n입력 ${fmtK(a.tin)} · 출력 ${fmtK(a.tout)} · 캐시 읽기 ${fmtK(a.tcache)} 토큰`},
-      h('img', {src: LOGO[key], alt: ''}), h('b', {}, a.calls.toLocaleString()), h('span', {class: 'sb-dim'}, `${fmtK(a.tin + a.tout)} tok`), a.connected ? null : h('span', {class: 'sb-dim'}, state));
+    const wins = limitWindows((u.limits || {})[key]);
+    const item = h('span', {class: a.connected ? 'sb-item hover' : 'sb-item hover off', tabindex: '0', onmouseenter: () => showPop(item, key), onmouseleave: hidePop, onfocus: () => showPop(item, key), onblur: hidePop},
+      h('img', {src: LOGO[key], alt: ''}), h('b', {}, a.calls.toLocaleString()), h('span', {class: 'sb-dim'}, `${fmtK(a.tin + a.tout)} tok`),
+      wins.length ? h('span', {class: 'sb-lim'}, ...wins.map((w, i) => h('span', {class: level(w.used)}, `${i ? ' · ' : ''}${w.short} ${w.used}%`))) : null,
+      a.connected ? null : h('span', {class: 'sb-dim'}, '연결 안 됨'));
+    return item;
   };
-  const L = u.limits, win = w => w && w.used != null ? `${w.window >= 1440 ? '주간' : `${Math.round((w.window || 300) / 60)}시간`} ${Math.round(w.used)}%` : null;
-  const lim = L ? [win(L.primary), win(L.secondary)].filter(Boolean).join(' · ') : '';
   const needs = Object.values(u.by).some(a => a.installed && !a.connected);
   bar.replaceChildren(...[
     h('span', {class: 'sb-item'}, h('i', {class: 'led ok'}), 'LIVE'),
     agent('claude'), agent('codex'), refresh,
-    lim ? h('span', {class: 'sb-item sb-dim', title: 'Codex 요금제 사용 한도 (마지막으로 기록된 값)'}, `Codex 한도 ${lim}`) : null,
     h('span', {class: 'grow'}),
     needs ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '에이전트 연결하기 →') : null,
   ].filter(Boolean));
+  if (S.pop) { const k = S.pop.key, el = [...bar.querySelectorAll('.sb-item.hover')].find(x => x.matches(':hover')); if (el) showPop(el, k); else hidePop(); }  // 15초마다 다시 그려도 열린 상세는 유지
 }
 
 async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널 새로 불러오기

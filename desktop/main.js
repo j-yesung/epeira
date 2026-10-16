@@ -87,7 +87,7 @@ function getJSON(pathname) {
 const collectorStatus = () => getJSON('/api/status');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// 하단 상태바: 오늘 에이전트별 도구 횟수 · 토큰(입력 · 출력 · 캐시 읽기) · 연결 상태 · Codex 사용 한도
+// 하단 상태바: 오늘 에이전트별 도구 횟수 · 토큰(입력 · 출력 · 캐시 읽기) · 연결 상태 · 에이전트별 사용 한도
 ipcMain.handle('collector:usage', async () => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const [status, sum] = await Promise.all([collectorStatus(), getJSON(`/api/summary?since=${today.getTime() / 1000}`)]);
@@ -98,7 +98,7 @@ ipcMain.handle('collector:usage', async () => {
     const b = by[x.agent];
     if (b) { b.calls += x.tools || 0; b.tin += x.tin || 0; b.tout += x.tokens || 0; b.tcache += x.tcache || 0; }
   }
-  return {ok: true, version: status.version, by, limits: (status.limits || {}).codex || null};
+  return {ok: true, version: status.version, by, limits: status.limits || {}};  // {codex: {primary, secondary, plan, at}}
 });
 
 ipcMain.handle('collector:ensure', async () => {

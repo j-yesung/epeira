@@ -68,6 +68,28 @@ kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 
 .sb-item img { width: 12px; height: 12px; }
 .sb-item b { color: var(--text); font-weight: 600; }
 .sb-item.off { opacity: .55; }
+.sb-item.hover { height: 20px; margin: 0 -4px; padding: 0 4px; border-radius: 5px; cursor: default; }
+.sb-item.hover:hover, .sb-item.hover:focus-visible { background: var(--panel-2); }
+.sb-lim { color: var(--dim); }
+.sb-lim .warn, .sb-pop .warn { color: var(--warn); }
+.sb-lim .err, .sb-pop .err { color: var(--err); }
+/* 상태바 상세 (Orca 처럼 마우스를 올리면 위로 뜬다) */
+.sb-pop { position: fixed; bottom: 32px; z-index: 50; width: 320px; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: 10px; background: #141414; box-shadow: 0 14px 36px rgba(0, 0, 0, .55); color: var(--dim); font: 12px/1.5 var(--sans); pointer-events: none; }
+.sb-pop h4 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--text); font-size: 13px; }
+.sb-pop h4 img { width: 14px; height: 14px; }
+.sb-pop h4 .grow { flex: 1; }
+.sb-pop h4 small { color: var(--faint); font-weight: 400; font-size: 11px; }
+.sb-pop .plan { padding: 0 5px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--dim); font: 600 10px/16px var(--mono); }
+.sb-pop .lim { display: grid; grid-template-columns: 44px 1fr 38px; align-items: center; gap: 10px; margin-top: 8px; color: var(--text); }
+.sb-pop .lim b { font: 600 12px var(--mono); text-align: right; }
+.sb-pop .bar { height: 6px; overflow: hidden; border-radius: 3px; background: var(--line); }
+.sb-pop .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.sb-pop .bar i.warn { background: var(--warn); }
+.sb-pop .bar i.err { background: var(--err); }
+.sb-pop .reset { margin: 2px 0 0 54px; color: var(--faint); font-size: 11px; }
+.sb-pop .note { color: var(--faint); font-size: 11px; }
+.sb-pop .meta { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--dim); font: 11px var(--mono); }
+.sb-pop .meta.dim { margin-top: 2px; padding-top: 0; border: 0; color: var(--faint); }
 .sb-dim { color: var(--faint); }
 .sb-btn { display: inline-grid; place-items: center; width: 22px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--dim); cursor: pointer; }
 .sb-btn:hover { background: var(--panel-2); color: var(--text); }

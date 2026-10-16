@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import urlopen
 
-VERSION = '0.10.1'
+VERSION = '0.11.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -272,8 +272,36 @@ def note_limits(rl, ts):
     if not isinstance(rl, dict) or ts <= limits.get('at', 0):
         return
     win = lambda w: {'used': w.get('used_percent'), 'window': w.get('window_minutes'), 'resets': w.get('resets_at')} if isinstance(w, dict) else None
-    limits.update(at=ts, primary=win(rl.get('primary')), secondary=win(rl.get('secondary')))
+    limits.update(at=ts, primary=win(rl.get('primary')), secondary=win(rl.get('secondary')), plan=rl.get('plan_type'))
     write_text(LIMITS_FILE, json.dumps(limits))
+
+
+def seed_limits():
+    # 한도 기록이 없으면(이미 읽은 로그라 다시 안 읽음) 가장 최근 Codex 로그 끝에서 마지막 값을 찾는다
+    paths = []
+    for path, agent in watched():
+        try:
+            if agent == 'codex':
+                paths.append((os.path.getmtime(path), path))
+        except OSError:
+            pass
+    for _, path in sorted(paths, reverse=True)[:3]:
+        try:
+            with open(path, 'rb') as f:
+                f.seek(max(0, os.path.getsize(path) - 262144))
+                lines = f.read().split(b'\n')
+        except OSError:
+            continue
+        for line in reversed(lines):
+            if b'"rate_limits"' not in line:
+                continue
+            try:
+                o = json.loads(line)
+            except ValueError:
+                continue
+            note_limits((o.get('payload') or {}).get('rate_limits'), ts_of(o))
+            if limits:
+                return
 
 
 # ---------- 로그 감시 + 기록 저장 ----------
@@ -1083,6 +1111,8 @@ def serve():
     checkpoint.update((read_json(CKPT_FILE) or {}).get('files') or {})
     names.update(read_json(NAMES_FILE) or {})
     limits.update(read_json(LIMITS_FILE) or {})
+    if not limits:
+        seed_limits()
     os.makedirs(EVENTS_DIR, exist_ok=True)
     prune()
     load_history()
