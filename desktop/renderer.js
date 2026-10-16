@@ -1073,7 +1073,10 @@ function openPalette() {
 
 // ── 작은 메뉴 (탭 목록 · 놓친 알림) ──
 const menuEl = $('menu');
+let menuFor = null;  // 메뉴를 연 버튼: 다시 누르면 닫는다
 function showMenu(anchor, items, up) {
+  if (!menuEl.hidden && menuFor === anchor) return hideMenu();
+  menuFor = anchor;
   menuEl.replaceChildren(...items.map(it => (it.sep ? h('div', {class: 'menu-sep'}) : h('button', {type: 'button', role: 'menuitem', class: it.cls || null, disabled: it.disabled,
     onclick: () => { hideMenu(); if (it.run) it.run(); }}, it.icon ? kindIcon(it.icon) : null, h('span', {class: 'menu-text'}, it.label, it.sub ? h('small', {}, it.sub) : null), it.hint ? h('kbd', {}, it.hint) : null))));
   menuEl.hidden = false;
@@ -1082,8 +1085,9 @@ function showMenu(anchor, items, up) {
   menuEl.style.top = up ? '' : `${r.bottom + 4}px`;
   menuEl.style.bottom = up ? `${innerHeight - r.top + 4}px` : '';
 }
-function hideMenu() { menuEl.hidden = true; }
-document.addEventListener('mousedown', e => { if (!menuEl.hidden && !menuEl.contains(e.target)) hideMenu(); });
+function hideMenu() { menuEl.hidden = true; menuFor = null; }
+// 메뉴 밖을 누르면 닫는다. 메뉴를 연 버튼은 빼고 (그 버튼의 클릭이 닫기를 맡는다 → 닫히자마자 다시 열리지 않게)
+document.addEventListener('mousedown', e => { if (!menuEl.hidden && !menuEl.contains(e.target) && !(menuFor instanceof Node && menuFor.contains(e.target))) hideMenu(); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !menuEl.hidden) { e.preventDefault(); hideMenu(); } }, true);
 $('tab-more').onclick = () => showMenu($('tab-more'), projTabs().map(t => ({icon: t.kind, label: tabLabel(t), cls: t.id === S.active ? 'on' : null,
   sub: t.waiting ? STATE.wait : t.busy ? STATE.busy : t.unread ? STATE.new : null, run: () => activate(t.id)})));

@@ -360,5 +360,10 @@ test('프로젝트 세션 목록 펼치기 · 접기: 지금 프로젝트가 아
   await page.click(`${row(beta)} .proj-more`);
   assert.equal(await page.isVisible('#menu'), true, '⋯ 는 메뉴만 연다');
   assert.equal(await shown(beta), true, '⋯ 를 눌러도 접히지 않는다');
+  await page.click(`${row(beta)} .proj-more`);
+  assert.equal(await page.isVisible('#menu'), false, '⋯ 를 다시 누르면 닫힌다');
+  await page.click(`${row(beta)} .proj-more`);
+  assert.equal(await page.isVisible('#menu'), true, '또 누르면 다시 연다');
   await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => { const els = [...document.querySelectorAll('.proj, .proj *')].filter(e => e.offsetParent); return els.every(e => getComputedStyle(e).cursor === 'pointer'); }), true, '프로젝트 칸 안은 어디서나 손가락 커서');
 });
