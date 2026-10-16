@@ -199,8 +199,8 @@ async function initOrbit() {
     h('button', {class: 'btn primary', type: 'button', onclick: initOrbit}, '다시 확인'));
 }
 
-async function loadUsage() {
-  S.usage = await api.usage();
+async function loadUsage(refresh) {
+  S.usage = await api.usage(refresh);
   renderStatusbar();
 }
 
@@ -214,6 +214,13 @@ function limitWindows(L) {
 }
 const span = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m >= 1440 ? `${Math.floor(m / 1440)}일 ${Math.floor(m % 1440 / 60)}시간` : m >= 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m}분`; };
 const level = p => p >= 95 ? 'err' : p >= 80 ? 'warn' : '';
+function limitNote(key, L) {  // 한도를 못 보여줄 때 이유
+  if (key === 'codex') return '아직 기록된 사용 한도가 없어요 · Codex 를 한 번 사용하면 나타나요';
+  if (!S.usage.claudeLimits) return '대시보드 아래 "Claude 사용 한도 보기"를 켜면 5시간 · 주간 한도가 보여요';
+  const e = L && L.error;
+  return e === 'no-login' || e === 'expired' ? 'Claude Code 로그인 정보를 읽지 못했어요 · Claude Code 를 한 번 실행하면 다시 가져와요'
+    : e ? '사용 한도를 불러오지 못했어요 · 잠시 후 다시 시도해요' : '사용 한도를 불러오는 중이에요';
+}
 
 function popContent(key) {  // 상태바 항목에 마우스를 올리면 뜨는 상세: 연결 · 한도(막대 · 초기화) · 오늘 사용량
   const u = S.usage, a = u && u.by[key];
@@ -225,7 +232,7 @@ function popContent(key) {  // 상태바 항목에 마우스를 올리면 뜨는
     ...(wins.length ? wins.flatMap(w => [
       h('div', {class: 'lim'}, h('span', {}, w.name), h('span', {class: 'bar'}, h('i', {class: level(w.used), style: `width:${w.used}%`})), h('b', {class: level(w.used)}, `${w.used}%`)),
       h('p', {class: 'reset'}, w.resets ? `${span(w.resets * 1000 - Date.now())} 후 초기화 · ${new Date(w.resets * 1000).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false})}` : '초기화됨 · 다음 사용 때 새로 기록돼요'),
-    ]) : [h('p', {class: 'note'}, key === 'claude' ? '사용 한도 정보가 아직 없어요' : '아직 기록된 사용 한도가 없어요 · Codex 를 한 번 사용하면 나타나요')]),
+    ]) : [h('p', {class: 'note'}, limitNote(key, L))]),
     h('p', {class: 'meta'}, `오늘 도구 ${a.calls.toLocaleString()}회`, h('br'), `입력 ${fmtK(a.tin)} · 출력 ${fmtK(a.tout)} · 캐시 읽기 ${fmtK(a.tcache)}`),
     L && L.at ? h('p', {class: 'meta dim'}, `한도는 ${span(Date.now() - L.at * 1000)} 전 기록 기준`) : null,
   ];
@@ -270,6 +277,7 @@ async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널
   const btn = e && e.currentTarget;
   if (btn) { btn.classList.add('spin'); setTimeout(() => btn.classList.remove('spin'), 600); }
   await initOrbit();
+  await loadUsage(true);  // Claude 한도도 다시 조회 (수집기가 1분에 한 번까지만)
   if (S.orbitReady && !view.hidden) view.reload();
 }
 

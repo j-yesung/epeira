@@ -30,9 +30,10 @@ from collections import deque
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
-from urllib.request import urlopen
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
-VERSION = '0.11.0'
+VERSION = '0.12.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -302,6 +303,75 @@ def seed_limits():
             note_limits((o.get('payload') or {}).get('rate_limits'), ts_of(o))
             if limits:
                 return
+
+
+
+# ---------- Claude 사용 한도 (설정에서 켰을 때만) ----------
+# Claude Code 는 한도를 로그에 남기지 않는다 → Claude Code 로그인 토큰으로 Anthropic 의 사용량 조회 API 를 부른다.
+# 모델 호출이 아니라 비용 · 한도 차감 없음. 토큰은 Anthropic 으로만 보내고 저장 · 기록하지 않는다.
+CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
+claude_limits = {}  # {at, primary(5시간), secondary(주간), plan} 또는 {error}
+claude_tried = [0.0]  # 마지막으로 조회한 시각 (너무 자주 부르지 않게)
+
+
+def iso_ts(v):  # '2026-10-16T05:00:00Z' · 초 · 밀리초 → 초
+    if isinstance(v, (int, float)):
+        return v / 1000 if v > 1e12 else v
+    try:
+        return datetime.fromisoformat(str(v).replace('Z', '+00:00')).timestamp()
+    except ValueError:
+        return None
+
+
+def claude_login():
+    raw = ''
+    if MAC:  # Claude Code 는 macOS 키체인에 로그인 정보를 둔다
+        raw = run('security', 'find-generic-password', '-s', 'Claude Code-credentials', '-w').stdout or ''
+    if not raw.strip():
+        try:
+            with open(os.path.join(HOME, '.claude', '.credentials.json'), encoding='utf-8') as f:
+                raw = f.read()
+        except OSError:
+            return None
+    try:
+        o = json.loads(raw).get('claudeAiOauth') or {}
+    except (ValueError, AttributeError):
+        return None
+    return o if o.get('accessToken') else None
+
+
+def fetch_claude_limits():
+    claude_tried[0] = time.time()
+    o = claude_login()
+    if not o:
+        claude_limits['error'] = 'no-login'
+        return
+    if o.get('expiresAt') and o['expiresAt'] / 1000 < time.time():
+        claude_limits['error'] = 'expired'  # 토큰 갱신은 Claude Code 가 한다 (여기서 갱신하면 Claude Code 로그인이 풀릴 수 있음)
+        return
+    req = Request(CLAUDE_USAGE_URL, headers={'Authorization': 'Bearer ' + o['accessToken'], 'anthropic-beta': 'oauth-2025-04-20',
+                                             'User-Agent': 'tycho/' + VERSION})
+    try:
+        with urlopen(req, timeout=10) as r:
+            d = json.loads(r.read())
+    except HTTPError as ex:
+        claude_limits['error'] = {401: 'expired', 403: 'expired', 429: 'rate-limited'}.get(ex.code, 'unavailable')
+        return
+    except (OSError, ValueError):
+        claude_limits['error'] = 'network'
+        return
+    win = lambda w, minutes: ({'used': w['utilization'], 'window': minutes, 'resets': iso_ts(w.get('resets_at'))}
+                              if isinstance(w, dict) and isinstance(w.get('utilization'), (int, float)) else None)
+    claude_limits.clear()
+    claude_limits.update(at=time.time(), primary=win(d.get('five_hour'), 300), secondary=win(d.get('seven_day'), 10080),
+                         plan=o.get('subscriptionType'))
+
+
+def claude_limits_loop():
+    while True:
+        if setting('claudeLimits') and time.time() - claude_tried[0] > 240:
+            fetch_claude_limits()
+        time.sleep(60)  # ponytail: 1분마다 확인해 5분(4분+)에 한 번 조회. 더 정확한 주기가 필요하면 다음 조회 시각을 계산
 
 
 # ---------- 로그 감시 + 기록 저장 ----------
@@ -807,7 +877,7 @@ def agent_state(agent):
     return out
 
 
-DEFAULTS = {'autoMini': True}  # 세션이 시작되면 미니 창을 띄울지
+DEFAULTS = {'autoMini': True, 'claudeLimits': False}  # 세션이 시작되면 미니 창을 띄울지, Claude 사용 한도를 가져올지
 
 
 def setting(key):
@@ -838,7 +908,8 @@ def status():
     return {'version': VERSION, 'protocol': PROTOCOL, 'port': PORT, 'boot': BOOT, 'platform': sys.platform,
             'autostart': autostart_state(), 'retentionDays': RETENTION_DAYS,
             'autoMini': setting('autoMini') if MAC else None,
-            'limits': {'codex': dict(limits)} if limits else {},
+            'claudeLimits': setting('claudeLimits'),
+            'limits': dict(({'codex': dict(limits)} if limits else {}), **({'claude': dict(claude_limits)} if claude_limits else {})),
             'agents': {k: agent_state(k) for k in AGENTS}}
 
 
@@ -992,6 +1063,8 @@ class Handler(BaseHTTPRequestHandler):
         if p in STATIC:
             return self.static(*STATIC[p])
         if p == '/api/status':
+            if q.get('refresh') == 'claude' and setting('claudeLimits') and time.time() - claude_tried[0] > 60:
+                fetch_claude_limits()  # 앱의 새로고침 버튼 (1분에 한 번까지)
             return self.reply(200, status())
         if p == '/api/events':
             return self.stream()
@@ -1055,8 +1128,14 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(sid, str) or not sid or len(sid) > 128:
                 return self.reply(400, {'error': 'bad request'})
             return self.reply(200, {'ok': True, 'id': sid, 'name': rename(sid, data.get('name'))})
-        if u.path == '/api/settings' and isinstance(data.get('autoMini'), bool):
-            return self.reply(200, {'autoMini': save_setting('autoMini', data['autoMini'])})
+        if u.path == '/api/settings':
+            out = {k: save_setting(k, data[k]) for k in DEFAULTS if isinstance(data.get(k), bool)}
+            if out.get('claudeLimits'):
+                fetch_claude_limits()  # 켜자마자 한 번
+            elif out.get('claudeLimits') is False:
+                claude_limits.clear()
+            if out:
+                return self.reply(200, dict(out, limits=status()['limits']))
         self.reply(404, {'error': 'not found'})
 
     def static(self, name, ctype):
@@ -1121,6 +1200,7 @@ def serve():
     except OSError as ex:
         sys.exit('tycho: 포트 %d 를 열 수 없습니다 (%s)' % (PORT, ex))
     threading.Thread(target=watch, daemon=True).start()
+    threading.Thread(target=claude_limits_loop, daemon=True).start()
     log('tycho %s → http://127.0.0.1:%d' % (VERSION, PORT))
     try:
         srv.serve_forever()
@@ -1282,7 +1362,8 @@ def cmd_doctor(args):
              'collector   %s' % ('running %s on 127.0.0.1:%d' % (st['version'], PORT) if st else
                                  'NOT RUNNING (127.0.0.1:%d%s)' % (PORT, ' — port used by another program' if port_open() else '')),
              'autostart   %s' % {None: 'not installed', True: 'on', False: 'off'}[autostart_state()],
-             'auto mini   %s' % ('on' if setting('autoMini') else 'off')]
+             'auto mini   %s' % ('on' if setting('autoMini') else 'off'),
+             'claude lim  %s' % ('on' if setting('claudeLimits') else 'off')]
     for k in AGENTS:
         a = (st or {}).get('agents', {}).get(k) or agent_state(k)
         lines.append('%-11s installed=%s hooks=%s%s' % (k, a['installed'], 'connected' if a['connected'] else 'legacy' if a.get('legacy') else 'off',

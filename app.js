@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.11.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.12.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -651,6 +651,16 @@ function renderFooter() {
     kids.push(toggle('세션 시작 시 미니 창', st.autoMini, async () => {
       st.autoMini = (await postJSON('/api/settings', {autoMini: !st.autoMini})).autoMini;
       toast(st.autoMini ? 'Claude · Codex 세션이 시작되면 미니 창이 떠요' : '세션이 시작돼도 미니 창을 띄우지 않아요. 터미널에서 tycho mini 로 열 수 있어요');
+    }));
+  }
+  if (st && st.claudeLimits != null) {
+    kids.push(toggle('Claude 사용 한도 보기', st.claudeLimits, async () => {
+      const r = await postJSON('/api/settings', {claudeLimits: !st.claudeLimits});
+      st.claudeLimits = r.claudeLimits; st.limits = r.limits;
+      const err = st.claudeLimits && (r.limits.claude || {}).error;
+      toast(!st.claudeLimits ? 'Claude 사용 한도를 더 가져오지 않아요'
+        : err ? 'Claude Code 로그인 정보를 읽지 못했어요. Claude Code 를 한 번 실행한 뒤 다시 켜 보세요'
+        : 'Claude Code 로그인 정보로 5시간 · 주간 한도를 5분마다 가져와요 (비용 없음)');
     }));
   }
   if (st && st.autostart != null) {

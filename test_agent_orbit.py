@@ -231,6 +231,22 @@ def test_seed_limits():  # 이미 읽은 Codex 로그라도 처음 켤 때 마�
     assert ao.limits['primary']['used'] == 42.0 and ao.limits['secondary']['window'] == 10080 and ao.limits['plan'] == 'plus', ao.limits
 
 
+
+def test_claude_limits():  # 사용량 응답 → 5시간 · 주간 한도. 만료된 토큰은 부르지도 갱신하지도 않는다
+    import io
+    calls = []
+    ao.claude_login = lambda: {'accessToken': 'tok', 'expiresAt': (time.time() + 3600) * 1000, 'subscriptionType': 'max'}
+    ao.urlopen = lambda req, timeout=10: calls.append(req.get_header('Authorization')) or io.BytesIO(json.dumps(
+        {'five_hour': {'utilization': 23.0, 'resets_at': '2030-01-01T05:00:00+00:00'}, 'seven_day': {'utilization': 41, 'resets_at': None}}).encode())
+    ao.fetch_claude_limits()
+    L = ao.claude_limits
+    assert calls == ['Bearer tok'] and L['primary']['used'] == 23.0 and L['primary']['window'] == 300 and L['primary']['resets'] == 1893474000.0, L
+    assert L['secondary'] == {'used': 41, 'window': 10080, 'resets': None} and L['plan'] == 'max' and 'error' not in L, L
+    ao.claude_login = lambda: {'accessToken': 'tok', 'expiresAt': (time.time() - 60) * 1000}
+    ao.fetch_claude_limits()
+    assert len(calls) == 1 and L['error'] == 'expired' and L['primary']['used'] == 23.0, '만료: 조회 안 하고 이전 값은 유지'
+
+
 if __name__ == '__main__':
     for name, fn in list(globals().items()):
         if name.startswith('test_'):
