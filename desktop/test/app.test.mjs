@@ -22,7 +22,7 @@ writeFileSync(path.join(data, 'projects.json'), JSON.stringify([{path: alpha, na
 
 // 릴리스 서버 흉내: 시험용 키로 서명한 DMG 를 준다 (앱에 든 공개 키는 EPEIRA_TEST 일 때만 바꿀 수 있다)
 const testKey = generateKeyPairSync('ed25519'), releases = new Map();
-const updates = createServer((req, res) => { const f = releases.get(req.url); res.writeHead(f ? 200 : 404); res.end(f); });
+const updates = createServer((req, res) => { const f = releases.get(req.url); res.writeHead(f ? 200 : 404, f ? {'Content-Length': Buffer.byteLength(f)} : {}); res.end(f); });
 await new Promise(r => updates.listen(0, '127.0.0.1', r));
 
 const launch = () => electron.launch({executablePath: require('electron'), args: [APP_DIR, `--user-data-dir=${data}`],
@@ -268,7 +268,10 @@ test('업데이트: 우리 서명이 맞고 안의 버전도 맞는 DMG 만 받�
   put('9.9.8', sign(null, Buffer.from('다른 파일'), testKey.privateKey));  // 다른 파일의 서명
   put('9.9.7', sign(null, dmg, testKey.privateKey));  // 서명은 맞지만 안의 앱은 9.9.9 → 예전 DMG 를 새 버전이라 내미는 경우
   await answer(app, 1);  // 다시 시작은 "나중에"
+  await page.evaluate(() => { window.prog = []; window.orbit.onUpdateProgress(stage => window.prog.push(stage)); });
   assert.deepEqual(await page.evaluate(() => window.orbit.installUpdate('9.9.9')), {ok: true, later: true});
+  const prog = await page.evaluate(() => window.prog);
+  assert.ok(prog[0] === 'download' && prog.includes('verify') && prog.at(-1) === null, `진행 막대: 받기 → 확인 → 끝 ${JSON.stringify(prog)}`);
   assert.match((await page.evaluate(() => window.orbit.installUpdate('9.9.8'))).error, /서명/);
   assert.match((await page.evaluate(() => window.orbit.installUpdate('9.9.7'))).error, /9\.9\.9/);
   assert.match((await page.evaluate(() => window.orbit.installUpdate('9.9.6'))).error, /404/, '없는 릴리스');
@@ -288,17 +291,22 @@ test('⌘⌫ 로 터미널의 지금 줄을 지운다', async () => {
   assert.ok(!(await text()).includes('zzz'), '지운 줄은 실행되지 않고 화면에서도 사라진다');
 });
 
-test('프로젝트 우클릭 메뉴: 새 터미널 · 터미널이 열린 프로젝트는 묻고 닫은 뒤 뺀다', async () => {
-  const action = (a, dir) => app.evaluate(({BrowserWindow}, [x, d]) => BrowserWindow.getAllWindows()[0].webContents.send('project:action', x, d), [a, dir]);
+test('사이드바 프로젝트 메뉴(⋯ · 우클릭): 새 터미널 · 터미널이 열린 프로젝트는 묻고 닫은 뒤 뺀다', async () => {
+  const row = `.proj[title="${beta}"]`;
+  const pick = async (label, right) => {
+    if (right) await page.click(row, {button: 'right'});
+    else { await page.hover(row); await page.click(`${row} .proj-more`); }
+    await page.click(`#menu button:has-text("${label}")`);
+  };
   const before = await page.evaluate(dir => projTabs(dir).length, beta);
-  await action('shell', beta);
+  await pick('새 터미널');
   await until(page, ([dir, n]) => projTabs(dir).length === n + 1, [beta, before]);
   await answer(app, 1);  // 취소
-  await action('remove', beta);
+  await pick('목록에서 빼기');
   await page.waitForTimeout(300);
   assert.equal(await page.evaluate(dir => S.projects.some(p => p.path === dir), beta), true, '취소하면 그대로');
   await answer(app, 0);  // 닫고 빼기
-  await action('remove', beta);
+  await pick('목록에서 빼기', true);
   await until(page, dir => !S.projects.some(p => p.path === dir) && !S.tabs.some(t => t.dir === dir), beta);
   await page.evaluate(async dir => { S.projects = (await window.orbit.addProjectPath(dir)).list; renderProjects(); }, beta);  // 다시 넣어 두기
 });

@@ -109,6 +109,19 @@ async function removeProject(dir) {
   layoutPanes(); renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); saveTabs();
 }
 
+// 사이드바 프로젝트 메뉴: ⋯ 버튼 · 우클릭
+const projectMenu = p => [
+  {icon: 'shell', label: '새 터미널', disabled: !p.exists, run: () => openTab(p.path, 'shell')},
+  {icon: 'claude', label: 'Claude 새 세션', disabled: !p.exists, run: () => openTab(p.path, 'claude')},
+  {icon: 'codex', label: 'Codex 새 세션', disabled: !p.exists, run: () => openTab(p.path, 'codex')},
+  {sep: true},
+  {label: 'Finder 에서 보기', disabled: !p.exists, run: () => api.revealProject(p.path)},
+  {label: '경로 복사', run: () => navigator.clipboard.writeText(p.path).then(() => toast('경로를 복사했어요'), () => {})},
+  {sep: true},
+  {label: '목록에서 빼기', sub: '폴더는 지우지 않아요', run: () => removeProject(p.path)},
+];
+const at = e => ({getBoundingClientRect: () => ({left: e.clientX, top: e.clientY, bottom: e.clientY})});  // 우클릭한 자리에 메뉴
+
 function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 시작 화면 → 터미널을 멋대로 열지 않는다)
   S.current = dir;
   api.touchProject(dir).then(list => { S.projects = list; renderProjects(); });
@@ -131,16 +144,13 @@ function renderProjects() {
     // 다른 프로젝트에서 일어난 일도 보이게: 승인 대기 > 새 응답 > 일하는 중
     const state = tabs.some(t => t.waiting) ? 'wait' : tabs.some(t => t.unread) ? 'new' : tabs.some(t => t.busy) ? 'busy' : '';
     const g = S.git[p.path], sub = !p.exists ? '폴더를 찾을 수 없어요' : g ? `⎇ ${g.branch}${g.changes ? ` · 변경 ${g.changes}` : ''}` : shortPath(p.path);
-    return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path, oncontextmenu: e => { e.preventDefault(); api.projectMenu(p.path); }},
+    return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path, oncontextmenu: e => { e.preventDefault(); showMenu(at(e), projectMenu(p)); }},
       h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
         h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
         h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, sub)),
         state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null,
         open ? h('span', {class: 'count', title: `열린 터미널 ${open}개`}, open) : null),
-      h('span', {class: 'proj-acts'},
-        p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Claude 새 세션', onclick: () => openTab(p.path, 'claude')}, 'C') : null,
-        p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Codex 새 세션', onclick: () => openTab(p.path, 'codex')}, 'X') : null,
-        h('button', {class: 'mini-btn', type: 'button', title: '목록에서 빼기 (폴더는 지우지 않아요) · 우클릭하면 메뉴', onclick: () => removeProject(p.path)}, '×')),
+      h('button', {class: 'proj-more', type: 'button', title: '프로젝트 메뉴 (우클릭해도 돼요)', 'aria-label': `${p.name} 메뉴`, 'aria-haspopup': 'menu', onclick: e => showMenu(e.currentTarget, projectMenu(p))}, '⋯'),
       p.path === S.current && p.exists ? projectDetail(p) : null);
   }));
 }
@@ -602,9 +612,6 @@ $('find-next').onclick = () => find(1);
 $('find-prev').onclick = () => find(-1);
 $('find-close').onclick = closeFind;
 
-// 사이드바 프로젝트 우클릭 메뉴의 동작 (Finder · 경로 복사는 메뉴가 바로 처리)
-api.onProjectAction((action, dir) => (action === 'remove' ? removeProject(dir) : openTab(dir, action)));
-
 // 터미널 우클릭 메뉴의 동작 (복사는 메뉴가 바로 처리)
 api.onTermAction((action, text) => {
   const t = tab(S.active);
@@ -798,19 +805,30 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
     h('span', {class: 'sb-item'}, h('i', {class: 'led ok'}), 'LIVE'),
     agent('claude'), agent('codex'), refresh,
     h('span', {class: 'grow'}),
-    S.update ? h('button', {class: 'link', type: 'button', disabled: S.updating, onclick: installUpdate}, S.updating ? `새 버전 ${S.update.version} 받는 중…` : `새 버전 ${S.update.version} →`) : null,
+    S.update ? (S.updating ? updateBar() : h('button', {class: 'link', type: 'button', onclick: installUpdate}, `새 버전 ${S.update.version} →`)) : null,
     needs ? h('button', {class: 'link', type: 'button', onclick: () => openSettings('', 'agents')}, '에이전트 연결하기 →') : null,
     inboxBtn(), gear,
   ].filter(Boolean));
   if (S.pop) { const k = S.pop.key, el = [...bar.querySelectorAll('.sb-item.hover')].find(x => x.matches(':hover')); if (el) showPop(el, k); else hidePop(); }  // 15초마다 다시 그려도 열린 상세는 유지
 }
 
+function updateBar() {  // 업데이트 진행 막대: 받기는 퍼센트, 서명 확인 · 앱 꺼내기는 움직이는 막대
+  const p = S.updateProgress || {stage: 'download', f: 0}, down = p.stage === 'download';
+  return h('span', {class: 'upd', role: 'status'}, h('progress', down ? {max: 1, value: p.f} : {max: 1}),
+    h('span', {}, down ? `받는 중 ${Math.round(p.f * 100)}%` : '확인 중…'));
+}
+api.onUpdateProgress((stage, f) => {
+  S.updateProgress = stage ? {stage, f} : null;
+  for (const el of document.querySelectorAll('.upd')) el.replaceWith(updateBar());
+});
+
 async function installUpdate() {  // 새 버전: 받아서 우리 서명을 확인하고 다시 시작 (못 하면 내려받기 페이지)
   if (S.updating) return;
-  S.updating = true; renderStatusbar();
+  const redraw = () => { renderStatusbar(); if (!modal.hidden && modal.querySelector('.set')) openSettings(); };  // 설정이 열려 있으면 그 줄도
+  S.updating = true; redraw();
   toast(`Epeira ${S.update.version} 을(를) 받고 있어요…`);
   const r = await api.installUpdate(S.update.version).catch(e => ({manual: true, error: e.message}));
-  S.updating = false; renderStatusbar();
+  S.updating = false; S.updateProgress = null; redraw();
   if (r.manual) { toast(r.error ? `${r.error} → 내려받기 페이지를 열어요` : '내려받기 페이지를 열어요'); api.openExternal(S.update.url); }
 }
 
@@ -934,7 +952,7 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
     h('h3', {}, '문제 해결'),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `Epeira v${S.appVersion || ''}`),
       h('small', {}, S.update ? `새 버전 ${S.update.version} 이 있어요 → 받아서 확인한 뒤 다시 시작하면 바뀌어요` : '6시간마다 새 버전을 확인해요')),
-      S.update ? h('button', {class: 'btn small primary', type: 'button', disabled: S.updating, onclick: installUpdate}, S.updating ? '받는 중…' : '업데이트')
+      S.update ? (S.updating ? updateBar() : h('button', {class: 'btn small primary', type: 'button', onclick: installUpdate}, '업데이트'))
         : h('button', {class: 'btn small', type: 'button', onclick: async e => {
           e.currentTarget.disabled = true;
           const u = await checkUpdate(true).catch(() => ({failed: true}));

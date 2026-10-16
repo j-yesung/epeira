@@ -132,21 +132,8 @@ ipcMain.on('term:menu', (_, selection) => {
   ]).popup({window: win});
 });
 
-// 사이드바 프로젝트 우클릭 메뉴 (목록에 있는 프로젝트만)
-ipcMain.on('project:menu', (_, dir) => {
-  if (!loadProjects().some(p => p.path === dir)) return;
-  const ok = fs.existsSync(dir), act = action => win.webContents.send('project:action', action, dir);
-  Menu.buildFromTemplate([
-    {label: '새 터미널', enabled: ok, click: () => act('shell')},
-    {label: 'Claude 새 세션', enabled: ok, click: () => act('claude')},
-    {label: 'Codex 새 세션', enabled: ok, click: () => act('codex')},
-    {type: 'separator'},
-    {label: 'Finder 에서 보기', enabled: ok, click: () => shell.showItemInFolder(dir)},
-    {label: '경로 복사', click: () => clipboard.writeText(dir)},
-    {type: 'separator'},
-    {label: '목록에서 빼기', click: () => act('remove')},
-  ]).popup({window: win});
-});
+// 사이드바 프로젝트 메뉴의 "Finder 에서 보기" (목록에 있는 프로젝트만, 폴더를 실행하지 않고 보여 주기만)
+ipcMain.on('project:reveal', (_, dir) => { if (loadProjects().some(p => p.path === dir)) shell.showItemInFolder(dir); });
 ipcMain.handle('projects:confirmRemove', async (_, name, ids) => {  // 터미널이 열린 프로젝트를 빼기 전에 한 번 묻는다
   const running = [...new Set(ids.map(busy).filter(Boolean))];
   const r = await dialog.showMessageBox(win, {type: 'warning', buttons: ['닫고 빼기', '취소'], defaultId: 1, cancelId: 1,
@@ -287,24 +274,36 @@ ipcMain.handle('update:check', async (_, force) => {  // 6시간에 한 번만 �
 });
 
 const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, {timeout: 120000}, (err, out) => (err ? reject(err) : resolve(out.trim()))));
-async function download(url, file) {
+async function download(url, file, progress) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`내려받지 못했어요 (${res.status})`);
-  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(file));
+  const total = +res.headers.get('content-length') || 0, body = Readable.fromWeb(res.body);
+  let got = 0;
+  if (progress && total) body.on('data', d => { got += d.length; progress(got / total); });
+  await pipeline(body, fs.createWriteStream(file));
+}
+let shown = -1;
+function updateProgress(stage, f) {  // 화면(상태바 · 설정)과 Dock 아이콘에 진행 막대. f: 0~1, 확인 중이면 null, 끝나면 stage = null
+  if (!win || win.isDestroyed() || (stage === 'download' && f - shown < 0.01 && f < 1)) return;
+  shown = stage === 'download' ? f : -1;
+  win.setProgressBar(stage === 'download' ? f : stage ? 1 : -1);
+  win.webContents.send('update:progress', stage, f);
 }
 async function stageUpdate(version) {  // 받기 → 서명 확인 → DMG 에서 앱 꺼내기 → 안의 버전 확인 (지금 앱은 아직 그대로)
   const name = `Epeira-${version}${process.arch === 'arm64' ? '-arm64' : ''}.dmg`;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epeira-update-'));
   const dmg = path.join(dir, name), mnt = path.join(dir, 'mnt'), next = path.join(dir, 'Epeira.app');
   try {
-    await download(`${RELEASES}/v${version}/${name}`, dmg);
+    updateProgress('download', 0);
+    await download(`${RELEASES}/v${version}/${name}`, dmg, f => updateProgress('download', f));
+    updateProgress('verify', null);
     await download(`${RELEASES}/v${version}/${name}.sig`, `${dmg}.sig`);
     if (!crypto.verify(null, fs.readFileSync(dmg), UPDATE_KEY, Buffer.from(fs.readFileSync(`${dmg}.sig`, 'utf8').trim(), 'base64'))) throw new Error('서명이 맞지 않아요');
     await run('hdiutil', ['attach', dmg, '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mnt]);
     try { await run('ditto', [path.join(mnt, 'Epeira.app'), next]); } finally { await run('hdiutil', ['detach', mnt, '-force']).catch(() => {}); }
     const inner = await run('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', path.join(next, 'Contents/Info.plist')]);
     if (inner !== version) throw new Error(`받은 앱이 ${inner} 버전이에요`);  // 예전 버전 DMG 를 새 버전이라고 내미는 것 막기
-  } catch (e) { fs.rmSync(dir, {recursive: true, force: true}); throw e; }
+  } catch (e) { fs.rmSync(dir, {recursive: true, force: true}); throw e; } finally { updateProgress(null); }
   return {version, app: next, dmg};
 }
 // 앱이 끝난 뒤 바꾸고 다시 켠다. 못 바꾸면 원래 앱을 다시 켜고 DMG 를 열어 직접 옮기게 한다
