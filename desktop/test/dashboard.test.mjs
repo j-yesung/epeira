@@ -54,7 +54,7 @@ test('프로젝트 경로로 궤도를 가른다 (하위 폴더 포함)', {skip}
 
 test('HUB 를 누르면 세션 기록 + 탭으로 열기', {skip}, async () => {
   await page.evaluate(() => aoFocusProject('p', '', '/w/p'));
-  await page.waitForTimeout(300);
+  await until(() => S.hubRect);  // 느린 컴퓨터에선 HUB 를 그리기까지 시간이 걸린다
   const box = await page.evaluate(() => { const r = document.getElementById('orbit').getBoundingClientRect(), h = S.hubRect; return {x: r.left + h.x + h.w / 2, y: r.top + h.y + h.h / 2}; });
   await page.mouse.click(box.x, box.y);
   await until(() => document.querySelector('#drawer h2'));
