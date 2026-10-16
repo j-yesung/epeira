@@ -160,7 +160,7 @@ function renderProjects() {
     return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path, oncontextmenu: e => { e.preventDefault(); showMenu(at(e), projectMenu(p)); }},
       p.exists ? h('button', {class: `proj-fold${unfold ? ' open' : ''}`, type: 'button', 'aria-expanded': String(unfold), 'aria-label': `${p.name} 세션 ${unfold ? '접기' : '펼치기'}`, title: unfold ? '세션 접기' : '세션 펼치기', onclick: () => toggleFold(p)}, '›') : null,
       h('button', {class: 'proj-main', type: 'button', 'aria-expanded': p.exists ? String(unfold) : null, onclick: () => p.exists && clickProject(p)},
-        h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
+        folderIcon(unfold),
         h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, sub)),
         state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null,
         open ? h('span', {class: 'count', title: `열린 터미널 ${open}개`}, open) : null),
@@ -178,6 +178,8 @@ function clickProject(p) {  // 다른 프로젝트를 누르면 고르고 펼친
   folds[p.path] = true; store.set('folds', JSON.stringify(folds));
   selectProject(p.path);
 }
+
+const folderIcon = open => { const s = h('span', {class: 'tile', 'aria-hidden': 'true'}); s.innerHTML = open ? ICON.folderOpen : ICON.folder; return s; };  // 펼치면 열린 폴더
 
 function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 쓴 토큰 + 지난 세션 (누르면 이어서 열기)
   const today = (S.usage && S.usage.today) || [], byId = new Map(today.map(x => [x.id, x]));
@@ -792,6 +794,7 @@ function showPop(item, key) {
 function hidePop() { $('sb-pop').hidden = true; S.pop = null; }
 
 const ICON = {
+  folderOpen: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.5 17.5v-10A1.5 1.5 0 0 1 5 6h4l2 2h7a1.5 1.5 0 0 1 1.5 1.5V11M3.5 17.5l2.6-5.9A1.5 1.5 0 0 1 7.5 10.7H20a1 1 0 0 1 .95 1.3l-1.75 5.9A1.5 1.5 0 0 1 17.8 19H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
   folder: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
   refresh: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   bell: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4.5 11.5V7.5a3.5 3.5 0 0 1 7 0v4l1 1H3.5zM6.8 14h2.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',

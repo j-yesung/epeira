@@ -59,8 +59,9 @@ kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 
 .proj:hover, .proj.on { background: var(--panel-2); }
 .proj.on::before { content: ''; position: absolute; top: 8px; bottom: 8px; left: 0; width: 2px; border-radius: 2px; background: var(--accent); }
 .proj-main { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 8px 8px 22px; border: 0; background: none; text-align: left; cursor: pointer; }
-.tile { display: inline-grid; flex: none; place-items: center; width: 26px; height: 26px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--tile); color: var(--tile-text); font: 700 12px var(--mono); }
-.proj.on .tile { border-color: var(--accent); color: var(--text); }
+.tile { display: inline-grid; flex: none; place-items: center; width: 26px; height: 26px; color: var(--dim); }
+.tile svg { width: 19px; height: 19px; }
+.proj.on .tile { color: var(--accent); }
 .proj-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .proj-text b { overflow: hidden; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
 .proj-text small { overflow: hidden; color: var(--faint); font: 11px var(--mono); white-space: nowrap; text-overflow: ellipsis; }
