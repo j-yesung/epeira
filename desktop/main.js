@@ -4,11 +4,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const http = require('node:http');
-const {spawn} = require('node:child_process');
+const {spawn, execFile} = require('node:child_process');
+const {pathToFileURL} = require('node:url');
 const pty = require('node-pty');
 
 const ORBIT = process.env.AGENT_ORBIT_URL || 'http://127.0.0.1:47777';  // 개발·테스트용으로만 바꾼다
 const HOME_APP = path.join(os.homedir(), '.agent-orbit');
+const BUNDLE = app.isPackaged ? path.join(process.resourcesPath, 'collector') : path.join(__dirname, '..');  // 앱에 들어 있는 수집기 (개발 중엔 저장소)
 const terms = new Map();  // 탭 id → pty
 let win, seq = 0;
 
@@ -101,19 +103,45 @@ ipcMain.handle('collector:usage', async (_, refresh) => {
   return {ok: true, version: status.version, by, limits: status.limits || {}, claudeLimits: status.claudeLimits};  // limits: {codex|claude: {primary, secondary, plan, at} 또는 {error}}
 });
 
-ipcMain.handle('collector:ensure', async () => {
+// ── 앱이 켜지면 수집기도 바로: 없으면 설치, 앱에 든 것보다 오래됐으면 업데이트, 꺼져 있으면 깨운다 ──
+// 사용자가 터미널에 설치 명령을 칠 필요가 없다. 훅 연결(설정 파일 변경)은 여전히 대시보드에서 동의를 받고 한다
+const bundledVersion = () => { try { return /^VERSION = '([^']+)'/m.exec(fs.readFileSync(path.join(BUNDLE, 'agent_orbit.py'), 'utf8'))[1]; } catch { return null; } };
+const newer = (a, b) => { const x = a.split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+
+function userPath() {  // Finder 에서 켠 앱은 PATH 가 짧다 → 로그인 셸의 PATH 를 받아 수집기에 넘긴다 (python3 · codex 를 찾게)
+  return new Promise(resolve => {
+    const sh = process.env.SHELL || os.userInfo().shell || '/bin/zsh';
+    execFile(sh, ['-ilc', 'printf "__TYCHO__%s__TYCHO__" "$PATH"'], {timeout: 8000}, (err, out) => {
+      const m = /__TYCHO__(.*)__TYCHO__/.exec(out || '');
+      resolve(m ? m[1] : process.env.PATH);
+    }).stdin.end();  // 셸 설정이 무언가를 물어도 기다리지 않게
+  });
+}
+
+async function installCollector() {  // install.sh 와 같은 절차를 앱에 든 파일로 (내려받지 않음)
+  const env = {...process.env, PATH: await userPath(), AGENT_ORBIT_BASE: pathToFileURL(BUNDLE).href.replace(/\/$/, '')};
+  return new Promise(resolve => execFile('/bin/sh', [path.join(BUNDLE, 'install.sh')], {env, timeout: 120000},
+    (err, stdout, stderr) => resolve({ok: !err, out: `${stdout}${stderr}`.slice(-2000)})));
+}
+
+async function ensureCollector() {
   let st = await collectorStatus();
-  if (st) return {ok: true, status: st};
-  if (!fs.existsSync(path.join(HOME_APP, 'agent_orbit.py'))) return {ok: false, installed: false};
-  // 설치돼 있는데 꺼져 있으면: 로그인 서비스를 깨우고, 그래도 안 되면 직접 띄운다
-  if (process.platform === 'darwin') spawn('launchctl', ['kickstart', `gui/${process.getuid()}/dev.agentorbit.collector`], {stdio: 'ignore'});
-  for (let i = 0; i < 8 && !st; i++) { await sleep(400); st = await collectorStatus(); }
-  if (!st) {
-    spawn(path.join(HOME_APP, 'bin', fs.existsSync(path.join(HOME_APP, 'bin', 'tycho')) ? 'tycho' : 'agent-orbit'), ['serve'], {detached: true, stdio: 'ignore'}).unref();
-    for (let i = 0; i < 10 && !st; i++) { await sleep(400); st = await collectorStatus(); }
+  const want = bundledVersion();
+  if (st && !(want && newer(want, st.version))) return {ok: true, status: st};
+  if (!st && fs.existsSync(path.join(HOME_APP, 'agent_orbit.py')) && process.platform === 'darwin') {  // 설치돼 있는데 꺼져 있으면 먼저 깨워 본다
+    spawn('launchctl', ['kickstart', `gui/${process.getuid()}/dev.agentorbit.collector`], {stdio: 'ignore'});
+    for (let i = 0; i < 8 && !st; i++) { await sleep(400); st = await collectorStatus(); }
+    if (st && !(want && newer(want, st.version))) return {ok: true, status: st};
   }
-  return st ? {ok: true, status: st} : {ok: false, installed: true};
-});
+  if (!want) return st ? {ok: true, status: st} : {ok: false, installed: fs.existsSync(path.join(HOME_APP, 'agent_orbit.py'))};
+  const r = await installCollector();
+  st = await collectorStatus();
+  if (st) return {ok: true, status: st, updated: true};
+  return {ok: false, installed: fs.existsSync(path.join(HOME_APP, 'agent_orbit.py')), needPython: /Python 3\.9/.test(r.out), log: r.out};
+}
+let ensuring = null;  // 동시에 두 번 설치하지 않게
+ipcMain.handle('collector:ensure', () => ensuring || (ensuring = ensureCollector().finally(() => { ensuring = null; })));
+ipcMain.on('install-devtools', () => { if (process.platform === 'darwin') execFile('xcode-select', ['--install'], () => {}); });
 
 ipcMain.on('open-external', (_, url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });
 

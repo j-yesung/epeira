@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('orbit', {
   removeProject: dir => ipcRenderer.invoke('projects:remove', dir),
   touchProject: dir => ipcRenderer.invoke('projects:touch', dir),
   collector: () => ipcRenderer.invoke('collector:ensure'),
+  installDevTools: () => ipcRenderer.send('install-devtools'),
   usage: refresh => ipcRenderer.invoke('collector:usage', !!refresh),
   createTerm: opts => ipcRenderer.invoke('pty:create', opts),
   write: (id, data) => ipcRenderer.send('pty:write', id, data),

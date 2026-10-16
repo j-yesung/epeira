@@ -181,20 +181,23 @@ function tellOrbit() {  // 지금 프로젝트 · 탭을 대시보드에 알린�
   view.executeJavaScript(`window.aoFocusProject ? aoFocusProject(${args}) : window.aoFocusTab && aoFocusTab(${JSON.stringify(S.active || '')})`).catch(() => {});
 }
 
-async function initOrbit() {
+async function initOrbit() {  // 앱이 수집기를 알아서 설치 · 업데이트 · 실행한다 (처음엔 몇 초 걸릴 수 있음)
+  const off = $('orbit-off');
+  if (view.hidden) { off.hidden = false; off.replaceChildren(h('h2', {}, '수집기를 준비하고 있어요'), h('p', {}, '처음 한 번은 설치하느라 몇 초 걸려요.')); }
   S.collector = await api.collector();
   await loadUsage();
-  const off = $('orbit-off');
   if (S.collector.ok) {
     off.hidden = true; view.hidden = false;
     if (view.getAttribute('src') === 'about:blank') view.setAttribute('src', `${ORBIT}/?view=mini&embed=1`);
+    else if (S.collector.updated) view.reload();  // 수집기가 새 버전으로 바뀌었으면 궤도 화면도 새로
     return;
   }
   view.hidden = true; off.hidden = false;
   const copyBtn = h('button', {class: 'btn', type: 'button', onclick: async () => { await navigator.clipboard.writeText(INSTALL_CMD); copyBtn.textContent = '복사됨'; }}, '복사');
-  off.replaceChildren(...(S.collector.installed
-    ? [h('h2', {}, '수집기를 켜지 못했어요'), h('p', {}, '터미널 탭에서 tycho doctor 로 상태를 확인해 보세요.')]
-    : [h('h2', {}, '수집기를 먼저 설치하세요'), h('p', {}, '궤도는 이 컴퓨터의 수집기가 모은 기록으로 그려요. 터미널 탭에 붙여넣으세요.'),
+  off.replaceChildren(...(S.collector.needPython
+    ? [h('h2', {}, 'Python 이 필요해요'), h('p', {}, 'macOS 개발자 도구를 설치하면 함께 설치돼요. 설치가 끝나면 다시 확인을 눌러 주세요.'),
+      h('button', {class: 'btn', type: 'button', onclick: () => api.installDevTools()}, '개발자 도구 설치')]
+    : [h('h2', {}, '수집기를 켜지 못했어요'), h('p', {}, '터미널 탭에서 아래 명령으로 직접 설치하거나, tycho doctor 로 상태를 확인해 보세요.'),
       h('div', {class: 'cmd'}, h('code', {}, INSTALL_CMD), copyBtn)]),
     h('button', {class: 'btn primary', type: 'button', onclick: initOrbit}, '다시 확인'));
 }

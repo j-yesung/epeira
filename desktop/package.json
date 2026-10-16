@@ -1,7 +1,7 @@
 {
   "name": "tycho-app",
   "productName": "Tycho",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "프로젝트 사이드바 + 에이전트 터미널 + 궤도 시각화",
   "main": "main.js",
@@ -39,6 +39,12 @@
     ],
     "asarUnpack": [
       "node_modules/node-pty/**"
+    ],
+    "extraResources": [
+      {"from": "../agent_orbit.py", "to": "collector/agent_orbit.py"},
+      {"from": "../index.html", "to": "collector/index.html"},
+      {"from": "../app.js", "to": "collector/app.js"},
+      {"from": "../install.sh", "to": "collector/install.sh"}
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
