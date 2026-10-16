@@ -39,6 +39,48 @@
 
 shadcn/ui 부품은 패키지가 아니라 저장소에 복사되는 코드라서, 필요하면 우리 식으로 고쳐 씁니다.
 
+## 폴더 구조
+
+Electron + Vite 관례(electron-vite 템플릿, Orca)대로 `main` · `preload` · `renderer` 를 나누고, 화면은 **기능별 폴더**로 묶습니다 (2026-10-16 결정 → 기능이 늘어도 한 기능을 고칠 때 그 폴더만 보면 되게).
+
+```
+desktop/
+├── electron.vite.config.ts    # 메인 · preload · 화면을 한 번에 빌드
+├── components.json            # shadcn/ui 설정
+├── tsconfig.json · package.json · sign.mjs
+├── resources/                 # 앱 아이콘 (icon.icns · icon.png)
+├── src/
+│   ├── main/                  # Electron 메인 (← main.js 를 역할별로)
+│   │   ├── index.ts           # 앱 시작 · 창 · 메뉴 · 보안 설정
+│   │   ├── terminals.ts       # node-pty 탭
+│   │   ├── collector.ts       # 수집기 설치 · 연결
+│   │   ├── update.ts          # 서명 확인 · 앱 바꾸기
+│   │   └── fonts.ts
+│   ├── preload/index.ts       # 화면에 여는 최소 API
+│   ├── shared/api.ts          # 메인 ↔ 화면 공통 타입
+│   └── renderer/
+│       ├── index.html
+│       └── src/
+│           ├── main.tsx · App.tsx   # 시작점 · 전체 배치
+│           ├── styles.css           # Tailwind + 테마 색 (라이트 · 다크)
+│           ├── components/ui/       # shadcn/ui 부품 (여러 기능이 같이 씀)
+│           ├── lib/                 # 공통 함수 (시간 표시 · 경로 등)
+│           └── features/            # 기능별: 부품 · 상태(zustand) · 훅을 한 폴더에
+│               ├── sidebar/         # 프로젝트 목록 · 세션 펼치기 · ⋯ 메뉴
+│               ├── terminal/        # xterm 을 담는 부품 (React 상태 밖에서 관리)
+│               ├── panes/           # 칸 나누기 · 탭 끌기 (dnd-kit)
+│               ├── palette/         # 명령 팔레트 (cmdk)
+│               ├── settings/        # 설정 창
+│               ├── statusbar/       # 사용량 · 놓친 알림 · 업데이트 진행 막대
+│               └── orbit/           # 궤도 패널 (webview)
+├── test/                      # Playwright (화면 요소 기준) · unit/ (Vitest)
+└── out/                       # 빌드 결과 (git 에 안 올림, DMG 에 이것만)
+```
+
+- 한 기능에만 쓰는 부품 · 상태 · 훅은 그 기능 폴더 안에 둡니다 (예: `features/sidebar/ProjectRow.tsx`, `features/sidebar/store.ts`).
+- 두 기능 이상이 같이 쓰게 되면 `components/` · `lib/` 로 올립니다.
+- 기능끼리는 서로의 안쪽 파일을 직접 가져오지 않고, 각 폴더의 `index.ts` 로 내놓은 것만 씁니다.
+
 ## 지켜야 할 것
 
 - **보안 설정 그대로**: `contextIsolation` · `sandbox` · Electron fuses · 권한 핸들러. preload 로 여는 API 는 지금처럼 최소로.
