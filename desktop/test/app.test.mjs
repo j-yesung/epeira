@@ -26,16 +26,23 @@ const answer = (app, response) => app.evaluate(({dialog}, r) => { dialog.showMes
 let app, page;
 after(async () => { if (app) await app.close().catch(() => {}); rmSync(tmp, {recursive: true, force: true}); });
 
-test('프로젝트 목록과 번호 붙은 탭 이름', async () => {
+test('터미널은 프로젝트마다 따로: 바꿔도 새로 열리지 않고 그 프로젝트 탭만 보인다', async () => {
   app = await launch();
   page = await app.firstWindow();
   await app.evaluate(({Notification}) => { Notification.isSupported = () => false; });  // 테스트 중 macOS 알림을 띄우지 않게
   await until(page, () => typeof S !== 'undefined' && S.projects.length === 2);
   await page.evaluate(() => selectProject(S.projects[0].path));
-  await until(page, () => S.tabs.length === 1);
-  await page.evaluate(() => openTab(S.projects[0].path, 'shell'));
-  await until(page, () => S.tabs.length === 2);
-  assert.deepEqual(await labels(page), ['alpha', 'alpha 2']);
+  assert.equal(await page.evaluate(() => S.tabs.length), 0, '프로젝트를 골라도 터미널을 멋대로 열지 않는다');
+  assert.equal(await page.evaluate(() => document.getElementById('welcome').hidden), false);
+  await page.evaluate(async () => { await openTab(S.projects[0].path, 'shell'); await openTab(S.projects[0].path, 'shell'); });
+  assert.deepEqual(await labels(page), ['터미널', '터미널 2']);
+  await page.evaluate(() => selectProject(S.projects[1].path));
+  assert.deepEqual(await labels(page), [], 'beta 엔 아직 터미널이 없다');
+  await page.evaluate(() => openTab(S.projects[1].path, 'shell'));
+  assert.deepEqual(await labels(page), ['터미널']);
+  await page.evaluate(() => selectProject(S.projects[0].path));
+  assert.deepEqual(await labels(page), ['터미널', '터미널 2'], 'alpha 로 돌아오면 alpha 의 터미널 2개');
+  assert.equal(await page.evaluate(() => S.tabs.length), 3, '오가도 터미널이 늘지 않는다');
 });
 
 test('사이드바를 접어도 터미널과 궤도 패널이 제자리', async () => {
@@ -54,22 +61,22 @@ test('실행 중인 탭은 닫기 전에 묻는다', async () => {
   await page.waitForTimeout(1000);
   await answer(app, 1);  // 취소
   await page.evaluate(() => closeTab());
-  assert.equal(await page.evaluate(() => S.tabs.length), 2, '취소하면 그대로');
+  assert.equal(await page.evaluate(() => projTabs().length), 2, '취소하면 그대로');
   await answer(app, 0);  // 닫기
   await page.evaluate(() => closeTab());
-  await until(page, () => S.tabs.length === 1);
+  await until(page, () => projTabs().length === 1);
 });
 
 test('수집기 이벤트로 탭 상태 표시: 일하는 중 → 승인 대기 → 끝', async () => {
   const id = await page.evaluate(() => S.active);
   await send(app, {kind: 'tab', tab: id, id: 'sess-x'});
   await send(app, {kind: 'start', id: 'sess-x', agent: 'claude', tool: 't1', text: 'Bash ls', ts: Date.now() / 1000});
-  await until(page, () => !!document.querySelector('.tab.on .st.busy'));
+  await until(page, () => !!document.querySelector('.tab.on .st.busy') && !!document.querySelector('.proj.on .st.busy'));  // 사이드바 프로젝트에도
   await send(app, {kind: 'notify', id: 'sess-x', agent: 'claude', text: 'Claude needs your permission to use Bash', ts: Date.now() / 1000});
   await until(page, () => !!document.querySelector('.tab.on .st.wait'));
   await send(app, {kind: 'done', id: 'sess-x', agent: 'claude', text: 'turn complete', ts: Date.now() / 1000});
   await until(page, () => !document.querySelector('.tab.on .st.wait') && !document.querySelector('.tab.on .st.busy'));
-  assert.equal(await page.evaluate(() => S.tabs[0].sid), 'sess-x', '탭 ↔ 세션을 기억 (다시 켤 때 이어 열기)');
+  assert.equal(await page.evaluate(() => tab(S.active).sid), 'sess-x', '탭 ↔ 세션을 기억 (다시 켤 때 이어 열기)');
 });
 
 test('터미널 찾기 (⌘F)', async () => {
@@ -93,16 +100,17 @@ test('라이트 테마로 바꾸면 터미널도 밝게', async () => {
   await page.evaluate(() => window.orbit.setTheme('system'));
 });
 
-test('다시 켜면 탭이 돌아온다', async () => {
-  await page.evaluate(() => openTab(S.projects[1].path, 'shell'));
-  await until(page, () => S.tabs.length === 2);
+test('다시 켜면 프로젝트별 탭과 마지막 프로젝트가 돌아온다', async () => {
+  await page.evaluate(() => selectProject(S.projects[1].path));
   const before = await labels(page);
   await answer(app, 0);
   await app.close();
   app = await launch();
   page = await app.firstWindow();
   await app.evaluate(({Notification}) => { Notification.isSupported = () => false; });
-  await until(page, n => typeof S !== 'undefined' && S.tabs.length === n, before.length);
+  await until(page, () => typeof S !== 'undefined' && S.tabs.length === 2);
+  assert.equal(await page.evaluate(() => S.current === S.projects[1].path), true, '마지막에 보던 프로젝트');
   assert.deepEqual(await labels(page), before);
-  assert.equal(await page.evaluate(() => S.tabs[0].sid), 'sess-x');
+  const alphaTab = await page.evaluate(() => { const t = projTabs(S.projects[0].path)[0]; return {title: t.title, sid: t.sid}; });
+  assert.deepEqual(alphaTab, {title: '백엔드', sid: 'sess-x'});
 });

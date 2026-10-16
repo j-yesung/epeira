@@ -23,7 +23,8 @@ const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).t
 // 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 — GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
 const fontsReady = document.fonts.load('13px "Tycho Keys"', '⌘⌥⇧⏎↑').catch(() => {});
 
-const S = {projects: [], current: null, tabs: [], active: null, collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
+const S = {projects: [], current: null, tabs: [], active: null, last: {}, collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
+// 터미널은 프로젝트마다 따로: 탭 줄엔 지금 프로젝트의 탭만, last 는 프로젝트별로 마지막에 보던 탭
 // tab = {id, dir, base, title, kind, sid, term, fit, search, el, exited, busy, waiting, unread}
 
 function h(tag, attrs = {}, ...kids) {
@@ -45,6 +46,7 @@ const store = {
 const tilde = p => p.replace(/^\/(Users|home)\/[^/]+/, '~');
 const tab = id => S.tabs.find(t => t.id === id);
 const project = dir => S.projects.find(p => p.path === dir);
+const projTabs = (dir = S.current) => S.tabs.filter(t => t.dir === dir);
 let toastTimer;
 function toast(msg) {
   const el = $('toast');
@@ -68,17 +70,21 @@ async function addProject() {
 }
 
 async function removeProject(dir) {
+  if (projTabs(dir).length) return toast('이 프로젝트의 터미널을 먼저 닫아 주세요');
   S.projects = await api.removeProject(dir);  // 목록에서만 뺀다 (폴더는 그대로)
   if (S.current === dir) S.current = S.projects[0] ? S.projects[0].path : null;
   renderProjects(); renderWelcome();
 }
 
-function selectProject(dir) {
+function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 시작 화면 — 터미널을 멋대로 열지 않는다)
   S.current = dir;
   api.touchProject(dir).then(list => { S.projects = list; renderProjects(); });
-  const open = S.tabs.filter(t => t.dir === dir);
-  if (open.length) activate(open[open.length - 1].id);
-  else openTab(dir, 'shell');
+  const open = projTabs(dir), t = tab(S.last[dir]) || open[open.length - 1];
+  if (t) return activate(t.id);
+  S.active = null;
+  for (const x of S.tabs) x.el.hidden = true;
+  if (!$('find').hidden) closeFind();
+  renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); saveTabs();
 }
 
 function renderProjects() {
@@ -88,12 +94,15 @@ function renderProjects() {
       h('button', {class: 'link', type: 'button', onclick: addProject}, '+ 폴더 열기'), h('br'), '폴더를 여기에 끌어다 놓아도 돼요.'));
   }
   ul.replaceChildren(...S.projects.map(p => {
-    const open = S.tabs.filter(t => t.dir === p.path && !t.exited).length;
+    const tabs = projTabs(p.path), open = tabs.filter(t => !t.exited).length;
+    // 다른 프로젝트에서 일어난 일도 보이게: 승인 대기 > 새 응답 > 일하는 중
+    const state = tabs.some(t => t.waiting) ? 'wait' : tabs.some(t => t.unread) ? 'new' : tabs.some(t => t.busy) ? 'busy' : '';
     return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path},
       h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
         h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
         h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, p.exists ? tilde(p.path) : '폴더를 찾을 수 없어요')),
-        open ? h('span', {class: 'count', title: `열린 탭 ${open}개`}, open) : null),
+        state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null,
+        open ? h('span', {class: 'count', title: `열린 터미널 ${open}개`}, open) : null),
       h('span', {class: 'proj-acts'},
         p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Claude 새 세션', onclick: () => openTab(p.path, 'claude')}, 'C') : null,
         p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Codex 새 세션', onclick: () => openTab(p.path, 'codex')}, 'X') : null,
@@ -152,7 +161,7 @@ async function openTab(dir, kind = 'shell', opts = {}) {
 function activate(id) {
   const t = tab(id);
   if (!t) return;
-  S.active = id; S.current = t.dir; t.unread = false;
+  S.active = id; S.current = t.dir; S.last[t.dir] = id; t.unread = false;
   for (const x of S.tabs) x.el.hidden = x.id !== id;
   requestAnimationFrame(() => { t.fit.fit(); t.term.focus(); });
   if (!$('find').hidden) { for (const x of S.tabs) x.search.clearDecorations(); find(1); }
@@ -164,33 +173,38 @@ async function closeTab(id = S.active) {
   if (!t || !(await api.confirmClose(id))) return;  // claude · codex 등이 돌고 있으면 먼저 묻는다
   api.kill(id);
   t.term.dispose(); t.el.remove();
-  const i = S.tabs.indexOf(t);
-  S.tabs.splice(i, 1);
+  const list = projTabs(t.dir), i = list.indexOf(t);
+  S.tabs.splice(S.tabs.indexOf(t), 1);
+  if (S.last[t.dir] === id) delete S.last[t.dir];
   saveTabs(); updateBadge();
-  const next = S.tabs[i] || S.tabs[i - 1];
+  const next = list[i + 1] || list[i - 1];  // 같은 프로젝트의 옆 탭으로
+  if (S.active !== id) return renderTabs(), renderProjects();
   if (next) return activate(next.id);
   S.active = null;
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit();
 }
 
-function cycleTab(step) {
-  if (!S.tabs.length) return;
-  const i = S.tabs.findIndex(t => t.id === S.active);
-  activate(S.tabs[(i + step + S.tabs.length) % S.tabs.length].id);
+function cycleTab(step) {  // 지금 프로젝트 안에서만
+  const list = projTabs();
+  if (!list.length) return;
+  const i = list.findIndex(t => t.id === S.active);
+  activate(list[(i + step + list.length) % list.length].id);
 }
 
-function tabLabel(t) {  // 직접 붙인 이름, 아니면 프로젝트 이름 (같은 프로젝트 탭이 여럿이면 2, 3 …)
+const KIND_NAME = {claude: 'Claude', codex: 'Codex', shell: '터미널'};
+function tabLabel(t) {  // 직접 붙인 이름, 아니면 종류 (같은 종류가 여럿이면 2, 3 …) — 탭 줄엔 한 프로젝트 탭만 보이니 프로젝트 이름은 빼고
   if (t.title) return t.title;
-  const i = S.tabs.filter(x => x.dir === t.dir).indexOf(t);
-  return i > 0 ? `${t.base} ${i + 1}` : t.base;
+  const i = projTabs(t.dir).filter(x => x.kind === t.kind).indexOf(t);
+  return i > 0 ? `${KIND_NAME[t.kind]} ${i + 1}` : KIND_NAME[t.kind];
 }
 
 const STATE = {wait: '입력 · 승인을 기다려요', busy: '일하는 중', new: '새 응답이 있어요'};
 function renderTabs() {
   if (S.renaming) return;  // 이름을 바꾸는 중엔 다시 그리지 않는다 (입력칸이 사라지지 않게)
   // 탭은 container-type 이라 내용 너비가 0 으로 계산돼 탭 줄이 최소 폭(96px)으로 쪼그라든다 → 탭당 200px(+간격)를 미리 잡아 두고 좁으면 줄어들게
-  $('tabs').style.flexBasis = `${S.tabs.length * 204}px`;
-  $('tabs').replaceChildren(...S.tabs.map((t, i) => {
+  const list = projTabs();
+  $('tabs').style.flexBasis = `${list.length * 204}px`;
+  $('tabs').replaceChildren(...list.map((t, i) => {
     const label = tabLabel(t), state = t.waiting ? 'wait' : t.busy ? 'busy' : t.unread ? 'new' : '';
     // 이미 보고 있는 탭을 누르면 다시 그리지 않는다 — 다시 그리면 두 번 누르기(이름 바꾸기)가 새 요소에 떨어져 안 먹는다
     const main = h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active),
@@ -219,7 +233,7 @@ function renameTab(t, main) {  // 탭을 두 번 누르면 이름 바꾸기 (비
 }
 
 function renderWelcome() {
-  $('welcome').hidden = S.tabs.length > 0;
+  $('welcome').hidden = projTabs().length > 0;
   const p = project(S.current);
   const btn = (label, onclick, primary) => h('button', {class: primary ? 'btn primary' : 'btn', type: 'button', onclick}, label);
   $('welcome-acts').replaceChildren(...[
@@ -244,8 +258,8 @@ dark.addEventListener('change', () => { for (const t of S.tabs) t.term.options.t
 // ── 탭 저장 · 복원: 다시 켜면 탭과 Claude · Codex 대화를 이어서 연다 ──
 function saveTabs() {
   if (S.restoring) return;
-  const list = S.tabs.filter(t => !t.exited).map(t => ({dir: t.dir, kind: t.kind, title: t.title, sid: t.sid}));
-  store.set('tabs', JSON.stringify({active: S.tabs.filter(t => !t.exited).findIndex(t => t.id === S.active), list}));
+  const list = S.tabs.filter(t => !t.exited).map(t => ({dir: t.dir, kind: t.kind, title: t.title, sid: t.sid, last: S.last[t.dir] === t.id}));
+  store.set('tabs', JSON.stringify({current: S.current, list}));
 }
 async function restoreTabs() {
   let saved = null;
@@ -254,11 +268,13 @@ async function restoreTabs() {
   S.restoring = true;
   for (const s of saved.list) {
     const p = project(s.dir);
-    if (p && p.exists) await openTab(s.dir, s.kind, {sid: s.sid, title: s.title, resume: true, quiet: true});
+    if (!p || !p.exists) continue;
+    const t = await openTab(s.dir, s.kind, {sid: s.sid, title: s.title, resume: true, quiet: true});
+    if (s.last) S.last[s.dir] = t.id;
   }
   S.restoring = false;
-  const t = S.tabs[saved.active] || S.tabs[S.tabs.length - 1];
-  if (t) activate(t.id);
+  if (project(saved.current)) selectProject(saved.current);
+  else if (S.tabs.length) activate(S.tabs[S.tabs.length - 1].id);
   saveTabs();
   return S.tabs.length > 0;
 }
@@ -271,7 +287,7 @@ function linkTab(tabId, sid) {
 const seen = t => document.hasFocus() && S.active === t.id;
 function alertTab(t, msg, detail) {
   if (seen(t)) return;
-  api.notify({title: `${tabLabel(t)} · ${t.kind === 'codex' ? 'Codex' : 'Claude'}`, body: detail ? `${msg} — ${detail}` : msg, tab: t.id});
+  api.notify({title: `${t.base} · ${tabLabel(t)}`, body: detail ? `${msg} — ${detail}` : msg, tab: t.id});
 }
 function updateBadge() { api.badge(S.tabs.filter(t => t.waiting || t.unread).length); }
 api.onEvent(e => {
@@ -295,7 +311,7 @@ api.onEvent(e => {
   } else {
     t.busy = true; t.waiting = false;
   }
-  renderTabs(); updateBadge();
+  renderTabs(); renderProjects(); updateBadge();
 });
 api.onActivateTab(id => { if (tab(id)) activate(id); });
 addEventListener('focus', () => { const t = tab(S.active); if (t && t.unread) { t.unread = false; renderTabs(); updateBadge(); } });
@@ -502,7 +518,7 @@ async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널
   if (S.orbitReady && !view.hidden) view.reload();
 }
 
-// ── 설정 창: 에이전트 연결 · 해제 · 승인(바뀌는 내용을 먼저 보여 주고 동의받음), 사용 한도 · 미니 창 · 자동 실행 · 테마 ──
+// ── 설정 창: 에이전트 연결 · 해제 · 승인(바뀌는 내용을 먼저 보여 주고 동의받음), 사용 한도 · 자동 실행 · 테마 ──
 const modal = $('modal');
 let modalClose = null;
 function showSheet(title, body, actions, onClose) {
@@ -585,7 +601,6 @@ async function openSettings(intro) {
     h('h3', {}, '수집기'),
     st.claudeLimits != null ? toggleRow('Claude 사용 한도 보기', 'Claude Code 로그인 정보로 5시간 · 주간 한도를 5분마다 가져와요 (비용 없음)', st.claudeLimits,
       async v => { const r = await api.post('/api/settings', {claudeLimits: v}); await loadUsage(); return r; }) : null,
-    st.autoMini != null ? toggleRow('세션 시작 시 미니 창', '앱 밖(다른 터미널)에서 시작한 세션이면 작은 궤도 창을 띄워요', st.autoMini, v => api.post('/api/settings', {autoMini: v})) : null,
     st.autostart != null ? toggleRow('로그인할 때 수집기 실행', '꺼도 Tycho 앱을 켜면 수집기가 함께 켜져요', st.autostart, v => api.post('/api/autostart', {enabled: v})) : null,
     h('h3', {}, '화면'),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '테마'), h('small', {}, '궤도 패널은 늘 어두운 밤하늘로 보여요')), seg),
@@ -653,9 +668,9 @@ api.onMenu(action => ({
   'find': openFind,
   'settings': () => openSettings(),
 }[action] || (() => {}))());
-addEventListener('keydown', e => {  // ⌘1–9: 탭 이동
+addEventListener('keydown', e => {  // ⌘1–9: 지금 프로젝트의 탭 이동
   if (e.metaKey && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
-    const t = S.tabs[+e.key - 1];
+    const t = projTabs()[+e.key - 1];
     if (t) { e.preventDefault(); activate(t.id); }
   }
 }, true);

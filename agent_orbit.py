@@ -3,7 +3,6 @@
 
 데이터는 이 컴퓨터 밖으로 나가지 않는다. 127.0.0.1 에서만 열리고, 허용한 사이트(ORIGINS)만 읽을 수 있다.
 
-  tycho mini [--no-top]                      대시보드를 작은 창으로 (macOS: 다른 창 위에 떠 있는 창)
   tycho open                                 전체 대시보드를 브라우저로
   tycho serve                                수집기 실행 (자동 실행 서비스가 호출)
   tycho connect|disconnect <agent>           훅 연결/해제 (claude | codex) — 바뀔 내용을 보여주고 확인 후 적용
@@ -33,7 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-VERSION = '0.14.0'
+VERSION = '0.15.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -55,7 +54,7 @@ HOSTS = {'127.0.0.1:%d' % PORT, 'localhost:%d' % PORT}  # 다른 Host 는 거부
 RETENTION_DAYS = 7
 BOOT = str(int(time.time() * 1000))
 LABEL = 'dev.agentorbit.collector'
-MAC = sys.platform == 'darwin'  # 미니 창(WebKit)은 macOS 에서만
+MAC = sys.platform == 'darwin'
 
 AGENTS = {
     'claude': {'name': 'Claude Code', 'dir': '~/.claude', 'file': '~/.claude/settings.json',
@@ -654,10 +653,7 @@ def hook(agent, h, tab=''):
         publish({'id': main, 'parent': None, 'agent': agent, 'label': labels.get(main) or base(h.get('cwd') or '') or agent,
                  'cwd': cwds.get(main, ''), 'kind': 'notify', 'text': short(str(h.get('message') or '입력을 기다려요')), 'ts': time.time()})
         return
-    if h.get('hook_event_name') == 'SessionStart':
-        # 새로 시작하거나 이어 열 때만 (대화 압축·/clear 땐 닫은 창을 다시 띄우지 않음). 앱 안의 세션이면 앱이 이미 궤도를 보여준다
-        if not tab and h.get('source', 'startup') in ('startup', 'resume') and setting('autoMini') and MAC:
-            open_mini()
+    if h.get('hook_event_name') == 'SessionStart':  # 시작 폴더 · 탭만 기억 (궤도는 Tycho 앱이 보여준다)
         return
     phase, tid = HOOK_PHASE.get(h.get('hook_event_name')), h.get('tool_use_id')
     if not phase or not tid:
@@ -924,7 +920,7 @@ def agent_state(agent):
     return out
 
 
-DEFAULTS = {'autoMini': True, 'claudeLimits': False}  # 세션이 시작되면 미니 창을 띄울지, Claude 사용 한도를 가져올지
+DEFAULTS = {'claudeLimits': False}  # Claude 사용 한도를 가져올지
 
 
 def setting(key):
@@ -954,7 +950,6 @@ def save_setting(key, value):
 def status():
     return {'version': VERSION, 'protocol': PROTOCOL, 'port': PORT, 'boot': BOOT, 'platform': sys.platform,
             'autostart': autostart_state(), 'retentionDays': RETENTION_DAYS,
-            'autoMini': setting('autoMini') if MAC else None,
             'claudeLimits': setting('claudeLimits'), 'tabs': dict(tabs),
             'limits': dict(({'codex': dict(limits)} if limits else {}), **({'claude': dict(claude_limits)} if claude_limits else {})),
             'agents': {k: agent_state(k) for k in AGENTS}}
@@ -1289,6 +1284,8 @@ def port_open():
 
 def cmd_setup(args):
     print('Tycho %s 설치' % VERSION)
+    if os.path.exists(os.path.join(APP_DIR, 'mini.js')):  # 예전 미니 창 스크립트 (더 이상 쓰지 않음)
+        os.remove(os.path.join(APP_DIR, 'mini.js'))
     if local_status(3) is None and port_open():
         die('포트 %d 를 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나, 다른 포트로 설치하세요: AGENT_ORBIT_PORT=47787 tycho setup '
             '(브라우저 대시보드는 47777 만 보므로 이때는 Tycho 앱이나 http://127.0.0.1:포트 로 여세요)' % PORT)
@@ -1311,76 +1308,8 @@ def cmd_setup(args):
     print('\n다음: 브라우저에서 %s 를 열고 Claude Code · Codex 를 연결하세요.' % SITE)
     print('      Safari 라면 http://127.0.0.1:%d 로 여세요.' % PORT)
     cli = 'tycho' if shutil.which('tycho') else tilde(os.path.join(APP_DIR, 'bin', 'tycho'))
-    print('\n미니 창:  %s mini      전체 화면: %s open' % (cli, cli))
+    print('\n대시보드:  %s open' % cli)
     print('명령:     %s doctor | uninstall' % cli)
-
-
-# macOS 미니 창: 시스템에 있는 osascript(JXA)로 WebKit 창 하나를 띄운다 — 별도 앱 설치 없음
-MINI_JS = r'''ObjC.import('Cocoa');
-ObjC.import('WebKit');
-function run(argv) {
-  const url = argv[0], top = argv[1] !== 'no', W = 440, H = 680;
-  const app = $.NSApplication.sharedApplication;
-  app.setActivationPolicy(1);  // Dock 아이콘 없이 창만
-  const win = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, W, H), 1 | 2 | 4 | 8, 2, false);
-  win.title = 'Tycho';
-  win.releasedWhenClosed = false;
-  win.titlebarAppearsTransparent = true;
-  win.appearance = $.NSAppearance.appearanceNamed('NSAppearanceNameDarkAqua');
-  win.backgroundColor = $.NSColor.colorWithSRGBRedGreenBlueAlpha(10 / 255, 10 / 255, 10 / 255, 1);
-  win.minSize = $.NSMakeSize(320, 480);
-  if (top) { win.level = 3; win.collectionBehavior = 1 | 256; }  // 다른 창 위, 모든 데스크톱·전체 화면 앱 위에도
-  const web = $.WKWebView.alloc.initWithFrameConfiguration(win.contentView.bounds, $.WKWebViewConfiguration.alloc.init);
-  web.autoresizingMask = 2 | 16;
-  try { web.setValueForKey($.NSNumber.numberWithBool(false), 'drawsBackground'); } catch (e) {}  // 로딩 중 흰 화면 방지
-  ObjC.registerSubclass({name: 'AgentOrbitMini', protocols: ['NSWindowDelegate', 'WKUIDelegate'], methods: {
-    'windowWillClose:': {types: ['void', ['id']], implementation: () => app.terminate($())},
-    'webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:': {types: ['id', ['id', 'id', 'id', 'id']],
-      implementation: (wv, cfg, action) => { $.NSWorkspace.sharedWorkspace.openURL(action.request.URL); return $(); }},
-  }});
-  const d = $.AgentOrbitMini.alloc.init;
-  win.delegate = d;
-  web.UIDelegate = d;
-  win.contentView.addSubview(web);
-  web.loadRequest($.NSURLRequest.requestWithURL($.NSURL.URLWithString(url)));
-  if (!win.setFrameUsingName('AgentOrbitMini')) {  // 처음엔 화면 오른쪽 위, 그다음부턴 마지막 위치·크기
-    const vf = $.NSScreen.mainScreen.visibleFrame;
-    win.setFrameOrigin($.NSMakePoint(vf.origin.x + vf.size.width - W - 24, vf.origin.y + vf.size.height - H - 24));
-  }
-  win.setFrameAutosaveName('AgentOrbitMini');
-  win.makeKeyAndOrderFront($());
-  app.activateIgnoringOtherApps(true);
-  app.run;
-}
-'''
-
-
-def open_mini(top=True):
-    """macOS 미니 창을 띄운다. 이미 떠 있으면 그대로 둔다. 수집기(세션 시작 훅)와 CLI 가 같이 쓴다."""
-    script = os.path.join(APP_DIR, 'mini.js')
-    if read_text(script) != MINI_JS:
-        write_text(script, MINI_JS)
-    if run('pgrep', '-f', script).stdout.strip():
-        return False
-    subprocess.Popen(['osascript', '-l', 'JavaScript', script, 'http://127.0.0.1:%d/?view=mini' % PORT, 'top' if top else 'no'],
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    return True
-
-
-def cmd_mini(args):
-    if local_status(3) is None:
-        die('수집기가 꺼져 있습니다. tycho doctor 로 확인하세요.')
-    url = 'http://127.0.0.1:%d/?view=mini' % PORT
-    if sys.platform == 'darwin':
-        if not open_mini('--no-top' not in args):
-            return print('미니 창이 이미 열려 있습니다.')
-        return print('미니 창을 열었습니다. 닫으려면 창의 빨간 버튼을 누르세요.')
-    for exe in ('google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'brave-browser'):
-        if shutil.which(exe):  # Linux: 주소창 없는 앱 창
-            subprocess.Popen([shutil.which(exe), '--app=' + url, '--window-size=440,680'], stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            return print('미니 창을 열었습니다.')
-    webbrowser.open(url)
 
 
 def cmd_open(args):
@@ -1415,7 +1344,6 @@ def cmd_doctor(args):
              'collector   %s' % ('running %s on 127.0.0.1:%d' % (st['version'], PORT) if st else
                                  'NOT RUNNING (127.0.0.1:%d%s)' % (PORT, ' — port used by another program' if port_open() else '')),
              'autostart   %s' % {None: 'not installed', True: 'on', False: 'off'}[autostart_state()],
-             'auto mini   %s' % ('on' if setting('autoMini') else 'off'),
              'claude lim  %s' % ('on' if setting('claudeLimits') else 'off')]
     for k in AGENTS:
         a = (st or {}).get('agents', {}).get(k) or agent_state(k)
@@ -1452,8 +1380,6 @@ def main(argv):
         serve()
     elif cmd == 'setup':
         cmd_setup(args)
-    elif cmd == 'mini':
-        cmd_mini(args)
     elif cmd == 'open':
         cmd_open(args)
     elif cmd in ('connect', 'disconnect'):

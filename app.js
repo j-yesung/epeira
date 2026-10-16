@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.14.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.15.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -15,7 +15,7 @@ const API = LOCAL ? '' : /^http:\/\/127\.0\.0\.1:\d+$/.test(params.get('api') ||
 const LOCAL_URL = `http://127.0.0.1:${PORT}`;
 const SAFARI = !LOCAL && /^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent);
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const MINI = params.get('view') === 'mini';  // tycho mini 가 여는 작은 창 · 앱의 궤도 패널
+const MINI = params.get('view') === 'mini';  // 작은 레이아웃 (Tycho 앱의 궤도 패널)
 const EMBED = !!params.get('embed');          // 앱의 궤도 패널: 요약·상태바는 앱이 그린다
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
 const FOLLOW_QUIET = 8;           // 보던 세션이 이만큼(초) 조용해야 다른 세션으로 HUB 를 옮긴다
@@ -184,9 +184,8 @@ async function refreshStatus() {
 }
 
 async function boot() {
-  if (MINI) { document.body.classList.add('mini'); $('bigger').hidden = false; resize(); }
+  if (MINI) { document.body.classList.add('mini'); resize(); }
   if (EMBED) { document.body.classList.add('embed'); resize(); }  // 앱의 궤도 패널: 헤더·요약·상태바는 앱이 그린다
-  $('statusbar').hidden = !MINI || EMBED;
   $('refresh').onclick = refreshAll;
   $('refresh').append(refreshIcon());
   renderStatic();
@@ -524,7 +523,6 @@ function renderPanels() {
   $('s-tokens').title = `캐시에서 읽은 토큰 ${fmtK(t.tcache)}`;
   $('s-codex').textContent = limitText() || 'tool calls';
   $('s-codex').title = limitText() ? 'Codex 요금제 사용 한도 (마지막으로 기록된 값)' : '';
-  renderStatusbar(t);
   $('judged').textContent = `${t.tools.toLocaleString()} tool calls`;
   const sum = t.read + t.edit + t.run + t.other || 1;
   for (const [k] of BARS) { const pc = Math.round(t[k] / sum * 100); $(`p-${k}`).textContent = pc + '%'; $(`f-${k}`).style.width = pc + '%'; }
@@ -652,12 +650,6 @@ function renderFooter() {
     sw.onclick = async () => { try { await flip(); renderFooter(); } catch { toast('설정을 바꾸지 못했어요'); } };
     return sw;
   };
-  if (st && st.autoMini != null) {
-    kids.push(toggle('세션 시작 시 미니 창', st.autoMini, async () => {
-      st.autoMini = (await postJSON('/api/settings', {autoMini: !st.autoMini})).autoMini;
-      toast(st.autoMini ? 'Claude · Codex 세션이 시작되면 미니 창이 떠요' : '세션이 시작돼도 미니 창을 띄우지 않아요. 터미널에서 tycho mini 로 열 수 있어요');
-    }));
-  }
   if (st && st.claudeLimits != null) {
     kids.push(toggle('Claude 사용 한도 보기', st.claudeLimits, async () => {
       const r = await postJSON('/api/settings', {claudeLimits: !st.claudeLimits});
@@ -674,7 +666,6 @@ function renderFooter() {
       toast(st.autostart ? '로그인할 때 자동으로 켜져요' : '자동 실행을 껐어요. 지금 실행 중인 수집기는 그대로예요');
     }));
   }
-  if (S.mode === 'live') kids.push(h('span', {}, '미니 창: tycho mini'));
   if (!LOCAL && S.mode === 'live') kids.push(h('a', {href: LOCAL_URL}, '로컬 주소로 열기'));
   if (FEEDBACK_URL) kids.push(h('a', {href: FEEDBACK_URL, target: '_blank', rel: 'noopener'}, '피드백'));
   kids.push(h('a', {href: '#privacy', onclick: () => { $('privacy').open = true; }}, '개인정보'));
@@ -712,26 +703,12 @@ async function openAction(agent, action) {
   });
 }
 
-// ── 새로고침 · 미니 창 상태바 ──
+// ── 새로고침 ──
 async function refreshAll() {
   if (S.mode !== 'live') return;
   const ok = await refreshStatus();
   if (!S.connected) openStream(); else loadSummary();
   toast(ok ? '새로고침했어요' : '수집기에 연결할 수 없어요');
-}
-
-function renderStatusbar(t) {  // 미니 창 맨 아래: Orca 처럼 한 줄 요약 (앱 안에선 앱이 그린다)
-  const bar = $('statusbar');
-  if (bar.hidden) return;
-  const live = S.mode === 'live' && S.connected, lim = limitText();
-  const agent = key => h('span', {class: 'sb-agent', title: `${AGENTS[key].name} · 오늘 도구 ${t.by[key].calls}회 · 입력+출력 ${fmtK(t.by[key].tok)} 토큰`},
-    mark(key), h('b', {}, t.by[key].calls.toLocaleString()), h('span', {class: 'sb-dim'}, `· ${fmtK(t.by[key].tok)}`));
-  bar.replaceChildren(
-    h('span', {class: live ? 'sb-live on' : 'sb-live'}, h('i'), S.mode === 'demo' ? 'DEMO' : live ? 'LIVE' : 'OFFLINE'),
-    agent('claude'), agent('codex'),
-    lim ? h('span', {class: 'sb-dim', title: 'Codex 요금제 사용 한도'}, lim) : null,
-    h('span', {class: 'grow'}),
-    h('button', {class: 'sb-btn', type: 'button', title: '새로고침', 'aria-label': '새로고침', onclick: refreshAll}, refreshIcon()));
 }
 
 function refreshIcon() {
@@ -959,8 +936,8 @@ let W = 0, H = 0, Z = 1, stars = [], rot = 0, lastFrame = now(), working = false
 function resize() {
   const dpr = devicePixelRatio || 1;
   W = cv.clientWidth; Z = W < 600 ? Math.min(.82, .5 + W / 1400) : Math.max(.7, Math.min(1, W / 760));  // 좁은 화면도 노드 글자가 읽히게, 아주 좁은 패널은 조금 더 작게 (노드가 HUB 를 덮지 않게)
-  if (MINI) {  // 미니 창: 다른 요소를 뺀 나머지 높이를 궤도가 채운다
-    const rest = document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - cv.offsetHeight + $('statusbar').offsetHeight;
+  if (MINI) {  // 작은 레이아웃: 다른 요소를 뺀 나머지 높이를 궤도가 채운다
+    const rest = document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - cv.offsetHeight;
     H = Math.max(200, Math.round(innerHeight - rest));
   } else H = Math.round(W < 600 ? W * 1.1 : Math.max(340, Math.min(540, W * .56)));
   cv.style.height = H + 'px'; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -984,7 +961,7 @@ cv.addEventListener('click', ev => {
 });
 cv.addEventListener('dblclick', ev => { if (onHub(ev) && S.focus) renameSession(S.focus); });
 
-const geo = () => {  // 미니 창 · 앱 패널은 크기가 바뀌어도 원형 유지, 넓은 대시보드는 납작한 타원
+const geo = () => {  // 앱의 궤도 패널은 크기가 바뀌어도 원형 유지, 넓은 대시보드는 납작한 타원
   const r = Math.min(W * .41, H * .37);
   return {cx: W / 2, cy: H * .52, rx: MINI ? r : W * .41, ry: MINI ? r : H * .37};
 };
@@ -1180,7 +1157,7 @@ function frame() {
   }
   if (S.dirty) {
     S.dirty = false; renderPanels();
-    if (MINI && Math.abs(document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight + $('statusbar').offsetHeight - innerHeight) > 2) resize();  // 미니 창은 스크롤 없이 꽉 차게
+    if (MINI && Math.abs(document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - innerHeight) > 2) resize();  // 궤도 패널은 스크롤 없이 꽉 차게
   }
   if (S.listDirty && t - lastList > .5) { S.listDirty = false; lastList = t; renderSessions(); }
   if (S.chipsDirty && t - lastChips > .3) { S.chipsDirty = false; lastChips = t; renderChips(); }

@@ -77,31 +77,6 @@ def test_hook_mapping():
     assert 't2' not in ao.running  # 끝이 먼저 오면 늦게 온 시작은 무시
 
 
-def test_session_start_opens_mini():
-    opened = []
-    ao.open_mini, real = (lambda top=True: opened.append(top) or True), ao.open_mini
-    ao.MAC = True
-    try:
-        for source in ('startup', 'resume', 'compact', 'clear', None):
-            h = {'hook_event_name': 'SessionStart', 'session_id': 'S'}
-            if source:
-                h['source'] = source
-            ao.hook('claude', h)
-        assert len(opened) == 3, '새로 시작·이어 열기·source 없음(Codex)만 띄운다'
-        ao.save_setting('autoMini', False)
-        ao.hook('codex', {'hook_event_name': 'SessionStart'})
-        assert len(opened) == 3, '사용자가 끄면 띄우지 않는다'
-        ao.save_setting('autoMini', True)
-        ao.hook('claude', {'hook_event_name': 'SessionStart', 'transcript_path': '/p/T1.jsonl'}, tab='tab-1')
-        assert len(opened) == 3, '앱 터미널 탭에서 시작한 세션은 미니 창을 띄우지 않는다'
-        assert ao.tabs['tab-1'] == 'T1'
-        ao.hook('claude', {'hook_event_name': 'PreToolUse', 'tool_use_id': 'x1', 'agent_id': 'a9', 'session_id': 'T1',
-                           'transcript_path': '/p/T1.jsonl', 'tool_name': 'Read'}, tab='tab-1')
-        assert ao.tabs['tab-1'] == 'T1', '서브에이전트 실행도 부모 세션으로 짝지음'
-    finally:
-        ao.open_mini = real
-
-
 def write_lines(path, *objs):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'a') as f:

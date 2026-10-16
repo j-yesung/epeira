@@ -59,7 +59,7 @@ main { padding-top: 16px; padding-bottom: 40px; }
 .btn.danger { border-color: rgba(255, 107, 129, .45); color: var(--err); }
 .btn.small { padding: 4px 10px; font-size: 12px; }
 .btn[disabled] { opacity: .5; cursor: default; }
-:is(.btn, .icon-btn, .sb-btn, .seg button, .row, summary, .switch, .chip-btn, a):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+:is(.btn, .icon-btn, .seg button, .row, summary, .switch, .chip-btn, a):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 
 /* 설치 안내 */
 .onboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; margin-bottom: 14px; }
@@ -128,18 +128,6 @@ main { padding-top: 16px; padding-bottom: 40px; }
 .icon-btn { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--dim); cursor: pointer; }
 .icon-btn:hover { border-color: var(--line-2); background: var(--panel-2); color: var(--text); }
 .icon-btn svg { width: 16px; height: 16px; }
-/* 미니 창 하단 상태바 (Orca 같은 한 줄 요약) */
-.statusbar { position: fixed; right: 0; bottom: 0; left: 0; z-index: 4; display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 10px; border-top: 1px solid var(--line); background: #0d0d0d; color: var(--dim); font: 11px var(--mono); white-space: nowrap; overflow: hidden; }
-.statusbar .grow { flex: 1; }
-.sb-live { display: inline-flex; align-items: center; gap: 5px; color: var(--faint); font-weight: 600; letter-spacing: .06em; }
-.sb-live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.sb-live.on { color: var(--accent); }
-.sb-agent { display: inline-flex; align-items: center; gap: 5px; color: var(--text); }
-.sb-agent .mark { width: 16px; height: 16px; border-radius: 4px; }
-.sb-dim { color: var(--faint); }
-.sb-btn { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--dim); cursor: pointer; }
-.sb-btn:hover { background: var(--panel-2); color: var(--text); }
-.sb-btn svg { width: 13px; height: 13px; }
 .agent .name { font-weight: 650; }
 .chip { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line-2); border-radius: 999px; color: var(--faint); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .chip.ok { border-color: rgba(52, 211, 153, .4); background: rgba(52, 211, 153, .08); color: var(--ok); }
@@ -214,7 +202,7 @@ footer .grow { margin-right: auto; }
 .toast { position: fixed; bottom: 24px; left: 50%; z-index: 40; max-width: min(560px, calc(100vw - 32px)); padding: 10px 16px; border: 1px solid var(--line-2); border-radius: 10px; background: #1c1c1c; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); opacity: 0; transform: translate(-50%, 6px); transition: opacity .2s, transform .2s; pointer-events: none; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* 미니 창 (tycho mini · ?view=mini): 궤도가 남는 높이를 채우고 핵심만 */
+/* 작은 레이아웃 (?view=mini · Tycho 앱의 궤도 패널): 궤도가 남는 높이를 채우고 핵심만 */
 body.mini .seg, body.mini #banners, body.mini #onboard, body.mini #agents-panel, body.mini #sessions-panel,
 body.mini .privacy, body.mini footer, body.mini .panels .panel:nth-child(2),
 body.mini #feed li:nth-child(n+4) { display: none !important; }
@@ -228,7 +216,7 @@ body.mini #feed .dot { margin-top: 0; }
 body.mini #feed p { grid-column: auto; }
 #feed li.empty { display: block; }  /* 빈 안내문은 격자 첫 칸(10px)에 갇혀 세로로 늘어서지 않게 */
 body.mini .brand span { display: inline; }
-body.embed .top, body.mini .cards, body.mini #refresh { display: none; }  /* 미니 창은 상태바에 새로고침 */
+body.embed .top, body.mini .cards, body.mini #refresh { display: none; }
 
 @keyframes pulse { 50% { opacity: .3; } }
 @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
@@ -263,7 +251,6 @@ body.embed .top, body.mini .cards, body.mini #refresh { display: none; }  /* 미
     </nav>
     <span class="pill off" id="mode"><i></i><span>…</span></span>
     <button class="icon-btn" id="refresh" type="button" title="새로고침" aria-label="새로고침"></button>
-    <a class="btn small" id="bigger" href="/" target="_blank" rel="noopener" hidden>크게 보기</a>
   </div>
 </header>
 
@@ -294,7 +281,6 @@ body.embed .top, body.mini .cards, body.mini #refresh { display: none; }  /* 미
         <li>로그인 시 자동 실행 — macOS <code>~/Library/LaunchAgents/dev.agentorbit.collector.plist</code>, Linux <code>~/.config/systemd/user/agent-orbit.service</code></li>
         <li>Claude Code 연결 시 — <code>~/.claude/settings.json</code>의 hooks 항목 4개: 세션 시작, 도구 실행 전·후·실패 (최초 원본은 <code>settings.json.orbit-bak</code>)</li>
         <li>Codex 연결 시 — <code>~/.codex/hooks.json</code>의 hooks 항목 3개: 세션 시작, 도구 실행 전·후. 그리고 <code>~/.codex/config.toml</code>의 승인 기록</li>
-        <li>macOS에서 세션이 시작되면 미니 창이 떠요. 아래 "세션 시작 시 미니 창" 스위치로 끌 수 있어요.</li>
         <li>Codex 사용 한도는 Codex 공식 app-server(<code>codex app-server</code>)로 5분마다 읽습니다. Codex 가 자기 로그인으로 OpenAI 에 묻는 것이라 Tycho 는 로그인 정보를 보지 않습니다.</li>
         <li>"Claude 사용 한도 보기"를 켜면(기본은 꺼짐) 수집기가 Claude Code 로그인 정보(macOS 키체인 또는 <code>~/.claude/.credentials.json</code>)를 읽어 Anthropic(<code>api.anthropic.com</code>)에서 5시간 · 주간 한도를 5분마다 가져옵니다. 로그인 정보는 Anthropic 으로만 보내고 저장하지 않으며, 비용이나 한도 차감은 없습니다.</li>
       </ul>
@@ -304,7 +290,6 @@ body.embed .top, body.mini .cards, body.mini #refresh { display: none; }  /* 미
 </main>
 
 <footer><div class="wrap" id="footer"></div></footer>
-<div class="statusbar" id="statusbar" hidden role="status" aria-label="오늘 사용량"></div>
 <aside class="drawer" id="drawer" hidden aria-label="세션 기록"></aside>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
