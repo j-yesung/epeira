@@ -222,7 +222,7 @@ body.mini .top .wrap { height: 44px; padding: 0 12px; }
 body.mini main { padding: 8px 10px 10px; }
 body.mini .panels { grid-template-columns: 1fr; margin-top: 6px; }
 body.mini .panel { padding: 10px 12px; }
-body.mini #feed { margin-top: 6px; }
+body.mini #feed { display: grid; grid-template-rows: repeat(3, 28px); margin-top: 6px; overflow: hidden; }  /* 늘 3줄 높이: 프로젝트를 바꿔도 궤도 위치가 그대로 */
 body.mini #feed li { grid-template-columns: 10px 40px minmax(0, 1fr); align-items: center; padding: 4px 8px; }
 body.mini #feed .dot { margin-top: 0; }
 body.mini #feed p { grid-column: auto; }
@@ -278,7 +278,7 @@ body.embed .top, body.mini .cards, body.mini #refresh { display: none; }  /* 미
   </section>
   <div class="cards" id="cards"></div>
   <div class="panels">
-    <section class="panel"><h2>LIVE VERDICTS <span id="judged"></span></h2><ul id="feed"></ul></section>
+    <section class="panel"><h2>실시간 활동 <span id="judged"></span></h2><ul id="feed"></ul></section>
     <section class="panel"><h2>WHERE THE WORK GOES</h2><div id="bars"></div></section>
   </div>
   <section class="panel" id="agents-panel" aria-labelledby="agents-title"><h2 id="agents-title">AGENTS <span id="agents-note"></span></h2><div class="agents" id="agents"></div><div class="soon-row" id="agents-soon"></div></section>

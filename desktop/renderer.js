@@ -246,31 +246,37 @@ function setOrbitWidth(w, save = true) {  // 터미널이 최소 360px 는 남�
   appEl.style.setProperty('--orbit-w', w + 'px');
   if (save) store.set('orbitW', w);
 }
-const fitOrbit = () => setOrbitWidth(+store.get('orbitW') || 440, false);  // 창 크기가 바뀌면 고른 너비 안에서 다시 맞춤 (저장값은 그대로)
-addEventListener('resize', fitOrbit);
+function setSideWidth(w, save = true) {  // 터미널 360px 와 궤도 패널 최소 폭은 남긴다
+  const orbit = appEl.classList.contains('no-orbit') ? 0 : 325;
+  w = Math.max(200, Math.min(360, window.innerWidth - 360 - orbit, Math.round(w)));
+  appEl.style.setProperty('--side-w', w + 'px');
+  if (save) store.set('sideW', w);
+}
+// 창 크기 · 사이드바 · 패널이 바뀌면 고른 너비 안에서 다시 맞춤 (저장값은 그대로)
+const fitLayout = () => { setSideWidth(+store.get('sideW') || 248, false); setOrbitWidth(+store.get('orbitW') || 440, false); };
+addEventListener('resize', fitLayout);
 function toggle(cls) {
   appEl.classList.toggle(cls);
   store.set(cls, appEl.classList.contains(cls) ? '1' : '0');
-  fitOrbit();
+  fitLayout();
   const t = tab(S.active);
   if (t) requestAnimationFrame(() => t.fit.fit());
 }
-const resizer = $('resizer');
-resizer.addEventListener('pointerdown', e => {  // 포인터 캡처: 창 밖에서 버튼을 놓아도 드래그가 확실히 끝난다
-  resizer.setPointerCapture(e.pointerId);
-  appEl.classList.add('dragging');
-  e.preventDefault();
-});
-resizer.addEventListener('pointermove', e => { if (resizer.hasPointerCapture(e.pointerId)) setOrbitWidth(window.innerWidth - e.clientX); });
-resizer.addEventListener('lostpointercapture', () => {
-  appEl.classList.remove('dragging');
-  const t = tab(S.active);
-  if (t) t.fit.fit();
-});
-resizer.addEventListener('dblclick', () => setOrbitWidth(440));  // 두 번 누르면 기본 너비
+function dragHandle(el, onMove, reset) {  // 포인터 캡처: 창 밖에서 버튼을 놓아도 드래그가 확실히 끝난다
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); el.classList.add('active'); appEl.classList.add('dragging'); e.preventDefault(); });
+  el.addEventListener('pointermove', e => { if (el.hasPointerCapture(e.pointerId)) onMove(e.clientX); });
+  el.addEventListener('lostpointercapture', () => {
+    el.classList.remove('active'); appEl.classList.remove('dragging');
+    const t = tab(S.active);
+    if (t) t.fit.fit();
+  });
+  el.addEventListener('dblclick', reset);  // 두 번 누르면 기본 너비
+}
+dragHandle($('resizer'), x => setOrbitWidth(window.innerWidth - x), () => setOrbitWidth(440));
+dragHandle($('side-resizer'), x => { setSideWidth(x); fitLayout(); }, () => { setSideWidth(248); fitLayout(); });
 if (store.get('no-orbit') === '1') appEl.classList.add('no-orbit');
 if (store.get('no-side') === '1') appEl.classList.add('no-side');
-fitOrbit();
+fitLayout();
 
 // ── 버튼 · 메뉴 · 단축키 ──
 $('add-project').onclick = addProject;

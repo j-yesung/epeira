@@ -22,6 +22,9 @@ button { font: inherit; color: inherit; }
 .app.no-orbit { grid-template-columns: var(--side-w) minmax(0, 1fr) 0 0; }
 .app.no-side.no-orbit { grid-template-columns: 0 minmax(0, 1fr) 0 0; }
 .app.no-side .side, .app.no-orbit .orbit, .app.no-orbit .resizer { display: none; }
+/* 칸을 직접 지정: 사이드바를 숨겨도 나머지가 한 칸씩 당겨지지 않게 (당겨지면 터미널이 0px 칸, 궤도가 5px 칸에 들어가 깨진다) */
+.side, .center, .resizer, .orbit { grid-row: 1; }
+.side { grid-column: 1; } .center { grid-column: 2; } .resizer { grid-column: 3; } .orbit { grid-column: 4; }
 
 .btn { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--panel-2); font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn:hover { border-color: var(--accent); }
@@ -33,7 +36,7 @@ button { font: inherit; color: inherit; }
 kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--dim); font: 11px var(--sans); letter-spacing: .16em; }  /* ⇧⌘C 가 붙어 보이지 않게 */
 
 /* 사이드바 */
-.side { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); background: #0d0d0d; }
+.side { position: relative; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); background: #0d0d0d; }
 .side-top { display: flex; align-items: center; height: 52px; padding: 0 14px 0 84px; }  /* 신호등 버튼과 같은 세로 가운데 */
 .brand { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-weight: 700; font-size: 12px; line-height: 1; }
 .brand img { display: block; }
@@ -56,6 +59,8 @@ kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 
 .mini-btn { width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); color: var(--dim); font: 700 10px var(--mono); cursor: pointer; }
 .mini-btn:hover { border-color: var(--accent); color: var(--text); }
 .side-empty { padding: 14px 10px; color: var(--faint); }
+.side-resizer { position: absolute; top: 0; right: -3px; bottom: 0; z-index: 5; width: 6px; cursor: col-resize; }
+.side-resizer:hover, .side-resizer.active { background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat; }
 /* 하단 상태바 (Orca 처럼 창 전체 폭) */
 .statusbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 0 8px 0 12px; overflow: hidden; border-top: 1px solid var(--line); background: #0d0d0d; color: var(--dim); font: 11px var(--mono); white-space: nowrap; }
 .statusbar .grow { flex: 1; }
@@ -105,7 +110,7 @@ kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 
 
 /* 궤도 패널 */
 .resizer { cursor: col-resize; background: var(--line); }
-.resizer:hover, .app.dragging .resizer { background: var(--accent); }
+.resizer:hover, .resizer.active { background: var(--accent); }
 .app.dragging webview { pointer-events: none; }
 .orbit { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
 .orbit-hd { display: flex; align-items: center; gap: 6px; height: 52px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: #0d0d0d; color: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
