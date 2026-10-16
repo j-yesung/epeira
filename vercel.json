@@ -1,4 +1,7 @@
 {
+  "redirects": [
+    { "source": "/:path*", "has": [{ "type": "host", "value": "agent-orbit-app.vercel.app" }], "destination": "https://epeira.vercel.app/:path*", "permanent": true }
+  ],
   "headers": [
     {
       "source": "/(.*)",
