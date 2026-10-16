@@ -44,6 +44,7 @@ button { font: inherit; color: inherit; }
 .btn.small { height: 24px; padding: 0 8px; font-size: 12px; }
 .icon-btn { display: inline-grid; flex: none; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--dim); font-size: 16px; cursor: pointer; }
 .icon-btn:hover { border-color: var(--line-2); background: var(--panel-2); color: var(--text); }
+:root[data-theme="light"] img[src$="codex.svg"] { filter: invert(1); }  /* OpenAI 로고는 흑백으로만: 어두우면 흰색, 밝으면 검은색 */
 .k { display: inline-grid; flex: none; place-items: center; width: 18px; height: 18px; border: 1px solid var(--line-2); border-radius: 5px; background: var(--tile); color: var(--dim); font: 700 11px var(--mono); }
 .k img { width: 12px; height: 12px; }
 kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--dim); font: 11px var(--sans); letter-spacing: .16em; }  /* ⇧⌘C 가 붙어 보이지 않게 */

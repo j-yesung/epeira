@@ -26,7 +26,7 @@ function applyTheme() {
   for (const t of S.tabs) t.term.options.theme = termTheme();
 }
 async function chooseTheme(v) { themePref = await api.setTheme(v); applyTheme(); }
-const LOGO = {claude: 'assets/claude.svg', codex: 'assets/codex.svg'};  // Codex 는 중립 마크 (OpenAI 공식 로고 파일을 받으면 교체)
+const LOGO = {claude: 'assets/claude.svg', codex: 'assets/codex.svg'};  // Codex 는 OpenAI 로고 (OpenAI 공식 저장소 openai-cookbook 의 logomark, 흑백만 → 라이트 테마에선 검게)
 const kindIcon = kind => h('span', {class: 'k'}, LOGO[kind] ? h('img', {src: LOGO[kind], alt: ''}) : '›');
 const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(Math.round(x || 0));
 // 터미널 단축키 기호 글꼴(Epeira Keys)을 먼저 불러 둔다 → GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
