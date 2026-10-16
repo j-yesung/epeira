@@ -100,19 +100,8 @@ Claude 의 사용 한도까지 보려면 **설정 → 에이전트 → Claude �
 
 문제가 있으면 **설정 → 문제 해결**에서 진단 정보를 복사하거나 수집기를 다시 설치할 수 있습니다.
 
-## 개발
+## 참여 · 라이선스
 
-Node.js 22.12 이상, npm, Xcode Command Line Tools 가 필요합니다.
+버그 제보와 기여는 언제든 환영합니다. 개발 환경 · 테스트 · 릴리스 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 보안 문제는 공개 이슈 대신 [SECURITY.md](SECURITY.md) 의 방법으로 알려 주세요.
 
-```sh
-git clone https://github.com/j-yesung/agent-orbit.git
-cd agent-orbit/desktop
-npm ci
-npm start          # 개발용 실행 (저장소의 수집기 파일을 씀)
-npm test           # 앱 · 궤도 대시보드 자동 테스트 (창을 띄우지 않음, 대시보드 테스트는 Chrome 필요)
-npm run dist       # dist/ 에 Apple Silicon · Intel DMG
-```
-
-수집기 테스트는 저장소 맨 위에서 `python3 test_agent_orbit.py` 로 돌립니다. 둘 다 임시 폴더에서 돌아서 실제 설정은 건드리지 않습니다.
-
-`npm run dist` 는 임시 서명만 하고 공증하지 않습니다. 배포할 때는 DMG 두 개를 GitHub Releases 에 올리고, 사이트의 `app-version.json` 을 새 버전으로 바꿔 배포하면 앱이 새 버전을 안내합니다.
+[MIT 라이선스](LICENSE) © Yesung Jang
