@@ -932,11 +932,18 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '단축키 안내'), h('small', {}, '⌘/ 로도 열 수 있어요')), h('button', {class: 'btn small', type: 'button', onclick: openShortcuts}, '보기')),
   ], help: [
     h('h3', {}, '문제 해결'),
+    h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `Epeira v${S.appVersion || ''}`),
+      h('small', {}, S.update ? `새 버전 ${S.update.version} 이 있어요 → 받아서 확인한 뒤 다시 시작하면 바뀌어요` : '6시간마다 새 버전을 확인해요')),
+      S.update ? h('button', {class: 'btn small primary', type: 'button', disabled: S.updating, onclick: installUpdate}, S.updating ? '받는 중…' : '업데이트')
+        : h('button', {class: 'btn small', type: 'button', onclick: async e => {
+          e.currentTarget.disabled = true;
+          const u = await checkUpdate(true).catch(() => ({failed: true}));
+          toast(u && u.failed ? '확인하지 못했어요 → 인터넷 연결을 확인해 주세요' : u ? `새 버전 ${u.version} 이 있어요` : '최신 버전이에요');
+          openSettings(intro);
+        }}, '업데이트 확인')),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `수집기 v${st.version} · 127.0.0.1:${st.port}`), h('small', {}, '정상으로 연결돼 있어요')),
       h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; const out = await api.doctor(); await navigator.clipboard.writeText(out).catch(() => {}); toast('진단 정보를 복사했어요 → 문의할 때 붙여넣어 주세요'); openSettings(intro); }}, '진단 정보 복사'),
       h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; toast('수집기를 다시 설치하고 있어요…'); const r = await api.reinstall(); toast(r.ok ? '다시 설치했어요' : `다시 설치하지 못했어요 ${r.log || ''}`.trim()); refreshAll(); }}, '다시 설치')),
-    S.update ? h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `새 버전 ${S.update.version}`), h('small', {}, '받아서 확인한 뒤 다시 시작하면 바뀌어요')),
-      h('button', {class: 'btn small primary', type: 'button', disabled: S.updating, onclick: installUpdate}, S.updating ? '받는 중…' : '업데이트')) : null,
     h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '대시보드 크게 보기 →'),
   ]}[section];
   showSheet('설정', [h('div', {class: 'set'}, nav, h('div', {class: 'set-body'}, ...page.filter(Boolean)))], null, null, true);
@@ -1111,4 +1118,8 @@ addEventListener('keydown', e => {  // ⌘1–9: 지금 프로젝트의 탭 이�
 })();
 initOrbit();
 setInterval(loadUsage, 15000);  // 상태바 숫자 · 탭 ↔ 세션 · git 은 15초마다
-api.checkUpdate().then(u => { S.update = u; renderStatusbar(); }).catch(() => {});  // 새 버전 안내 (하루 한 번만 실제로 확인)
+// 새 버전 안내: 켤 때와 켜 둔 동안 6시간마다 (설정의 "업데이트 확인"은 바로)
+const checkUpdate = force => api.checkUpdate(force).then(u => { if (!(u && u.failed)) { S.update = u; renderStatusbar(); } return u; });
+checkUpdate().catch(() => {});
+setInterval(() => checkUpdate().catch(() => {}), 6 * 36e5);
+api.appVersion().then(v => { S.appVersion = v; });

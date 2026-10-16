@@ -302,3 +302,13 @@ test('프로젝트 우클릭 메뉴: 새 터미널 · 터미널이 열린 프로
   await until(page, dir => !S.projects.some(p => p.path === dir) && !S.tabs.some(t => t.dir === dir), beta);
   await page.evaluate(async dir => { S.projects = (await window.orbit.addProjectPath(dir)).list; renderProjects(); }, beta);  // 다시 넣어 두기
 });
+
+test('설정의 업데이트 확인: 바로 묻고, 새 버전이 있으면 업데이트 버튼', async () => {
+  releases.set('/app-version.json', JSON.stringify({version: '9.9.9', url: 'https://example.com/r'}));
+  await page.evaluate(() => openSettings(undefined, 'help'));
+  await page.click('.set-body button:text-is("업데이트 확인")');
+  await until(page, () => S.update && S.update.version === '9.9.9');
+  await until(page, () => [...document.querySelectorAll('.set-body button')].some(b => b.textContent === '업데이트'));
+  assert.ok(await page.evaluate(() => document.querySelector('.set-body').textContent.includes(`Epeira v${S.appVersion}`)));
+  await page.keyboard.press('Escape');
+});

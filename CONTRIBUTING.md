@@ -10,7 +10,7 @@
 | `index.html`, `app.js` | 궤도 대시보드. 사이트(Vercel)와 수집기가 같은 파일을 보여 주고, 앱의 궤도 패널도 이 화면입니다 |
 | `install.sh` | 수집기 설치 · 업데이트 스크립트 (앱도 같은 스크립트를 앱에 든 파일로 실행) |
 | `desktop/` | Electron 앱: `main.js`(창 · 터미널 · 수집기 관리 · 업데이트), `preload.js`(화면에 여는 최소 API), `renderer.js` · `style.css`(화면), `test/`, `sign.mjs`(릴리스 서명) |
-| `app-version.json` | 앱이 하루 한 번 확인하는 최신 버전 (업데이트 버튼이 이 버전의 릴리스를 받음) |
+| `app-version.json` | 앱이 6시간마다 확인하는 최신 버전 (업데이트 버튼이 이 버전의 릴리스를 받음) |
 | `vercel.json` | 사이트 보안 헤더 |
 | `.github/workflows/release.yml` | 태그를 push 하면 테스트 · 빌드 · 서명 · 릴리스 |
 

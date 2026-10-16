@@ -259,7 +259,7 @@ ipcMain.handle('collector:reinstall', async () => {
   return {ok: !!(await collectorStatus()), log: r.out};
 });
 
-// 새 버전: 하루 한 번 사이트의 app-version.json 을 확인하고, 누르면 GitHub Releases 의 DMG 를 받아 바꾼다
+// 새 버전: 6시간마다(설정에서 바로도) 사이트의 app-version.json 을 확인하고, 누르면 GitHub Releases 의 DMG 를 받아 바꾼다
 // 관리자가 릴리스할 때 비밀 키(저장소 밖)로 DMG 에 서명하고 앱엔 공개 키만 → 사이트나 내려받는 길이 털려도 우리가 서명하지 않은 파일은 설치하지 않는다
 const SITE = process.env.EPEIRA_UPDATE_BASE || 'https://epeira.vercel.app';
 const RELEASES = process.env.EPEIRA_UPDATE_BASE || 'https://github.com/j-yesung/epeira/releases/download';
@@ -275,13 +275,15 @@ function latestApp() {
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
 }
-ipcMain.handle('update:check', async () => {
-  if (TEST) return null;
+ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('update:check', async (_, force) => {  // 6시간에 한 번만 실제로 묻는다. force: 설정의 "업데이트 확인"
+  if (TEST && !force) return null;
   const c = conf();
-  if (c.latest && Date.now() - (c.checkedAt || 0) < 864e5) return newer(c.latest.version, app.getVersion()) ? c.latest : null;
+  if (!force && c.latest && Date.now() - (c.checkedAt || 0) < 6 * 36e5) return newer(c.latest.version, app.getVersion()) ? c.latest : null;
   const v = await latestApp();
-  if (v && typeof v.version === 'string' && /^https:\/\//.test(v.url || '')) saveConf({latest: {version: v.version, url: v.url}, checkedAt: Date.now()});
-  return v && v.version && newer(v.version, app.getVersion()) && /^https:\/\//.test(v.url || '') ? {version: v.version, url: v.url} : null;
+  if (!(v && typeof v.version === 'string' && /^https:\/\//.test(v.url || ''))) return force ? {failed: true} : null;
+  saveConf({latest: {version: v.version, url: v.url}, checkedAt: Date.now()});
+  return newer(v.version, app.getVersion()) ? {version: v.version, url: v.url} : null;
 });
 
 const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, {timeout: 120000}, (err, out) => (err ? reject(err) : resolve(out.trim()))));
