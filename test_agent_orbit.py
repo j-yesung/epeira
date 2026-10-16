@@ -265,6 +265,18 @@ def test_title_and_search():  # 첫 질문이 세션 제목, 기록 검색은 �
     assert ao.search('x') == [], '두 글자 이상'
 
 
+
+def test_private_files():  # 기록 폴더 · 파일은 이 사용자만 읽을 수 있다
+    os.makedirs(ao.EVENTS_DIR, exist_ok=True)
+    f = os.path.join(ao.EVENTS_DIR, 'perm-test.jsonl')
+    with open(f, 'w') as fp:
+        fp.write('{}\n')
+    os.chmod(f, 0o644)
+    ao.private()
+    assert oct(os.stat(f).st_mode & 0o777) == '0o600' and oct(os.stat(ao.APP_DIR).st_mode & 0o777) == '0o700'
+    os.remove(f)
+
+
 if __name__ == '__main__':
     for name, fn in list(globals().items()):
         if name.startswith('test_'):

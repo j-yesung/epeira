@@ -31,9 +31,12 @@ DMG 에 Electron 이 들어 있어서 Node.js · npm 은 따로 필요 없습니
 
 ## 설치
 
-1. 배포자에게 받은 DMG 를 열고 **Tycho 를 Applications 폴더로 끌어다 놓습니다.**
-2. Finder 의 **응용 프로그램**에서 Tycho 를 실행합니다. DMG 안에서 바로 실행하지 마세요.
-3. 앱이 켜지면 **수집기를 알아서 설치하고 실행합니다.** 터미널에 명령을 칠 필요가 없습니다.
+**[⬇ 최신 버전 받기 (GitHub Releases)](https://github.com/j-yesung/agent-orbit/releases/latest)**
+
+1. Releases 에서 내 Mac 에 맞는 DMG 를 받습니다. Apple Silicon(M1 이후)은 `Tycho-<버전>-arm64.dmg`, Intel 은 `Tycho-<버전>.dmg` 입니다. (Apple 메뉴 → 이 Mac에 관하여 → 칩)
+2. DMG 를 열고 **Tycho 를 Applications 폴더로 끌어다 놓습니다.**
+3. Finder 의 **응용 프로그램**에서 Tycho 를 실행합니다. DMG 안에서 바로 실행하지 마세요.
+4. 앱이 켜지면 **수집기를 알아서 설치하고 실행합니다.** 터미널에 명령을 칠 필요가 없습니다.
 
 ### 첫 실행이 차단될 때
 
@@ -76,7 +79,7 @@ Claude 의 사용 한도까지 보려면 **설정 → 에이전트 → Claude �
 
 ## 데이터와 설정
 
-수집기는 `127.0.0.1:47777` 에서만 열리고, 에이전트 활동 기록은 이 컴퓨터에만 7일 동안 보관합니다(질문 · 명령의 앞부분, 파일 이름, 토큰 수).
+수집기는 `127.0.0.1:47777` 에서만 열리고, 에이전트 활동 기록은 이 컴퓨터에만 7일 동안 보관합니다(질문 · 명령의 앞부분, 파일 이름, 토큰 수). 기록 폴더는 이 사용자만 읽을 수 있게 만들어 같은 Mac 의 다른 계정은 볼 수 없습니다.
 
 - **앱 데이터**(프로젝트 목록 · 창 위치 · 테마): `~/Library/Application Support/Tycho/`
 - **수집기 · 활동 기록**: `~/.agent-orbit`
@@ -112,4 +115,4 @@ npm run dist       # dist/ 에 Apple Silicon · Intel DMG
 
 수집기 테스트는 저장소 맨 위에서 `python3 test_agent_orbit.py` 로 돌립니다. 둘 다 임시 폴더에서 돌아서 실제 설정은 건드리지 않습니다.
 
-`npm run dist` 는 임시 서명만 하고 공증하지 않습니다. 배포할 때는 DMG 를 GitHub Releases 에 올리고, 사이트의 `app-version.json` 을 새 버전으로 바꿔 배포하면 앱이 새 버전을 안내합니다.
+`npm run dist` 는 임시 서명만 하고 공증하지 않습니다. 배포할 때는 DMG 두 개를 GitHub Releases 에 올리고, 사이트의 `app-version.json` 을 새 버전으로 바꿔 배포하면 앱이 새 버전을 안내합니다.

@@ -166,6 +166,7 @@ function resumeCmd(kind, sid) {
 async function openTab(dir, kind = 'shell', opts = {}) {
   dir = dir || S.current;
   if (!dir) return addProject();
+  if (!['shell', 'claude', 'codex'].includes(kind)) kind = 'shell';  // 셸에 그대로 입력되는 값이라 정해진 것만
   await fontsReady;
   // 다시 켤 때는 대화를 바로 열지 않고 그 탭을 처음 볼 때 이어서 연다 (한꺼번에 여러 개를 띄우지 않게)
   const pendingRun = opts.resume ? resumeCmd(kind, opts.sid) : null, run = kind === 'shell' || opts.resume ? null : kind;
@@ -630,14 +631,19 @@ const view = $('orbit-view');
 const tellActive = () => S.orbitReady && view.executeJavaScript(`window.aoSetActive && aoSetActive(${document.hasFocus()})`).catch(() => {});
 view.addEventListener('dom-ready', () => { S.orbitReady = true; tellOrbit(); tellActive(); });
 addEventListener('blur', () => setTimeout(tellActive, 50));  // 앱이 뒤로 가면 궤도 애니메이션을 초당 8번으로 (배터리)
-view.addEventListener('console-message', e => {  // 궤도 패널의 "탭으로 열기 · 이 탭으로 가기" (대시보드가 콘솔로 알려 준다)
+view.addEventListener('console-message', async e => {  // 궤도 패널의 "탭으로 열기 · 이 탭으로 가기" (대시보드가 콘솔로 알려 준다)
   const m = /^tycho:(open|focus) (\{.*\})$/.exec(e.message || '');
   if (!m) return;
   let x;
   try { x = JSON.parse(m[2]); } catch { return; }
   if (typeof x.id !== 'string') return;
   const open = S.tabs.find(t => t.sid === x.id);
-  if (open) activate(open.id); else if (m[1] === 'open') openSession(x);
+  if (open) return activate(open.id);
+  if (m[1] !== 'open') return;
+  // 궤도 패널이 보낸 폴더 · 종류는 믿지 않는다: 수집기 기록에 있는 세션만, 값도 수집기 것으로
+  if (!S.sessions.some(s => s.id === x.id)) await loadSessions();
+  const known = S.sessions.find(s => s.id === x.id);
+  if (known) openSession(known); else toast('이 세션을 기록에서 찾지 못했어요');
 });
 
 function tellOrbit() {  // 지금 프로젝트 · 탭을 대시보드에 알린다: 프로젝트마다 독립된 궤도, HUB 는 그 탭의 세션

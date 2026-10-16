@@ -1,5 +1,5 @@
 // Tycho 앱 — 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
-const {app, BrowserWindow, Menu, ipcMain, dialog, shell, Notification, nativeTheme, screen, clipboard} = require('electron');
+const {app, BrowserWindow, Menu, ipcMain, dialog, shell, Notification, nativeTheme, screen, clipboard, session} = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -403,6 +403,13 @@ app.on('web-contents-created', (_, wc) => {
 });
 
 app.whenReady().then(() => {
+  // 권한: Electron 은 요청하면 다 허락한다 → 앱 화면은 알림 · 클립보드 쓰기만, 궤도 패널(webview)은 아무것도
+  const allow = new Set(['notifications', 'clipboard-sanitized-write']);
+  session.defaultSession.setPermissionRequestHandler((wc, perm, done) => done(allow.has(perm)));
+  session.defaultSession.setPermissionCheckHandler((wc, perm) => allow.has(perm));
+  const orbit = session.fromPartition('persist:orbit');
+  orbit.setPermissionRequestHandler((wc, perm, done) => done(false));
+  orbit.setPermissionCheckHandler(() => false);
   nativeTheme.themeSource = conf().theme || 'system';
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(path.join(__dirname, 'assets/icon.png'));
   buildMenu();

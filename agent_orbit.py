@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-VERSION = '0.17.0'
+VERSION = '0.18.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -1247,7 +1247,20 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+def private():
+    """기록엔 질문 · 명령이 남는다 → 이 사용자만 읽게 (같은 Mac 의 다른 계정도 못 읽게). 새로 만드는 파일도 같이"""
+    os.umask(0o077)
+    for root, dirs, files in os.walk(APP_DIR):
+        for name in dirs + files:
+            p = os.path.join(root, name)
+            if not os.path.islink(p):
+                os.chmod(p, 0o700 if os.path.isdir(p) or os.access(p, os.X_OK) else 0o600)
+    if os.path.isdir(APP_DIR):
+        os.chmod(APP_DIR, 0o700)
+
+
 def serve():
+    private()
     checkpoint.update((read_json(CKPT_FILE) or {}).get('files') or {})
     names.update(read_json(NAMES_FILE) or {})
     limits.update(read_json(LIMITS_FILE) or {})

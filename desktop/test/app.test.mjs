@@ -35,7 +35,10 @@ const stub = () => app.evaluate(({ipcMain}, dir) => {  // 가짜 수집기 응�
     : p.startsWith('/api/search') ? {results: [{id: 'sess-z', agent: 'claude', cwd: dir, label: 'alpha', kind: 'run', text: 'Bash npm test', ts: now - 60}]}
     : p.startsWith('/api/status') ? {version: 'test', port: 9, agents: {}, claudeLimits: false} : null));
 }, alpha);
-after(async () => { if (app) await app.close().catch(() => {}); rmSync(tmp, {recursive: true, force: true}); });
+after(async () => {  // 끝낼 때 "종료할까요?" 확인 창이 떠도 기다리지 않게
+  if (app) { await answer(app, 0).catch(() => {}); await app.close().catch(() => {}); }
+  rmSync(tmp, {recursive: true, force: true});
+});
 
 test('터미널은 프로젝트마다 따로: 바꿔도 새로 열리지 않고 그 프로젝트 탭만 보인다', async () => {
   app = await launch();

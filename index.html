@@ -83,6 +83,7 @@ main { padding-top: 16px; padding-bottom: 40px; }
 .chips { position: absolute; top: 8px; right: 8px; left: 8px; z-index: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chips:empty { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }  /* 화면 읽기 프로그램용 */
 .chip-btn { display: inline-flex; flex: none; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border: 1px solid var(--line-2); border-radius: 999px; background: rgba(17, 17, 17, .86); color: var(--dim); font-size: 12px; cursor: pointer; }
 .chip-btn:hover { border-color: rgba(59, 158, 255, .5); color: var(--text); }
 .chip-btn.on { border-color: rgba(59, 158, 255, .65); background: rgba(59, 158, 255, .16); color: var(--text); }
@@ -260,7 +261,8 @@ body.embed .top, body.mini .cards, body.mini #refresh { display: none; }
 
   <section class="stage" aria-label="에이전트 활동 궤도">
     <div class="chips" id="chips" aria-label="HUB로 볼 세션"></div>
-    <canvas id="orbit" role="img" aria-label="지금 일하고 있는 에이전트 세션이 궤도 위에 표시됩니다"></canvas>
+    <canvas id="orbit" role="img" aria-label="에이전트 궤도" aria-describedby="orbit-text"></canvas>
+    <p class="sr-only" id="orbit-text">아직 움직인 에이전트가 없어요</p>
     <span class="demo-mark" id="demo-mark" hidden>DEMO · 예시 데이터</span>
   </section>
   <div class="cards" id="cards"></div>

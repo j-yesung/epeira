@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.17.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.18.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -912,10 +912,24 @@ function loadAnalytics() {  // 배포 사이트에서만: 쿠키 없는 페이�
 }
 
 // ── 2초마다: 스파크라인 · HUB 확인 · 날짜 바뀜 · 상대 시간 ──
+function describeOrbit() {  // 궤도는 그림이라 화면 읽기 프로그램용 글 요약을 따로 둔다
+  const f = S.sess.get(S.focus);
+  if (!f) return '최근 30분 동안 움직인 에이전트가 없어요';
+  const a = AGENTS[f.agent] || AGENTS.claude, tools = [...f.stations.values()].sort((x, y) => y.last - x.last);
+  const running = [...S.sess.values()].filter(x => x === f || x.parent === f.id).flatMap(x => [...x.running.values()].map(r => r.text));
+  const subs = [...S.sess.values()].filter(x => x.parent === f.id && x.running.size).map(x => nameOf(x.id, x.label));
+  return [`${a.name} 세션 ${nameOf(f.id, f.label)}`,
+    running.length ? `실행 중: ${running.slice(0, 3).join(', ')}` : '지금 실행 중인 도구 없음',
+    subs.length ? `일하는 서브에이전트: ${subs.join(', ')}` : '',
+    tools.length ? `최근 도구: ${tools.slice(0, 5).map(n => `${n.label}${n.count ? ` ${n.count}회` : ''}`).join(', ')}` : ''].filter(Boolean).join('. ');
+}
+
 function tick() {
   const t = epoch();
   for (const s of S.sess.values()) for (const [id, r] of s.running) if (t - r.t > 1800) s.running.delete(id);  // 끝 신호 유실 대비
   ensureFocus();
+  const text = describeOrbit();
+  if ($('orbit-text').textContent !== text) $('orbit-text').textContent = text;
   S.spark.active[SPARK_N - 1] = activeCount();
   for (const k in S.spark) {
     const a = S.spark[k], max = Math.max(...a) || 1;

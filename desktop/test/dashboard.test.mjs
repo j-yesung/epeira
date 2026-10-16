@@ -71,6 +71,11 @@ test('실행 중인 도구는 노드가 되고, 누르면 그 도구 기록', {s
   await page.keyboard.press('Escape');
 });
 
+test('궤도를 글로도 읽을 수 있다 (화면 읽기 프로그램)', {skip}, async () => {
+  await page.evaluate(() => aoFocusProject('p', '', '/w/p'));
+  await until(() => document.getElementById('orbit-text').textContent.includes('실행 중: Bash npm test'));
+});
+
 test('앱이 뒤에 있으면 애니메이션을 줄인다', {skip}, async () => {
   await page.evaluate(() => aoSetActive(false));
   assert.equal(await page.evaluate(() => slow), true);
