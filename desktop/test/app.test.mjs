@@ -2,7 +2,9 @@
 // 임시 앱 데이터 폴더 + 없는 수집기 주소로 띄워서 실제 프로젝트 목록 · 수집기 설치는 건드리지 않는다
 import {test, after} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, writeFileSync, rmSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:fs';
+import {generateKeyPairSync, sign} from 'node:crypto';
+import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -18,8 +20,14 @@ for (const d of [data, alpha, beta]) mkdirSync(d);
 execFileSync('git', ['init', '-q', beta]);  // beta 는 git 저장소 (사이드바 브랜치 표시)
 writeFileSync(path.join(data, 'projects.json'), JSON.stringify([{path: alpha, name: 'alpha'}, {path: beta, name: 'beta'}]));
 
+// 릴리스 서버 흉내: 시험용 키로 서명한 DMG 를 준다 (앱에 든 공개 키는 TYCHO_TEST 일 때만 바꿀 수 있다)
+const testKey = generateKeyPairSync('ed25519'), releases = new Map();
+const updates = createServer((req, res) => { const f = releases.get(req.url); res.writeHead(f ? 200 : 404); res.end(f); });
+await new Promise(r => updates.listen(0, '127.0.0.1', r));
+
 const launch = () => electron.launch({executablePath: require('electron'), args: [APP_DIR, `--user-data-dir=${data}`],
-  env: {...process.env, AGENT_ORBIT_URL: 'http://127.0.0.1:9', TYCHO_TEST: '1'}});  // 수집기 없음 → 실제 설치를 건드리지 않음, 창은 숨김
+  env: {...process.env, AGENT_ORBIT_URL: 'http://127.0.0.1:9', TYCHO_TEST: '1', TMPDIR: tmp,  // 수집기 없음 → 실제 설치를 건드리지 않음, 창은 숨김, 받은 업데이트도 임시 폴더에
+    TYCHO_UPDATE_BASE: `http://127.0.0.1:${updates.address().port}`, TYCHO_UPDATE_KEY: testKey.publicKey.export({type: 'spki', format: 'der'}).toString('base64')}});
 const until = async (page, fn, arg) => page.waitForFunction(fn, arg, {timeout: 8000});
 const labels = page => page.$$eval('.tab-main span:not(.k)', els => els.map(e => e.textContent));
 const send = (app, e) => app.evaluate(({BrowserWindow}, ev) => BrowserWindow.getAllWindows()[0].webContents.send('orbit:event', ev), e);
@@ -37,6 +45,7 @@ const stub = () => app.evaluate(({ipcMain}, dir) => {  // 가짜 수집기 응�
 }, alpha);
 after(async () => {  // 끝낼 때 "종료할까요?" 확인 창이 떠도 기다리지 않게
   if (app) { await answer(app, 0).catch(() => {}); await app.close().catch(() => {}); }
+  updates.close();
   rmSync(tmp, {recursive: true, force: true});
 });
 
@@ -246,4 +255,22 @@ test('놓친 알림은 종 아이콘에 모인다', async () => {
   await send(app, {kind: 'start', id: 'sess-y', agent: 'claude', tool: 't9', text: 'Bash ls', ts: Date.now() / 1000});
   await send(app, {kind: 'done', id: 'sess-y', agent: 'claude', text: 'turn complete', ts: Date.now() / 1000});
   await until(page, () => S.inbox.length > 0 && !!document.querySelector('.sb-count'));
+});
+
+test('업데이트: 우리 서명이 맞고 안의 버전도 맞는 DMG 만 받아 둔다', async () => {
+  const contents = path.join(tmp, 'pkg/Tycho.app/Contents'), dmgFile = path.join(tmp, 'u.dmg');
+  mkdirSync(contents, {recursive: true});
+  writeFileSync(path.join(contents, 'Info.plist'), '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>9.9.9</string></dict></plist>');
+  execFileSync('hdiutil', ['create', '-quiet', '-srcfolder', path.join(tmp, 'pkg'), '-volname', 'Tycho', '-format', 'UDZO', dmgFile]);
+  const dmg = readFileSync(dmgFile), arch = process.arch === 'arm64' ? '-arm64' : '';
+  const put = (v, sig) => { releases.set(`/v${v}/Tycho-${v}${arch}.dmg`, dmg); releases.set(`/v${v}/Tycho-${v}${arch}.dmg.sig`, sig.toString('base64')); };
+  put('9.9.9', sign(null, dmg, testKey.privateKey));
+  put('9.9.8', sign(null, Buffer.from('다른 파일'), testKey.privateKey));  // 다른 파일의 서명
+  put('9.9.7', sign(null, dmg, testKey.privateKey));  // 서명은 맞지만 안의 앱은 9.9.9 → 예전 DMG 를 새 버전이라 내미는 경우
+  await answer(app, 1);  // 다시 시작은 "나중에"
+  assert.deepEqual(await page.evaluate(() => window.orbit.installUpdate('9.9.9')), {ok: true, later: true});
+  assert.match((await page.evaluate(() => window.orbit.installUpdate('9.9.8'))).error, /서명/);
+  assert.match((await page.evaluate(() => window.orbit.installUpdate('9.9.7'))).error, /9\.9\.9/);
+  assert.match((await page.evaluate(() => window.orbit.installUpdate('9.9.6'))).error, /404/, '없는 릴리스');
+  assert.deepEqual(await page.evaluate(() => window.orbit.installUpdate('0.0.1')), {ok: false}, '예전 버전으로는 바꾸지 않는다');
 });

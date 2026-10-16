@@ -5,6 +5,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const http = require('node:http');
 const https = require('node:https');
+const crypto = require('node:crypto');
+const {Readable} = require('node:stream');
+const {pipeline} = require('node:stream/promises');
 const {spawn, execFile} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const pty = require('node-pty');
@@ -232,11 +235,14 @@ ipcMain.handle('collector:reinstall', async () => {
   return {ok: !!(await collectorStatus()), log: r.out};
 });
 
-// 새 버전 알림: 하루 한 번 사이트의 app-version.json 만 확인 (자동 설치는 서명이 있어야 해서 안내만)
-const SITE = 'https://agent-orbit-app.vercel.app';
+// 새 버전: 하루 한 번 사이트의 app-version.json 을 확인하고, 누르면 GitHub Releases 의 DMG 를 받아 바꾼다
+// 관리자가 릴리스할 때 비밀 키(저장소 밖)로 DMG 에 서명하고 앱엔 공개 키만 → 사이트나 내려받는 길이 털려도 우리가 서명하지 않은 파일은 설치하지 않는다
+const SITE = process.env.TYCHO_UPDATE_BASE || 'https://agent-orbit-app.vercel.app';
+const RELEASES = process.env.TYCHO_UPDATE_BASE || 'https://github.com/j-yesung/agent-orbit/releases/download';
+const UPDATE_KEY = crypto.createPublicKey({key: Buffer.from((TEST && process.env.TYCHO_UPDATE_KEY) || 'MCowBQYDK2VwAyEAWnNiV7VZ9Ba/TOrzn4zJ3AR1WUQXLw2nvZujRttGay8=', 'base64'), format: 'der', type: 'spki'});
 function latestApp() {
   return new Promise(resolve => {
-    const req = https.get(`${SITE}/app-version.json`, {timeout: 8000}, res => {
+    const req = (SITE.startsWith('https:') ? https : http).get(`${SITE}/app-version.json`, {timeout: 8000}, res => {
       let body = '';
       res.on('data', d => { body += d; });
       res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
@@ -253,6 +259,47 @@ ipcMain.handle('update:check', async () => {
   if (v && typeof v.version === 'string' && /^https:\/\//.test(v.url || '')) saveConf({latest: {version: v.version, url: v.url}, checkedAt: Date.now()});
   return v && v.version && newer(v.version, app.getVersion()) && /^https:\/\//.test(v.url || '') ? {version: v.version, url: v.url} : null;
 });
+
+const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, {timeout: 120000}, (err, out) => (err ? reject(err) : resolve(out.trim()))));
+async function download(url, file) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`내려받지 못했어요 (${res.status})`);
+  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(file));
+}
+async function stageUpdate(version) {  // 받기 → 서명 확인 → DMG 에서 앱 꺼내기 → 안의 버전 확인 (지금 앱은 아직 그대로)
+  const name = `Tycho-${version}${process.arch === 'arm64' ? '-arm64' : ''}.dmg`;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tycho-update-'));
+  const dmg = path.join(dir, name), mnt = path.join(dir, 'mnt'), next = path.join(dir, 'Tycho.app');
+  try {
+    await download(`${RELEASES}/v${version}/${name}`, dmg);
+    await download(`${RELEASES}/v${version}/${name}.sig`, `${dmg}.sig`);
+    if (!crypto.verify(null, fs.readFileSync(dmg), UPDATE_KEY, Buffer.from(fs.readFileSync(`${dmg}.sig`, 'utf8').trim(), 'base64'))) throw new Error('서명이 맞지 않아요');
+    await run('hdiutil', ['attach', dmg, '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mnt]);
+    try { await run('ditto', [path.join(mnt, 'Tycho.app'), next]); } finally { await run('hdiutil', ['detach', mnt, '-force']).catch(() => {}); }
+    const inner = await run('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', path.join(next, 'Contents/Info.plist')]);
+    if (inner !== version) throw new Error(`받은 앱이 ${inner} 버전이에요`);  // 예전 버전 DMG 를 새 버전이라고 내미는 것 막기
+  } catch (e) { fs.rmSync(dir, {recursive: true, force: true}); throw e; }
+  return {version, app: next, dmg};
+}
+// 앱이 끝난 뒤 바꾸고 다시 켠다. 못 바꾸면 원래 앱을 다시 켜고 DMG 를 열어 직접 옮기게 한다
+const SWAP = 'while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; old="$(dirname "$2")/old.app"; ' +
+  'if mv "$3" "$old"; then if mv "$2" "$3"; then rm -rf "$old"; else mv "$old" "$3"; open "$4"; fi; else open "$4"; fi; open "$3"';
+let staged = null, installing = null;
+async function installUpdate(version) {
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version) || !newer(version, app.getVersion())) return {ok: false};
+  const target = path.resolve(app.getPath('exe'), '../../..');  // …/Tycho.app
+  const canSwap = app.isPackaged && target.endsWith('.app') && !/^\/Volumes\/|\/AppTranslocation\//.test(target) && (() => { try { fs.accessSync(path.dirname(target), fs.constants.W_OK); return true; } catch { return false; } })();
+  if (!canSwap && !TEST) return {ok: false, manual: true};  // DMG 안에서 켰거나 응용 프로그램 폴더에 쓸 수 없으면 직접 받기
+  try { if (!staged || staged.version !== version) staged = await stageUpdate(version); } catch (e) { return {ok: false, manual: true, error: e.message}; }
+  const {response} = await dialog.showMessageBox(win, {type: 'info', buttons: ['다시 시작', '나중에'], defaultId: 0, cancelId: 1,
+    message: `Tycho ${version} 을(를) 설치할 준비가 됐어요`, detail: '다시 시작하면 새 버전으로 바뀌어요. 탭과 Claude · Codex 대화는 다시 열어요.'});
+  if (response !== 0 || !canSwap || !confirmQuit()) return {ok: true, later: true};  // 테스트(개발 앱)는 바꾸지 않는다
+  spawn('/bin/sh', ['-c', SWAP, 'sh', String(process.pid), staged.app, target, staged.dmg], {detached: true, stdio: 'ignore'}).unref();
+  quitting = true;
+  app.quit();
+  return {ok: true};
+}
+ipcMain.handle('update:install', (_, version) => installing || (installing = installUpdate(version).finally(() => { installing = null; })));
 
 // 테마: 시스템 · 라이트 · 다크 (궤도 패널은 밤하늘이라 늘 어둡게)
 ipcMain.handle('theme:get', () => conf().theme || 'system');

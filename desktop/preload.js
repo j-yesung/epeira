@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('orbit', {
   doctor: () => ipcRenderer.invoke('collector:doctor'),
   reinstall: () => ipcRenderer.invoke('collector:reinstall'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
+  installUpdate: version => ipcRenderer.invoke('update:install', version),
   getTheme: () => ipcRenderer.invoke('theme:get'),
   setTheme: t => ipcRenderer.invoke('theme:set', t),
   onMenu: fn => ipcRenderer.on('menu', (_, action) => fn(action)),

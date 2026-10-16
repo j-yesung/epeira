@@ -789,11 +789,20 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
     h('span', {class: 'sb-item'}, h('i', {class: 'led ok'}), 'LIVE'),
     agent('claude'), agent('codex'), refresh,
     h('span', {class: 'grow'}),
-    S.update ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(S.update.url)}, `새 버전 ${S.update.version} →`) : null,
+    S.update ? h('button', {class: 'link', type: 'button', disabled: S.updating, onclick: installUpdate}, S.updating ? `새 버전 ${S.update.version} 받는 중…` : `새 버전 ${S.update.version} →`) : null,
     needs ? h('button', {class: 'link', type: 'button', onclick: () => openSettings('', 'agents')}, '에이전트 연결하기 →') : null,
     inboxBtn(), gear,
   ].filter(Boolean));
   if (S.pop) { const k = S.pop.key, el = [...bar.querySelectorAll('.sb-item.hover')].find(x => x.matches(':hover')); if (el) showPop(el, k); else hidePop(); }  // 15초마다 다시 그려도 열린 상세는 유지
+}
+
+async function installUpdate() {  // 새 버전: 받아서 우리 서명을 확인하고 다시 시작 (못 하면 내려받기 페이지)
+  if (S.updating) return;
+  S.updating = true; renderStatusbar();
+  toast(`Tycho ${S.update.version} 을(를) 받고 있어요…`);
+  const r = await api.installUpdate(S.update.version).catch(e => ({manual: true, error: e.message}));
+  S.updating = false; renderStatusbar();
+  if (r.manual) { toast(r.error ? `${r.error} → 내려받기 페이지를 열어요` : '내려받기 페이지를 열어요'); api.openExternal(S.update.url); }
 }
 
 async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널 새로 불러오기
@@ -917,8 +926,8 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `수집기 v${st.version} · 127.0.0.1:${st.port}`), h('small', {}, '정상으로 연결돼 있어요')),
       h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; const out = await api.doctor(); await navigator.clipboard.writeText(out).catch(() => {}); toast('진단 정보를 복사했어요 → 문의할 때 붙여넣어 주세요'); openSettings(intro); }}, '진단 정보 복사'),
       h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; toast('수집기를 다시 설치하고 있어요…'); const r = await api.reinstall(); toast(r.ok ? '다시 설치했어요' : `다시 설치하지 못했어요 ${r.log || ''}`.trim()); refreshAll(); }}, '다시 설치')),
-    S.update ? h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `새 버전 ${S.update.version}`), h('small', {}, '받아서 응용 프로그램 폴더의 Tycho 를 바꿔 주세요')),
-      h('button', {class: 'btn small primary', type: 'button', onclick: () => api.openExternal(S.update.url)}, '받기')) : null,
+    S.update ? h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `새 버전 ${S.update.version}`), h('small', {}, '받아서 확인한 뒤 다시 시작하면 바뀌어요')),
+      h('button', {class: 'btn small primary', type: 'button', disabled: S.updating, onclick: installUpdate}, S.updating ? '받는 중…' : '업데이트')) : null,
     h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '대시보드 크게 보기 →'),
   ]}[section];
   showSheet('설정', [h('div', {class: 'set'}, nav, h('div', {class: 'set-body'}, ...page.filter(Boolean)))], null, null, true);

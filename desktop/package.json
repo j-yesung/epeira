@@ -1,7 +1,7 @@
 {
   "name": "tycho-app",
   "productName": "Tycho",
-  "version": "0.12.1",
+  "version": "1.0.0",
   "private": true,
   "description": "프로젝트 사이드바 + 에이전트 터미널 + 궤도 시각화",
   "license": "MIT",
@@ -10,7 +10,8 @@
   "scripts": {
     "start": "electron .",
     "postinstall": "electron-rebuild -f -w node-pty",
-    "dist": "electron-builder --mac dmg --arm64 --x64",
+    "dist": "mkdir -p dist && touch dist/.metadata_never_index && electron-builder --mac dmg --arm64 --x64",
+    "sign": "node sign.mjs",
     "test": "node --test --test-timeout=120000 test/*.test.mjs"
   },
   "dependencies": {
