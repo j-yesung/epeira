@@ -334,3 +334,18 @@ test('설정에서 터미널 글꼴 고르기: 터미널에만 쓰고, 기본으
   await until(page, () => S.tabs.every(t => t.term.options.fontFamily.startsWith('"Epeira Keys", "SF Mono"')));
   await page.keyboard.press('Escape');
 });
+
+test('프로젝트 세션 목록 펼치기 · 접기: 지금 프로젝트가 아니어도', async () => {
+  const row = dir => `.proj[title="${dir}"]`, shown = dir => page.$(`${row(dir)} .proj-detail`).then(Boolean);
+  await page.evaluate(dir => selectProject(dir), alpha);
+  await until(page, sel => document.querySelector(sel + ' .proj-detail'), row(alpha));
+  await page.click(`${row(alpha)} .proj-fold`);
+  assert.equal(await shown(alpha), false, '접으면 숨긴다');
+  await page.click(`${row(alpha)} .proj-fold`);
+  assert.equal(await shown(alpha), true);
+  assert.equal(await shown(beta), false);
+  await page.click(`${row(beta)} .proj-fold`);
+  assert.equal(await shown(beta), true, '다른 프로젝트도 펼칠 수 있다');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('app.folds'))[S.projects[1].path]), true, '다시 켜도 기억');
+  await page.click(`${row(beta)} .proj-fold`);
+});

@@ -156,16 +156,23 @@ function renderProjects() {
     // 다른 프로젝트에서 일어난 일도 보이게: 승인 대기 > 새 응답 > 일하는 중
     const state = tabs.some(t => t.waiting) ? 'wait' : tabs.some(t => t.unread) ? 'new' : tabs.some(t => t.busy) ? 'busy' : '';
     const g = S.git[p.path], sub = !p.exists ? '폴더를 찾을 수 없어요' : g ? `⎇ ${g.branch}${g.changes ? ` · 변경 ${g.changes}` : ''}` : shortPath(p.path);
+    const unfold = p.exists && isOpen(p);
     return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path, oncontextmenu: e => { e.preventDefault(); showMenu(at(e), projectMenu(p)); }},
+      p.exists ? h('button', {class: `proj-fold${unfold ? ' open' : ''}`, type: 'button', 'aria-expanded': String(unfold), 'aria-label': `${p.name} 세션 ${unfold ? '접기' : '펼치기'}`, title: unfold ? '세션 접기' : '세션 펼치기', onclick: () => toggleFold(p)}, '›') : null,
       h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
         h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
         h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, sub)),
         state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null,
         open ? h('span', {class: 'count', title: `열린 터미널 ${open}개`}, open) : null),
       h('button', {class: 'proj-more', type: 'button', title: '프로젝트 메뉴 (우클릭해도 돼요)', 'aria-label': `${p.name} 메뉴`, 'aria-haspopup': 'menu', onclick: e => showMenu(e.currentTarget, projectMenu(p))}, '⋯'),
-      p.path === S.current && p.exists ? projectDetail(p) : null);
+      unfold ? projectDetail(p) : null);
   }));
 }
+
+// 사이드바 프로젝트 아래 세션 목록 펼치기 · 접기 (정한 적이 없으면 지금 프로젝트만 펼친다, 다시 켜도 기억)
+const folds = (() => { try { return JSON.parse(store.get('folds') || '{}'); } catch { return {}; } })();
+const isOpen = p => (Object.hasOwn(folds, p.path) ? folds[p.path] : p.path === S.current);
+function toggleFold(p) { folds[p.path] = !isOpen(p); store.set('folds', JSON.stringify(folds)); renderProjects(); }
 
 function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 쓴 토큰 + 지난 세션 (누르면 이어서 열기)
   const today = (S.usage && S.usage.today) || [], byId = new Map(today.map(x => [x.id, x]));
