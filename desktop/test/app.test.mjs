@@ -274,3 +274,31 @@ test('업데이트: 우리 서명이 맞고 안의 버전도 맞는 DMG 만 받�
   assert.match((await page.evaluate(() => window.orbit.installUpdate('9.9.6'))).error, /404/, '없는 릴리스');
   assert.deepEqual(await page.evaluate(() => window.orbit.installUpdate('0.0.1')), {ok: false}, '예전 버전으로는 바꾸지 않는다');
 });
+
+test('⌘⌫ 로 터미널의 지금 줄을 지운다', async () => {
+  await page.evaluate(async dir => { selectProject(dir); await openTab(dir, 'shell'); }, alpha);
+  const text = () => page.evaluate(() => { const b = tab(S.active).term.buffer.active, out = []; for (let i = 0; i < b.length; i++) out.push(b.getLine(i).translateToString().trimEnd()); return out.join('\n'); });
+  await until(page, () => { const b = tab(S.active).term.buffer.active; for (let i = 0; i < b.length; i++) if (b.getLine(i).translateToString().trim()) return true; return false; });
+  await page.evaluate(() => tab(S.active).term.focus());
+  await page.keyboard.type('echo zzz');
+  await page.keyboard.press('Meta+Backspace');
+  await page.keyboard.type('echo yyy');
+  await page.keyboard.press('Enter');
+  await until(page, () => { const b = tab(S.active).term.buffer.active; for (let i = 0; i < b.length; i++) if (b.getLine(i).translateToString().trim() === 'yyy') return true; return false; });
+  assert.ok(!(await text()).includes('zzz'), '지운 줄은 실행되지 않고 화면에서도 사라진다');
+});
+
+test('프로젝트 우클릭 메뉴: 새 터미널 · 터미널이 열린 프로젝트는 묻고 닫은 뒤 뺀다', async () => {
+  const action = (a, dir) => app.evaluate(({BrowserWindow}, [x, d]) => BrowserWindow.getAllWindows()[0].webContents.send('project:action', x, d), [a, dir]);
+  const before = await page.evaluate(dir => projTabs(dir).length, beta);
+  await action('shell', beta);
+  await until(page, ([dir, n]) => projTabs(dir).length === n + 1, [beta, before]);
+  await answer(app, 1);  // 취소
+  await action('remove', beta);
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(dir => S.projects.some(p => p.path === dir), beta), true, '취소하면 그대로');
+  await answer(app, 0);  // 닫고 빼기
+  await action('remove', beta);
+  await until(page, dir => !S.projects.some(p => p.path === dir) && !S.tabs.some(t => t.dir === dir), beta);
+  await page.evaluate(async dir => { S.projects = (await window.orbit.addProjectPath(dir)).list; renderProjects(); }, beta);  // 다시 넣어 두기
+});

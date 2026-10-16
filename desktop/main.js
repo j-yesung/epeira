@@ -132,6 +132,29 @@ ipcMain.on('term:menu', (_, selection) => {
   ]).popup({window: win});
 });
 
+// 사이드바 프로젝트 우클릭 메뉴 (목록에 있는 프로젝트만)
+ipcMain.on('project:menu', (_, dir) => {
+  if (!loadProjects().some(p => p.path === dir)) return;
+  const ok = fs.existsSync(dir), act = action => win.webContents.send('project:action', action, dir);
+  Menu.buildFromTemplate([
+    {label: '새 터미널', enabled: ok, click: () => act('shell')},
+    {label: 'Claude 새 세션', enabled: ok, click: () => act('claude')},
+    {label: 'Codex 새 세션', enabled: ok, click: () => act('codex')},
+    {type: 'separator'},
+    {label: 'Finder 에서 보기', enabled: ok, click: () => shell.showItemInFolder(dir)},
+    {label: '경로 복사', click: () => clipboard.writeText(dir)},
+    {type: 'separator'},
+    {label: '목록에서 빼기', click: () => act('remove')},
+  ]).popup({window: win});
+});
+ipcMain.handle('projects:confirmRemove', async (_, name, ids) => {  // 터미널이 열린 프로젝트를 빼기 전에 한 번 묻는다
+  const running = [...new Set(ids.map(busy).filter(Boolean))];
+  const r = await dialog.showMessageBox(win, {type: 'warning', buttons: ['닫고 빼기', '취소'], defaultId: 1, cancelId: 1,
+    message: `${name} 의 터미널 ${ids.length}개를 닫고 목록에서 뺄까요?`,
+    detail: `${running.length ? `${running.join(', ')} 이(가) 실행 중이에요 → 함께 끝나요. ` : ''}폴더는 지우지 않아요. Claude · Codex 대화는 나중에 이어서 열 수 있어요.`});
+  return r.response === 0;
+});
+
 // ── 로컬 수집기 ──
 function getJSON(pathname, timeout = 4000) {
   return new Promise(resolve => {

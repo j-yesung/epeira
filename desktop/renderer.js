@@ -98,7 +98,9 @@ async function addProject() {
 }
 
 async function removeProject(dir) {
-  if (projTabs(dir).length) return toast('이 프로젝트의 터미널을 먼저 닫아 주세요');
+  const open = projTabs(dir), p = project(dir);
+  if (open.length && !(await api.confirmRemove(p ? p.name : dir, open.map(t => t.id)))) return;
+  for (const t of open) await closeTab(t.id, true);
   S.projects = await api.removeProject(dir);  // 목록에서만 뺀다 (폴더는 그대로)
   if (S.current !== dir) return renderProjects();
   const next = S.projects.find(p => p.exists);
@@ -129,7 +131,7 @@ function renderProjects() {
     // 다른 프로젝트에서 일어난 일도 보이게: 승인 대기 > 새 응답 > 일하는 중
     const state = tabs.some(t => t.waiting) ? 'wait' : tabs.some(t => t.unread) ? 'new' : tabs.some(t => t.busy) ? 'busy' : '';
     const g = S.git[p.path], sub = !p.exists ? '폴더를 찾을 수 없어요' : g ? `⎇ ${g.branch}${g.changes ? ` · 변경 ${g.changes}` : ''}` : shortPath(p.path);
-    return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path},
+    return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path, oncontextmenu: e => { e.preventDefault(); api.projectMenu(p.path); }},
       h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
         h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
         h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, sub)),
@@ -138,7 +140,7 @@ function renderProjects() {
       h('span', {class: 'proj-acts'},
         p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Claude 새 세션', onclick: () => openTab(p.path, 'claude')}, 'C') : null,
         p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Codex 새 세션', onclick: () => openTab(p.path, 'codex')}, 'X') : null,
-        h('button', {class: 'mini-btn', type: 'button', title: '목록에서 빼기 (폴더는 지우지 않아요)', onclick: () => removeProject(p.path)}, '×')),
+        h('button', {class: 'mini-btn', type: 'button', title: '목록에서 빼기 (폴더는 지우지 않아요) · 우클릭하면 메뉴', onclick: () => removeProject(p.path)}, '×')),
       p.path === S.current && p.exists ? projectDetail(p) : null);
   }));
 }
@@ -205,6 +207,10 @@ async function openTab(dir, kind = 'shell', opts = {}) {
   term.onSelectionChange(() => { if (prefs.copyOnSelect && term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {}); });
   el.addEventListener('mousedown', () => { if (S.active !== id) activate(id); });  // 나눈 화면: 누른 쪽이 지금 탭
   term.onData(d => api.write(id, d));
+  term.attachCustomKeyEventHandler(e => {  // ⌘⌫: 지금 줄 지우기 (macOS 터미널처럼 Ctrl+U)
+    if (e.type === 'keydown' && e.metaKey && e.key === 'Backspace') { api.write(id, '\x15'); return false; }
+    return true;
+  });
   term.onResize(({cols, rows}) => api.resize(id, cols, rows));
   el.addEventListener('contextmenu', e => { e.preventDefault(); api.termMenu(term.getSelection()); });
   search.onDidChangeResults(r => { if (S.active === id && !$('find').hidden) $('find-n').textContent = r.resultCount ? `${r.resultIndex + 1}/${r.resultCount}` : '없음'; });
@@ -228,9 +234,9 @@ function activate(id) {
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); updateBadge(); saveTabs();
 }
 
-async function closeTab(id = S.active) {
+async function closeTab(id = S.active, asked = false) {
   const t = tab(id);
-  if (!t || !(await api.confirmClose(id))) return;  // claude · codex 등이 돌고 있으면 먼저 묻는다
+  if (!t || (!asked && !(await api.confirmClose(id)))) return;  // claude · codex 등이 돌고 있으면 먼저 묻는다
   api.kill(id);
   t.term.dispose(); t.el.remove();
   // 터미널을 닫으면 그 세션도 끝난다 → 궤도에서 뺀다 (같은 세션을 연 다른 탭이 있으면 그대로)
@@ -596,6 +602,9 @@ $('find-next').onclick = () => find(1);
 $('find-prev').onclick = () => find(-1);
 $('find-close').onclick = closeFind;
 
+// 사이드바 프로젝트 우클릭 메뉴의 동작 (Finder · 경로 복사는 메뉴가 바로 처리)
+api.onProjectAction((action, dir) => (action === 'remove' ? removeProject(dir) : openTab(dir, action)));
+
 // 터미널 우클릭 메뉴의 동작 (복사는 메뉴가 바로 처리)
 api.onTermAction((action, text) => {
   const t = tab(S.active);
@@ -938,7 +947,7 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
 const KEYS = [
   ['프로젝트 · 탭', [['⌘O', '폴더 열기'], ['⌘T', '새 터미널'], ['⇧⌘C', 'Claude 새 세션'], ['⇧⌘X', 'Codex 새 세션'], ['⌘W', '탭 · 칸 닫기'], ['⌘1 – 9', '탭 이동'], ['⌃⇥  ⌃⇧⇥', '다음 · 이전 탭'], ['두 번 누르기', '탭 이름 바꾸기'], ['끌기', '탭 순서 바꾸기 · 칸에 놓기']]],
   ['화면 나누기', [['⌘D', '지금 칸을 좌우로'], ['⇧⌘D', '지금 칸을 위아래로'], ['⌥⌘ + 방향키', '칸 이동'], ['⇧⌘↩', '지금 칸 크게 보기'], ['⌥⌘W', '나누기 모두 풀기'], ['경계선 두 번 누르기', '칸 크기 같게']]],
-  ['찾기 · 보기', [['⌘P', '명령 팔레트 (프로젝트 · 탭 · 지난 세션 · 기록)'], ['⌘F', '터미널에서 찾기'], ['⌘B', '사이드바'], ['⌘J', '궤도 패널'], ['⌘,', '설정'], ['⌘/', '단축키 안내']]],
+  ['찾기 · 보기', [['⌘P', '명령 팔레트 (프로젝트 · 탭 · 지난 세션 · 기록)'], ['⌘F', '터미널에서 찾기'], ['⌘⌫', '터미널에서 지금 줄 지우기'], ['⌘B', '사이드바'], ['⌘J', '궤도 패널'], ['⌘,', '설정'], ['⌘/', '단축키 안내']]],
 ];
 function openShortcuts() {
   showSheet('단축키', KEYS.flatMap(([g, rows]) => [h('h3', {}, g), h('div', {class: 'keys-grid'}, ...rows.flatMap(([k, d]) => [h('kbd', {}, k), h('span', {}, d)]))]));

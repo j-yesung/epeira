@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('orbit', {
   addProject: () => ipcRenderer.invoke('projects:add'),
   addProjectPath: dir => ipcRenderer.invoke('projects:addPath', dir),
   removeProject: dir => ipcRenderer.invoke('projects:remove', dir),
+  confirmRemove: (name, ids) => ipcRenderer.invoke('projects:confirmRemove', name, ids),
+  projectMenu: dir => ipcRenderer.send('project:menu', dir),
+  onProjectAction: fn => ipcRenderer.on('project:action', (_, action, dir) => fn(action, dir)),
   touchProject: dir => ipcRenderer.invoke('projects:touch', dir),
   pathForFile: file => webUtils.getPathForFile(file),  // 끌어다 놓은 파일 · 폴더의 경로
   collector: () => ipcRenderer.invoke('collector:ensure'),
