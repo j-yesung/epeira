@@ -100,8 +100,11 @@ async function addProject() {
 async function removeProject(dir) {
   if (projTabs(dir).length) return toast('이 프로젝트의 터미널을 먼저 닫아 주세요');
   S.projects = await api.removeProject(dir);  // 목록에서만 뺀다 (폴더는 그대로)
-  if (S.current === dir) S.current = S.projects[0] ? S.projects[0].path : null;
-  renderProjects(); renderWelcome();
+  if (S.current !== dir) return renderProjects();
+  const next = S.projects.find(p => p.exists);
+  if (next) return selectProject(next.path);  // 다른 프로젝트의 탭 · 궤도로
+  S.current = null; S.active = null;  // 남은 프로젝트가 없으면 궤도도 비운다
+  layoutPanes(); renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); saveTabs();
 }
 
 function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 시작 화면 → 터미널을 멋대로 열지 않는다)
@@ -230,6 +233,8 @@ async function closeTab(id = S.active) {
   if (!t || !(await api.confirmClose(id))) return;  // claude · codex 등이 돌고 있으면 먼저 묻는다
   api.kill(id);
   t.term.dispose(); t.el.remove();
+  // 터미널을 닫으면 그 세션도 끝난다 → 궤도에서 뺀다 (같은 세션을 연 다른 탭이 있으면 그대로)
+  if (t.sid && S.orbitReady && !S.tabs.some(x => x !== t && x.sid === t.sid)) view.executeJavaScript(`window.aoForget && aoForget(${JSON.stringify(t.sid)})`).catch(() => {});
   const list = projTabs(t.dir), i = list.indexOf(t);
   S.tabs.splice(S.tabs.indexOf(t), 1);
   if (S.last[t.dir] === id) delete S.last[t.dir];

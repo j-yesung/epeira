@@ -76,6 +76,21 @@ test('궤도를 글로도 읽을 수 있다 (화면 읽기 프로그램)', {skip
   await until(() => document.getElementById('orbit-text').textContent.includes('실행 중: Bash npm test'));
 });
 
+test('앱에서 고른 프로젝트가 없으면 궤도가 비고, 탭을 닫은 세션은 빠진다', {skip}, async () => {
+  await page.evaluate(() => aoFocusProject('', '', ''));
+  assert.equal(await page.evaluate(() => S.focus), null, '프로젝트가 없으면 아무것도');
+  await page.evaluate(() => aoFocusProject('p', '', '/w/p'));
+  assert.equal(await page.evaluate(() => S.focus), 'dash-1');
+  await page.evaluate(() => aoForget('dash-1'));
+  assert.equal(await page.evaluate(() => [S.focus, S.sess.has('dash-1')].join()), ',false', '닫은 세션은 궤도에서 빠진다');
+  await page.reload();
+  await page.waitForFunction(() => typeof S !== 'undefined' && S.summaryReady);
+  await page.evaluate(() => aoFocusProject('p', '', '/w/p'));
+  assert.equal(await page.evaluate(() => S.sess.has('dash-1')), false, '새로고침해도 다시 나타나지 않는다');
+  await hook({session_id: 'dash-1', transcript_path: '/tmp/x/dash-1.jsonl', cwd: '/w/p', hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: {file_path: '/w/p/a.ts'}, tool_use_id: 'dash-t2'});
+  await until(() => S.focus === 'dash-1');  // 닫은 뒤 다시 움직이면 돌아온다
+});
+
 test('앱이 뒤에 있으면 애니메이션을 줄인다', {skip}, async () => {
   await page.evaluate(() => aoSetActive(false));
   assert.equal(await page.evaluate(() => slow), true);

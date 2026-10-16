@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.18.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.18.1';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -261,7 +261,23 @@ window.aoFocusTab = focusTab;
 // 프로젝트마다 독립된 궤도: 그 폴더(하위 폴더 포함)에서 시작한 세션 + 그 프로젝트 탭의 세션만 HUB · 칩 · 피드에
 // 시작 폴더 경로를 모르는 예전 기록은 폴더 이름으로 가른다
 const inPath = (cwd, dir) => cwd === dir || cwd.startsWith(dir.endsWith('/') ? dir : dir + '/');
-const inProject = s => !S.project || !!s && (S.tabs.get(S.tab) === s.id || (s.cwd && S.projectPath ? inPath(s.cwd, S.projectPath) : s.label === S.project));
+// 앱의 궤도 패널(EMBED)은 고른 프로젝트가 없으면 아무것도 보이지 않는다 (프로젝트를 빼거나 닫으면 궤도도 사라지게)
+const inProject = s => (S.project ? !!s && (S.tabs.get(S.tab) === s.id || (s.cwd && S.projectPath ? inPath(s.cwd, S.projectPath) : s.label === S.project)) : !EMBED);
+
+// Tycho 앱에서 탭(터미널)을 닫은 세션은 궤도에서 뺀다. 닫은 뒤에 다시 움직이면(다른 곳에서 이어 열면) 돌아온다
+const forgot = (() => { try { return new Map(Object.entries(JSON.parse(store.get('forgot') || '{}'))); } catch { return new Map(); } })();
+const forgotten = (id, ts) => forgot.has(id) && (ts || 0) <= forgot.get(id);
+function forget(id) {
+  const t = epoch();
+  forgot.set(id, t);
+  for (const [k, at] of forgot) if (t - at > ORBIT_WINDOW) forgot.delete(k);  // 30분 지나면 어차피 궤도에서 빠진다
+  store.set('forgot', JSON.stringify(Object.fromEntries(forgot)));
+  for (const [k, s] of S.sess) if (k === id || s.parent === id) S.sess.delete(k);
+  if (S.focus === id) { S.focus = null; S.pinned = false; }
+  S.feedVer++; S.dirty = S.chipsDirty = true;
+  ensureFocus();
+}
+window.aoForget = forget;
 function focusProject(name, tab, path) {  // 탭도 함께 받는다: 이전 프로젝트의 탭 세션이 새 궤도에 끼지 않게
   name = name || null;
   S.projectPath = path || '';
@@ -345,6 +361,7 @@ function pickFocus(id) {  // 칩 클릭: 그 세션을 HUB 로 고정. 고정된
 }
 
 function onHook(e) {  // 훅: 도구 실행 시작/끝 → 선을 붙잡아 두고 점이 흐르게
+  if (forgotten(e.parent || e.id, e.ts)) return;
   const s = sess(e), root = rootOf(s);
   if (e.kind === 'start') {
     const key = stKey(e), k = key && key !== 'Agent' ? key : null;
@@ -365,6 +382,7 @@ function onHook(e) {  // 훅: 도구 실행 시작/끝 → 선을 붙잡아 두�
 }
 
 function onEvent(e) {
+  if (forgotten(e.parent || e.id, e.ts)) return;
   const live = !e.replay;
   if (e.kind !== 'stat') {
     const s = sess(e), root = rootOf(s), key = stKey(e);
@@ -434,7 +452,7 @@ async function loadSummary() {
 function seedOrbit(list) {  // 새로고침해도 최근 30분 세션과 그 도구 노드 숫자가 그대로
   const t = epoch(), counts = new Map();
   for (const x of list) {
-    if (t - x.last > ORBIT_WINDOW) continue;
+    if (t - x.last > ORBIT_WINDOW || forgotten(x.parent || x.id, x.last)) continue;
     const s = sess({id: x.id, agent: x.agent, parent: x.parent, label: x.label, cwd: x.cwd, ts: x.last});
     if (!s.act) { s.kind = x.kind; s.act = x.text; }
     const root = rootOf(s), c = counts.get(root) || {};
@@ -914,7 +932,7 @@ function loadAnalytics() {  // 배포 사이트에서만: 쿠키 없는 페이�
 // ── 2초마다: 스파크라인 · HUB 확인 · 날짜 바뀜 · 상대 시간 ──
 function describeOrbit() {  // 궤도는 그림이라 화면 읽기 프로그램용 글 요약을 따로 둔다
   const f = S.sess.get(S.focus);
-  if (!f) return '최근 30분 동안 움직인 에이전트가 없어요';
+  if (!f) return EMBED && !S.project ? '프로젝트를 고르면 그 프로젝트의 궤도가 보여요' : '최근 30분 동안 움직인 에이전트가 없어요';
   const a = AGENTS[f.agent] || AGENTS.claude, tools = [...f.stations.values()].sort((x, y) => y.last - x.last);
   const running = [...S.sess.values()].filter(x => x === f || x.parent === f.id).flatMap(x => [...x.running.values()].map(r => r.text));
   const subs = [...S.sess.values()].filter(x => x.parent === f.id && x.running.size).map(x => nameOf(x.id, x.label));
@@ -1174,7 +1192,7 @@ function frame() {
   }
   if (!focus && S.mode === 'live') {
     ctx.fillStyle = '#a3a3a3'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
-    ctx.fillText(connectedAny() ? '최근 30분 동안 움직인 에이전트가 없어요' : '에이전트를 연결하면 여기에 나타나요', g.cx, g.cy + g.ry * .62 + 30);
+    ctx.fillText(EMBED && !S.project ? '프로젝트를 고르면 그 프로젝트의 궤도가 보여요' : connectedAny() ? '최근 30분 동안 움직인 에이전트가 없어요' : '에이전트를 연결하면 여기에 나타나요', g.cx, g.cy + g.ry * .62 + 30);
   } else if (focus && !stations.length && !subs.length) {
     ctx.fillStyle = '#a3a3a3'; ctx.font = `13px ${SANS}`; ctx.textAlign = 'center';
     ctx.fillText('도구를 실행하면 여기에 노드가 생겨요', g.cx, g.cy + g.ry * .62 + 30);
