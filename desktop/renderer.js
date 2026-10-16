@@ -252,7 +252,7 @@ function activate(id) {
   }
   S.active = id; S.current = t.dir; S.last[t.dir] = id; t.unread = false;
   layoutPanes();
-  requestAnimationFrame(() => t.term.focus());
+  requestAnimationFrame(() => { if (modal.hidden) t.term.focus(); });  // 그 사이 팔레트 · 설정 같은 창이 열렸으면 거기 입력을 빼앗지 않는다
   if (!$('find').hidden) { for (const x of S.tabs) x.search.clearDecorations(); find(1); }
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); updateBadge(); saveTabs();
 }
