@@ -374,6 +374,14 @@ async function ensureCollector() {
 }
 let ensuring = null;  // 동시에 두 번 설치하지 않게
 ipcMain.handle('collector:ensure', () => ensuring || (ensuring = ensureCollector().finally(() => { ensuring = null; })));
+// 설정의 글꼴 고르기: 이 Mac 에 설치된 글꼴 이름 (macOS 글꼴 관리자에 묻는다, 한 번만)
+let fontList = null;
+ipcMain.handle('fonts:list', () => fontList || (fontList = new Promise(resolve => {
+  if (process.platform !== 'darwin') return resolve([]);
+  execFile('osascript', ['-l', 'JavaScript', '-e', 'ObjC.import("AppKit"); JSON.stringify(ObjC.deepUnwrap($.NSFontManager.sharedFontManager.availableFontFamilies))'], {timeout: 10000}, (err, out) => {
+    try { resolve(JSON.parse(out).filter(f => !f.startsWith('.')).sort((a, b) => a.localeCompare(b))); } catch { fontList = null; resolve([]); }
+  });
+})));
 ipcMain.on('install-devtools', () => { if (process.platform === 'darwin') execFile('xcode-select', ['--install'], () => {}); });
 
 ipcMain.on('open-external', (_, url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); });

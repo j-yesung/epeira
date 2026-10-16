@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('orbit', {
   installUpdate: version => ipcRenderer.invoke('update:install', version),
   onUpdateProgress: fn => ipcRenderer.on('update:progress', (_, stage, f) => fn(stage, f)),
   getTheme: () => ipcRenderer.invoke('theme:get'),
+  fonts: () => ipcRenderer.invoke('fonts:list'),
   setTheme: t => ipcRenderer.invoke('theme:set', t),
   onMenu: fn => ipcRenderer.on('menu', (_, action) => fn(action)),
   openExternal: url => ipcRenderer.send('open-external', url),

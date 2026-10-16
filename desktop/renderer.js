@@ -66,12 +66,22 @@ function shortPath(p) {  // 홈은 ~, 길면 가운데를 줄여 마지막 폴�
 }
 const ago = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
 // 앱 설정 (이 컴퓨터의 이 앱에만): 알림 · 터미널
-const PREFS = {notify: true, notifyDone: true, notifyWait: true, sound: true, fontSize: 13, copyOnSelect: false, optionMeta: true};
+const PREFS = {notify: true, notifyDone: true, notifyWait: true, sound: true, fontSize: 13, copyOnSelect: false, optionMeta: true, fontTerm: ''};
 const prefs = (() => { try { return {...PREFS, ...JSON.parse(store.get('prefs') || '{}')}; } catch { return {...PREFS}; } })();
 function setPref(k, v) {
   prefs[k] = v;
   store.set('prefs', JSON.stringify(prefs));
   for (const t of S.tabs) { t.term.options.fontSize = prefs.fontSize; t.term.options.macOptionIsMeta = prefs.optionMeta; }
+  if (k === 'fontTerm') return applyTermFont();
+  layoutPanes();
+}
+// 터미널 글꼴: 설정에서 고른 글꼴을 앞에 두고, 그 글꼴에 없는 글자(예: 한글이 없는 영문 글꼴)는 기본 글꼴로
+const fontName = f => String(f || '').replace(/["\\;{}<>]/g, '').trim();
+const termFont = () => `"Epeira Keys", ${fontName(prefs.fontTerm) ? `"${fontName(prefs.fontTerm)}", ` : ''}"SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace`;
+const loadTermFont = () => (fontName(prefs.fontTerm) ? document.fonts.load(`13px "${fontName(prefs.fontTerm)}"`, '가A').catch(() => {}) : null);  // 글꼴이 준비된 뒤 칸 크기를 잰다
+async function applyTermFont() {
+  await loadTermFont();
+  for (const t of S.tabs) t.term.options.fontFamily = termFont();
   layoutPanes();
 }
 const projTabs = (dir = S.current) => S.tabs.filter(t => t.dir === dir);
@@ -136,8 +146,10 @@ function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 �
 function renderProjects() {
   const ul = $('projects');
   if (!S.projects.length) {
-    return ul.replaceChildren(h('li', {class: 'side-empty'}, '아직 프로젝트가 없어요.', h('br'),
-      h('button', {class: 'link', type: 'button', onclick: addProject}, '+ 폴더 열기'), h('br'), '폴더를 여기에 끌어다 놓아도 돼요.'));
+    const icon = h('span', {class: 'drop-icon'});
+    icon.innerHTML = ICON.folder;
+    return ul.replaceChildren(h('li', {class: 'side-empty'}, h('div', {class: 'drop-hint'}, icon,
+      h('b', {}, '프로젝트 폴더를 여기에 끌어다 놓으세요'), h('small', {}, '또는 위의 + 버튼 · ⌘O'))));
   }
   ul.replaceChildren(...S.projects.map(p => {
     const tabs = projTabs(p.path), open = tabs.filter(t => !t.exited).length;
@@ -183,13 +195,14 @@ async function openTab(dir, kind = 'shell', opts = {}) {
   if (!dir) return addProject();
   if (!['shell', 'claude', 'codex'].includes(kind)) kind = 'shell';  // 셸에 그대로 입력되는 값이라 정해진 것만
   await fontsReady;
+  await loadTermFont();
   // 다시 켤 때는 대화를 바로 열지 않고 그 탭을 처음 볼 때 이어서 연다 (한꺼번에 여러 개를 띄우지 않게)
   const pendingRun = opts.resume ? resumeCmd(kind, opts.sid) : null, run = kind === 'shell' || opts.resume ? null : kind;
   if (opts.resume && !pendingRun) kind = 'shell';
   const el = h('div', {class: 'term'});
   $('terms').append(el);
-  // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 → 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
-  const term = new Terminal({fontFamily: '"Epeira Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: prefs.fontSize, lineHeight: 1.2, cursorBlink: true,
+  // 글꼴: 설정에서 고른 것 → SF Mono · Menlo → 한글은 D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴
+  const term = new Terminal({fontFamily: termFont(), fontSize: prefs.fontSize, lineHeight: 1.2, cursorBlink: true,
     scrollback: 10000, macOptionIsMeta: prefs.optionMeta, allowProposedApi: true, theme: termTheme()});
   const fit = new FitAddon.FitAddon(), search = new SearchAddon.SearchAddon();
   term.loadAddon(fit);
@@ -767,6 +780,7 @@ function showPop(item, key) {
 function hidePop() { $('sb-pop').hidden = true; S.pop = null; }
 
 const ICON = {
+  folder: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
   refresh: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   bell: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4.5 11.5V7.5a3.5 3.5 0 0 1 7 0v4l1 1H3.5zM6.8 14h2.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   gear: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
@@ -815,7 +829,7 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
 function updateBar() {  // 업데이트 진행 막대: 받기는 퍼센트, 서명 확인 · 앱 꺼내기는 움직이는 막대
   const p = S.updateProgress || {stage: 'download', f: 0}, down = p.stage === 'download';
   return h('span', {class: 'upd', role: 'status'}, h('progress', down ? {max: 1, value: p.f} : {max: 1}),
-    h('span', {}, down ? `받는 중 ${Math.round(p.f * 100)}%` : '확인 중…'));
+    h('span', {}, down ? `${Math.round(p.f * 100)}%` : '확인 중…'));
 }
 api.onUpdateProgress((stage, f) => {
   S.updateProgress = stage ? {stage, f} : null;
@@ -942,6 +956,7 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
       h('span', {class: 'seg'}, h('button', {type: 'button', 'aria-label': '작게', onclick: () => { setPref('fontSize', Math.max(10, prefs.fontSize - 1)); openSettings(intro); }}, '−'),
         h('button', {type: 'button', 'aria-pressed': 'true', disabled: true}, `${prefs.fontSize}px`),
         h('button', {type: 'button', 'aria-label': '크게', onclick: () => { setPref('fontSize', Math.min(22, prefs.fontSize + 1)); openSettings(intro); }}, '+'))),
+    fontRow('글꼴', '이 Mac 에 설치된 글꼴에서 골라요. 한글이 없는 글꼴이면 한글은 기본 글꼴로 보여요', 'fontTerm', '기본 (SF Mono)'),
     prefRow('선택하면 바로 복사', '터미널에서 글자를 드래그해 고르면 클립보드로', 'copyOnSelect'),
     prefRow('Option 키를 Meta 로', '켜면 Option+←/→ 로 단어 이동 (끄면 Option 으로 특수 문자 입력)', 'optionMeta'),
   ], look: [
@@ -965,6 +980,14 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
     h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '대시보드 크게 보기 →'),
   ]}[section];
   showSheet('설정', [h('div', {class: 'set'}, nav, h('div', {class: 'set-body'}, ...page.filter(Boolean)))], null, null, true);
+  function fontRow(label, desc, key, def) {  // 이 Mac 에 설치된 글꼴에서 고르기 (터미널 글꼴)
+    const sel = h('select', {class: 'font-select', 'aria-label': label, onchange: e => setPref(key, e.target.value)}, h('option', {value: ''}, def));
+    api.fonts().then(list => {
+      for (const f of new Set([...list, ...(prefs[key] ? [prefs[key]] : [])])) sel.append(h('option', {value: f}, f));
+      sel.value = prefs[key] || '';
+    });
+    return h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, label), h('small', {}, desc)), sel);
+  }
   function prefRow(label, desc, key) { return toggleRow(label, desc, prefs[key], v => { setPref(key, v); }); }
 }
 

@@ -320,3 +320,17 @@ test('설정의 업데이트 확인: 바로 묻고, 새 버전이 있으면 업�
   assert.ok(await page.evaluate(() => document.querySelector('.set-body').textContent.includes(`Epeira v${S.appVersion}`)));
   await page.keyboard.press('Escape');
 });
+
+test('설정에서 터미널 글꼴 고르기: 터미널에만 쓰고, 기본으로 되돌리면 원래대로', async () => {
+  assert.ok((await page.evaluate(() => window.orbit.fonts())).includes('Menlo'), '이 Mac 에 설치된 글꼴 목록');
+  if (!(await page.evaluate(() => S.tabs.length))) await page.evaluate(() => openTab(S.projects[0].path, 'shell'));
+  const mono = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--mono'));
+  const before = await mono();
+  await page.evaluate(() => openSettings(undefined, 'terminal'));
+  await page.selectOption('.set-body select[aria-label="글꼴"]', 'Menlo');
+  await until(page, () => S.tabs.every(t => t.term.options.fontFamily.startsWith('"Epeira Keys", "Menlo"')));
+  assert.equal(await mono(), before, '앱의 다른 글자는 그대로');
+  await page.selectOption('.set-body select[aria-label="글꼴"]', '');
+  await until(page, () => S.tabs.every(t => t.term.options.fontFamily.startsWith('"Epeira Keys", "SF Mono"')));
+  await page.keyboard.press('Escape');
+});
