@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.13.1';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.14.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -84,13 +84,13 @@ const S = {
   sess: new Map(),           // 세션(HUB 후보)과 서브에이전트. 각자 쓰는 도구 노드(stations)를 가진다
   focus: null, pinned: false, // HUB 로 보고 있는 세션, 사용자가 고정했는지
   tabs: new Map(), tab: null, // Tycho 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
-  project: null, views: new Map(), // Tycho 앱: 지금 프로젝트의 세션만 궤도에. HUB 선택은 프로젝트마다 따로 기억
+  project: null, projectPath: '', views: new Map(), // Tycho 앱: 지금 프로젝트의 세션만 궤도에. HUB 선택은 프로젝트마다 따로 기억
   names: new Map(),          // 사용자가 직접 붙인 세션 이름 (수집기에 저장)
   hubRect: null,             // 캔버스 위 HUB 위치 (더블클릭으로 이름 바꾸기)
   links: [],                 // 방금 끝난 실행: HUB(또는 서브에이전트) → 도구 노드로 쏘는 선
   feed: [], feedVer: 0, hubFlash: -9, bursts: [],
   spark: Object.fromEntries(CARDS.map(([k]) => [k, Array(SPARK_N).fill(0)])),
-  drawer: null, boot: null, es: null,
+  drawer: null, boot: null, es: null, drawn: [],
   demoTimer: 0, demoSeq: 0, demoLog: [],
   dirty: true, listDirty: true, chipsDirty: true,
 };
@@ -251,7 +251,7 @@ function focusTab(tab) {
   const id = S.tab && S.tabs.get(S.tab);
   if (id) {
     const x = S.summary.get(id) || {};
-    sess({id, agent: x.agent || 'claude', label: x.label, ts: x.last || epoch()});
+    sess({id, agent: x.agent || 'claude', label: x.label, cwd: x.cwd, ts: x.last || epoch()});
     S.focus = id; S.pinned = true;
   }
   else if (S.tab) S.pinned = false;  // 아직 에이전트를 실행하지 않은 탭: 자동 따라가기
@@ -259,11 +259,13 @@ function focusTab(tab) {
 }
 window.aoFocusTab = focusTab;
 
-// 프로젝트마다 독립된 궤도: 그 폴더에서 시작한 세션(+ 그 프로젝트 탭의 세션)만 HUB · 칩 · 피드에
-// ponytail: 시작 폴더 "이름"으로 가른다. 이름이 같은 두 프로젝트를 나눠야 하면 수집기가 cwd 전체 경로를 보내게
-const inProject = s => !S.project || !!s && (s.label === S.project || S.tabs.get(S.tab) === s.id);
-function focusProject(name, tab) {  // 탭도 함께 받는다: 이전 프로젝트의 탭 세션이 새 궤도에 끼지 않게
+// 프로젝트마다 독립된 궤도: 그 폴더(하위 폴더 포함)에서 시작한 세션 + 그 프로젝트 탭의 세션만 HUB · 칩 · 피드에
+// 시작 폴더 경로를 모르는 예전 기록은 폴더 이름으로 가른다
+const inPath = (cwd, dir) => cwd === dir || cwd.startsWith(dir.endsWith('/') ? dir : dir + '/');
+const inProject = s => !S.project || !!s && (S.tabs.get(S.tab) === s.id || (s.cwd && S.projectPath ? inPath(s.cwd, S.projectPath) : s.label === S.project));
+function focusProject(name, tab, path) {  // 탭도 함께 받는다: 이전 프로젝트의 탭 세션이 새 궤도에 끼지 않게
   name = name || null;
+  S.projectPath = path || '';
   if (name !== S.project) {
     S.views.set(S.project, {focus: S.focus, pinned: S.pinned});
     ({focus: S.focus, pinned: S.pinned} = S.views.get(name) || {focus: null, pinned: false});
@@ -282,13 +284,15 @@ function sess(e) {
       kind: null, act: '', running: new Map(), stations: new Map(), flash: -9, fail: -9, off: null});
   }
   if (e.label) s.label = e.label;
+  if (e.cwd && !s.cwd) s.cwd = e.cwd;
   if (e.ts) s.last = Math.max(s.last, e.ts);
   return s;
 }
 
 function rootOf(s) {  // 서브에이전트의 일은 부모 세션의 궤도에 그린다
   if (!s.parent) return s;
-  const p = S.sess.get(s.parent) || sess({id: s.parent, agent: s.agent, label: (S.summary.get(s.parent) || {}).label || s.agent, ts: s.last});
+  const x = S.summary.get(s.parent) || {};
+  const p = S.sess.get(s.parent) || sess({id: s.parent, agent: s.agent, label: x.label || s.agent, cwd: x.cwd, ts: s.last});
   p.last = Math.max(p.last, s.last);
   return p;
 }
@@ -432,7 +436,7 @@ function seedOrbit(list) {  // 새로고침해도 최근 30분 세션과 그 도
   const t = epoch(), counts = new Map();
   for (const x of list) {
     if (t - x.last > ORBIT_WINDOW) continue;
-    const s = sess({id: x.id, agent: x.agent, parent: x.parent, label: x.label, ts: x.last});
+    const s = sess({id: x.id, agent: x.agent, parent: x.parent, label: x.label, cwd: x.cwd, ts: x.last});
     if (!s.act) { s.kind = x.kind; s.act = x.text; }
     const root = rootOf(s), c = counts.get(root) || {};
     for (const [k, v] of Object.entries(x.st || {})) if (k !== 'Agent') c[k] = (c[k] || 0) + v;
@@ -621,6 +625,7 @@ function agentCard(key) {
       chip = untrusted ? h('span', {class: 'chip warn'}, '승인 필요') : h('span', {class: 'chip ok'}, '연결됨');
       desc = untrusted ? 'Codex가 이 훅을 실행하려면 승인이 필요해요.' : '도구를 실행하는 순간 궤도에 나타나요.';
       if (untrusted) acts.push(h('button', {class: 'btn small primary', type: 'button', onclick: () => openAction(key, 'trust')}, '승인'));
+      if (st.notify === false) acts.push(h('button', {class: 'btn small', type: 'button', title: '권한 승인 · 입력을 기다릴 때 Tycho 앱이 알려 줘요', onclick: () => openAction(key, 'connect')}, '알림 켜기'));
       acts.push(h('button', {class: 'btn small', type: 'button', onclick: () => openAction(key, 'disconnect')}, '연결 해제'));
     } else {
       chip = h('span', {class: st.legacy ? 'chip warn' : 'chip'}, st.legacy ? '업데이트 필요' : '연결 안 됨');
@@ -804,15 +809,16 @@ function modal({title, body, confirm, danger, onConfirm, focus}) {
 }
 
 // ── 세션 기록 패널 ──
-async function openDrawer(id) {
-  const x = S.summary.get(id);
+async function openDrawer(id, st) {  // st: 도구 노드를 눌렀을 때 그 도구로 한 일만
+  const s0 = S.sess.get(id);
+  const x = S.summary.get(id) || (s0 && {id, agent: s0.agent, label: s0.label, parent: s0.parent, last: s0.last, tools: 0, turns: 0, errors: 0, tokens: 0});
   if (!x) return;
   const d = $('drawer'), prev = document.activeElement, a = AGENTS[x.agent] || AGENTS.claude;
   const list = h('ol', {}, h('li', {class: 'empty'}, '불러오는 중…'));
   const close = h('button', {class: 'btn small', type: 'button', 'aria-label': '닫기'}, '닫기');
   const ren = h('button', {class: 'btn small', type: 'button', onclick: () => renameSession(id)}, '이름 바꾸기');
-  const title = h('h2', {}, (x.parent ? '↳ ' : '') + nameOf(id, x.label));
-  S.drawer = {id, list, prev, title, label: x.label, parent: x.parent};
+  const title = h('h2', {}, (x.parent ? '↳ ' : '') + nameOf(id, x.label) + (st ? ` · ${st.startsWith('mcp:') ? 'MCP ' + st.slice(4) : st}` : ''));
+  S.drawer = {id, list, prev, title, label: x.label, parent: x.parent, st};
   close.onclick = closeDrawer;
   d.replaceChildren(
     h('div', {class: 'hd'}, mark(x.agent),
@@ -833,10 +839,11 @@ async function openDrawer(id) {
   list.replaceChildren();
   if (!events) return list.append(h('li', {class: 'empty'}, '기록을 불러오지 못했어요'));
   for (const e of events) drawerAdd(e, false);
-  if (!events.length) list.append(h('li', {class: 'empty'}, '이 기간에 남은 동작이 없어요'));
+  if (!list.children.length) list.append(h('li', {class: 'empty'}, st ? '이 기간에 남은 기록이 없어요 (실행 중인 것은 끝나면 남아요)' : '이 기간에 남은 동작이 없어요'));
 }
 
 function drawerAdd(e, live) {
+  if (S.drawer.st && e.st !== S.drawer.st) return;
   const list = S.drawer.list, k = KIND[e.kind] || KIND.tool;
   if (live && list.firstChild && list.firstChild.classList.contains('empty')) list.firstChild.remove();
   list.prepend(h('li', {style: `--c:${k.c}`}, h('time', {}, hhmm(e.ts)), h('b', {}, e.kind), h('span', {}, e.text)));
@@ -962,10 +969,18 @@ function resize() {
 addEventListener('resize', resize);
 const onHub = ev => { const r = cv.getBoundingClientRect(), h0 = S.hubRect, x = ev.clientX - r.left, y = ev.clientY - r.top;
   return h0 && x >= h0.x && x <= h0.x + h0.w && y >= h0.y && y <= h0.y + h0.h; };
-cv.addEventListener('mousemove', ev => {  // HUB 위에선 손가락 커서 + 안내
-  const on = onHub(ev) && S.focus;
-  cv.style.cursor = on ? 'pointer' : '';
-  cv.title = on ? '더블클릭해서 HUB 이름 바꾸기' : '';
+const cardAt = ev => {  // 마우스 아래 노드 카드 (위에 그려진 것부터)
+  const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+  return [...S.drawn].reverse().find(([, n]) => n.bw && x >= n.bx && x <= n.bx + n.bw && y >= n.by && y <= n.by + n.bh);
+};
+cv.addEventListener('mousemove', ev => {  // HUB 위에선 손가락 커서 + 안내, 노드 위에선 눌러서 기록 보기
+  const on = onHub(ev) && S.focus, card = !on && cardAt(ev);
+  cv.style.cursor = on || card ? 'pointer' : '';
+  cv.title = on ? '더블클릭해서 HUB 이름 바꾸기' : card ? (card[0] === 'st' ? `눌러서 ${card[1].label} 기록 보기` : '눌러서 서브에이전트 기록 보기') : '';
+});
+cv.addEventListener('click', ev => {
+  const card = cardAt(ev);
+  if (card) card[0] === 'st' ? openDrawer(S.focus, card[1].key) : openDrawer(card[1].id);
 });
 cv.addEventListener('dblclick', ev => { if (onHub(ev) && S.focus) renameSession(S.focus); });
 
@@ -1046,7 +1061,7 @@ function drawCard(n, t, title, sub, o) {  // 노드 카드: 도구 노드와 서
   ctx.font = `${11 * s}px ${MONO}`; const w2 = ctx.measureText(sub).width;
   const bw = Math.max(w1, w2) + 24 * s, bh = 44 * s;
   const bx = Math.min(Math.max(n.x - bw / 2, 4), W - bw - 34), by = n.y - bh / 2;
-  n.bx = bx; n.bw = bw;
+  n.bx = bx; n.bw = bw; n.by = by; n.bh = bh;  // 눌렀을 때 어느 노드인지
   const edge = failed ? '#ff6b81' : o.color || '#3b9eff';
   if (hot || failed) { ctx.shadowColor = edge; ctx.shadowBlur = o.live ? 12 + 12 * (Math.sin(t * 6) + 1) / 2 : 18; }
   rrect(bx, by, bw, bh, 6, hot ? 'rgba(19,30,44,.96)' : 'rgba(17,17,17,.92)', hot || failed ? edge : o.idleEdge || 'rgba(255,255,255,.14)', hot ? 1.6 : 1);
@@ -1143,6 +1158,7 @@ function frame() {
   if (focus) for (const n of focus.stations.values()) tools += n.count;
   drawHub(g, t, focus, tools, reaching);
   const cards = [...stations.map(n => ['st', n]), ...subs.map(x => ['sub', x])].sort((a, b) => a[1].y - b[1].y);
+  S.drawn = cards;
   for (const [type, n] of cards) {
     if (type === 'st') {
       const k = KIND[n.kind] || KIND.tool;

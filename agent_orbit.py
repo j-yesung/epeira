@@ -33,7 +33,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-VERSION = '0.13.1'
+VERSION = '0.14.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -59,7 +59,8 @@ MAC = sys.platform == 'darwin'  # 미니 창(WebKit)은 macOS 에서만
 
 AGENTS = {
     'claude': {'name': 'Claude Code', 'dir': '~/.claude', 'file': '~/.claude/settings.json',
-               'events': ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure'], 'opts': {'async': True}},
+               'events': ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure'], 'opts': {'async': True},
+               'extra': ['Notification']},  # 권한 승인 · 입력 대기 알림. 연결 여부 판단엔 안 쓴다 (예전 연결은 '알림 켜기'로 동의받고 추가)
     'codex': {'name': 'Codex', 'dir': '~/.codex', 'file': '~/.codex/hooks.json',
               'events': ['SessionStart', 'PreToolUse', 'PostToolUse'], 'opts': {'async': True, 'timeout': 2}},
 }
@@ -187,6 +188,8 @@ def parse_claude(s, o):
     t, out = o.get('type'), []
     if o.get('cwd') and not s['parent'] and not s['label']:  # 세션을 시작한 폴더 이름으로 고정 (cd 해도 안 바뀜)
         s['label'] = base(o['cwd'])
+    if o.get('cwd') and not s['parent'] and not s.get('cwd'):
+        s['cwd'] = o['cwd']
     m = o.get('message') if isinstance(o.get('message'), dict) else {}
     c = m.get('content')
     if t == 'assistant':
@@ -229,6 +232,7 @@ def parse_codex(s, o):
     t = p.get('type')
     if o.get('type') == 'session_meta':
         s['label'] = base(p.get('cwd') or '') or s['label']
+        s['cwd'] = p.get('cwd') or s.get('cwd', '')
         return []
     if t == 'token_count':
         u = (p.get('info') or {}).get('total_token_usage') or {}
@@ -280,7 +284,7 @@ def note_limits(rl, ts):
 def seed_limits():
     # 한도 기록이 없으면(이미 읽은 로그라 다시 안 읽음) 가장 최근 Codex 로그 끝에서 마지막 값을 찾는다
     paths = []
-    for path, agent in watched():
+    for path, agent in scan():
         try:
             if agent == 'codex':
                 paths.append((os.path.getmtime(path), path))
@@ -394,16 +398,28 @@ def limits_loop():  # 5분마다: Codex 한도(설치돼 있으면), Claude 한�
 sessions, checkpoint, clients, running = {}, {}, set(), {}
 tabs = {}  # 앱 터미널 탭 ID → 그 탭에서 실행 중인 세션 id
 labels = {}  # 세션 id → 이름(시작 폴더). 훅도 같은 이름을 쓰게
+cwds = {}  # 세션 id → 시작 폴더 전체 경로 (앱이 프로젝트별로 거를 때)
 names = {}  # 세션 id → 사용자가 직접 붙인 이름 (화면에서 원래 이름보다 우선)
 history, ended = deque(maxlen=300), deque(maxlen=500)
 lock = threading.Lock()
 seq = 0
-CKPT_KEYS = ('id', 'agent', 'label', 'parent', 'tokens', 'tok_sent', 'tin', 'tin_sent', 'tcache', 'tcache_sent', 'ended', 'offset')
-STORE_KEYS = ('id', 'parent', 'agent', 'label', 'kind', 'text', 'st', 'dtok', 'din', 'dcache', 'ts')
+CKPT_KEYS = ('id', 'agent', 'label', 'cwd', 'parent', 'tokens', 'tok_sent', 'tin', 'tin_sent', 'tcache', 'tcache_sent', 'ended', 'offset')
+STORE_KEYS = ('id', 'parent', 'agent', 'label', 'cwd', 'kind', 'text', 'st', 'dtok', 'din', 'dcache', 'ts')
+
+
+found = {'at': 0.0, 'list': []}
 
 
 def watched():
-    # ponytail: 0.5초마다 glob+stat 전체 스캔. 로그가 수천 개를 넘어 느려지면 FSEvents/inotify 로 교체
+    # 새 로그 파일 찾기(glob)는 3초마다, 그 사이엔 아는 파일만 (크기 확인은 poll 이 0.5초마다)
+    # ponytail: 그래도 stat 은 파일 수만큼. 로그가 수천 개를 넘어 느려지면 FSEvents/inotify 로 교체
+    if time.time() - found['at'] < 3:
+        return found['list']
+    found['at'], found['list'] = time.time(), list(scan())
+    return found['list']
+
+
+def scan():
     pats = [(HOME + '/.claude/projects/*/*.jsonl', 'claude'),
             (HOME + '/.claude/projects/*/*/subagents/*.jsonl', 'claude')]
     pats += [(HOME + '/.codex/sessions/%s/*.jsonl' % (date.today() - timedelta(days=d)).strftime('%Y/%m/%d'), 'codex')
@@ -414,7 +430,7 @@ def watched():
 
 
 def register(path, agent, size):
-    s = {'path': path, 'id': os.path.basename(path)[:-6], 'agent': agent, 'label': '', 'parent': None,
+    s = {'path': path, 'id': os.path.basename(path)[:-6], 'agent': agent, 'label': '', 'cwd': '', 'parent': None,
          'tokens': 0, 'tok_sent': 0, 'tin': 0, 'tin_sent': 0, 'tcache': 0, 'tcache_sent': 0,
          'msgs': deque(maxlen=16), 'ended': None, 'offset': size, 'floor': 0,
          'touched': False, 'tids': {}}
@@ -485,7 +501,7 @@ def emit(s, kind, text, ts, st=None):
     s['tok_sent'], s['tin_sent'], s['tcache_sent'] = s['tokens'], s['tin'], s['tcache']
     if kind == 'stat' and not (dtok or din or dcache):
         return
-    publish({'id': s['id'], 'parent': s['parent'], 'agent': s['agent'], 'label': s['label'] or s['agent'],
+    publish({'id': s['id'], 'parent': s['parent'], 'agent': s['agent'], 'label': s['label'] or s['agent'], 'cwd': s.get('cwd', ''),
              'kind': kind, 'text': text, 'st': st, 'dtok': dtok, 'din': din, 'dcache': dcache, 'ts': ts}, store=True)
 
 
@@ -493,7 +509,7 @@ def store_append(e):
     os.makedirs(EVENTS_DIR, exist_ok=True)
     name = datetime.fromtimestamp(e['ts']).strftime('%Y-%m-%d') + '.jsonl'
     with open(os.path.join(EVENTS_DIR, name), 'a', encoding='utf-8') as f:
-        f.write(json.dumps({k: e[k] for k in STORE_KEYS}, ensure_ascii=False) + '\n')
+        f.write(json.dumps({k: e.get(k) for k in STORE_KEYS}, ensure_ascii=False) + '\n')
 
 
 def read_events(since, until=None):
@@ -518,7 +534,7 @@ def summarize(events):
     for e in events:
         x = out.get(e['id'])
         if x is None:
-            x = out[e['id']] = {'id': e['id'], 'agent': e['agent'], 'parent': e['parent'], 'label': e['label'],
+            x = out[e['id']] = {'id': e['id'], 'agent': e['agent'], 'parent': e['parent'], 'label': e['label'], 'cwd': e.get('cwd') or '',
                                 'first': e['ts'], 'last': e['ts'], 'tools': 0, 'read': 0, 'edit': 0, 'run': 0,
                                 'other': 0, 'turns': 0, 'errors': 0, 'tokens': 0, 'tin': 0, 'tcache': 0, 'kind': None, 'text': '', 'st': {}}
         k = e['kind']
@@ -630,8 +646,14 @@ def hook(agent, h, tab=''):
     if tab and tabs.get(tab) != main:  # 앱의 어느 탭이 어느 세션인지 (서브에이전트는 부모 세션으로)
         tabs[tab] = main
         publish({'kind': 'tab', 'tab': tab, 'id': main, 'ts': time.time()})
+    if h.get('cwd') and not aid:
+        cwds.setdefault(main, h['cwd'])  # 처음 본 폴더 = 시작 폴더 (cd 해도 안 바뀜)
     if h.get('hook_event_name') == 'SessionStart' and h.get('cwd'):
         labels.setdefault(main, base(h['cwd']))  # 시작 폴더 = 세션 이름
+    if h.get('hook_event_name') == 'Notification':  # 권한 승인 · 입력을 기다린다 (앱이 알림 · 탭 표시)
+        publish({'id': main, 'parent': None, 'agent': agent, 'label': labels.get(main) or base(h.get('cwd') or '') or agent,
+                 'cwd': cwds.get(main, ''), 'kind': 'notify', 'text': short(str(h.get('message') or '입력을 기다려요')), 'ts': time.time()})
+        return
     if h.get('hook_event_name') == 'SessionStart':
         # 새로 시작하거나 이어 열 때만 (대화 압축·/clear 땐 닫은 창을 다시 띄우지 않음). 앱 안의 세션이면 앱이 이미 궤도를 보여준다
         if not tab and h.get('source', 'startup') in ('startup', 'resume') and setting('autoMini') and MAC:
@@ -643,7 +665,7 @@ def hook(agent, h, tab=''):
     inp = h.get('tool_input') if isinstance(h.get('tool_input'), dict) else {}
     name = str(h.get('tool_name') or '').split('__')[-1]
     publish({'id': sid, 'parent': h.get('session_id') if aid else None, 'agent': agent,
-             'label': (h.get('agent_type') if aid else labels.get(main) or base(h.get('cwd') or '')) or agent,
+             'label': (h.get('agent_type') if aid else labels.get(main) or base(h.get('cwd') or '')) or agent, 'cwd': '' if aid else cwds.get(main, ''),
              'kind': phase, 'tool': tid, 'st': station(h.get('tool_name')), 'ok': h.get('hook_event_name') != 'PostToolUseFailure',
              'text': (name + ' ' + tool_arg(inp)).strip(), 'ts': time.time()})
 
@@ -679,7 +701,7 @@ def load_settings(text):
 def render(agent, text, connect):
     a, d = AGENTS[agent], load_settings(text)
     hooks = d.setdefault('hooks', {})
-    for ev in a['events']:
+    for ev in a['events'] + a.get('extra', []):
         groups = [g for g in hooks.get(ev) or [] if not is_ours(g)]  # 다른 훅은 순서 그대로, 우리 것은 맨 뒤
         if connect:
             groups.append({'hooks': [dict({'type': 'command', 'command': hook_cmd(agent)}, **a['opts'])]})
@@ -707,6 +729,14 @@ def hooks_state(agent):
     if all(cmds[ev] == [hook_cmd(agent)] for ev in cmds):
         return 'connected'
     return 'legacy' if any(cmds.values()) else 'none'
+
+
+def extra_connected(agent):
+    try:
+        hooks = load_settings(read_text(os.path.expanduser(AGENTS[agent]['file']))).get('hooks', {})
+    except ValueError:
+        return False
+    return all(any(is_ours(g) for g in hooks.get(ev) or []) for ev in AGENTS[agent].get('extra', []))
 
 
 def plan(agent, connect):
@@ -887,6 +917,8 @@ def agent_state(agent):
     a, st = AGENTS[agent], hooks_state(agent)
     out = {'name': a['name'], 'installed': os.path.isdir(os.path.expanduser(a['dir'])),
            'connected': st == 'connected', 'legacy': st == 'legacy'}
+    if a.get('extra') and st == 'connected':
+        out['notify'] = extra_connected(agent)
     if agent == 'codex' and st == 'connected':
         out['trust'] = codex_trust_state()
     return out
@@ -923,7 +955,7 @@ def status():
     return {'version': VERSION, 'protocol': PROTOCOL, 'port': PORT, 'boot': BOOT, 'platform': sys.platform,
             'autostart': autostart_state(), 'retentionDays': RETENTION_DAYS,
             'autoMini': setting('autoMini') if MAC else None,
-            'claudeLimits': setting('claudeLimits'),
+            'claudeLimits': setting('claudeLimits'), 'tabs': dict(tabs),
             'limits': dict(({'codex': dict(limits)} if limits else {}), **({'claude': dict(claude_limits)} if claude_limits else {})),
             'agents': {k: agent_state(k) for k in AGENTS}}
 
@@ -971,13 +1003,14 @@ def set_autostart(on):
 
 def install_service():
     py, script, path_env = sys.executable, os.path.join(APP_DIR, 'agent_orbit.py'), os.environ.get('PATH', '/usr/bin:/bin')
+    env = dict({'PATH': path_env}, **({'AGENT_ORBIT_PORT': str(PORT)} if PORT != 47777 else {}))  # 기본 포트가 아니면 서비스도 같은 포트로
     f = service_file()
     os.makedirs(os.path.dirname(f), exist_ok=True)
     if sys.platform == 'darwin':
         import plistlib
         with open(f, 'wb') as fp:
             plistlib.dump({'Label': LABEL, 'ProgramArguments': [py, script, 'serve'],
-                           'EnvironmentVariables': {'PATH': path_env},  # codex 명령을 찾을 수 있게 설치 시점 PATH
+                           'EnvironmentVariables': env,  # codex 명령을 찾을 수 있게 설치 시점 PATH
                            'RunAtLoad': True, 'KeepAlive': True,
                            'StandardOutPath': LOG_FILE, 'StandardErrorPath': LOG_FILE}, fp)
         run('launchctl', 'bootout', launchd_target())
@@ -989,7 +1022,7 @@ def install_service():
             time.sleep(0.5)
         return False, r.stderr.strip()
     write_text(f, '[Unit]\nDescription=Tycho collector\n\n[Service]\nExecStart=%s %s serve\n'
-                  'Environment=PATH=%s\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n' % (py, script, path_env))
+                  '%sRestart=on-failure\n\n[Install]\nWantedBy=default.target\n' % (py, script, ''.join('Environment=%s=%s\n' % kv for kv in env.items())))
     run('systemctl', '--user', 'daemon-reload')
     r = run('systemctl', '--user', 'enable', '--now', 'agent-orbit.service')
     if r.returncode == 0:
@@ -1217,6 +1250,7 @@ def serve():
         srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     except OSError as ex:
         sys.exit('tycho: 포트 %d 를 열 수 없습니다 (%s)' % (PORT, ex))
+    write_text(os.path.join(APP_DIR, 'port'), str(PORT))  # 앱이 수집기 주소를 알 수 있게
     threading.Thread(target=watch, daemon=True).start()
     threading.Thread(target=limits_loop, daemon=True).start()
     log('tycho %s → http://127.0.0.1:%d' % (VERSION, PORT))
@@ -1256,7 +1290,8 @@ def port_open():
 def cmd_setup(args):
     print('Tycho %s 설치' % VERSION)
     if local_status(3) is None and port_open():
-        die('포트 %d 를 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끈 뒤 다시 설치하세요.' % PORT)
+        die('포트 %d 를 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나, 다른 포트로 설치하세요: AGENT_ORBIT_PORT=47787 tycho setup '
+            '(브라우저 대시보드는 47777 만 보므로 이때는 Tycho 앱이나 http://127.0.0.1:포트 로 여세요)' % PORT)
     for agent in AGENTS:
         if hooks_state(agent) == 'legacy':
             act(agent, 'connect')

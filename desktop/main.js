@@ -1,5 +1,5 @@
 // Tycho 앱 — 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
-const {app, BrowserWindow, Menu, ipcMain, dialog, shell} = require('electron');
+const {app, BrowserWindow, Menu, ipcMain, dialog, shell, Notification, nativeTheme, screen, clipboard} = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -8,17 +8,29 @@ const {spawn, execFile} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const pty = require('node-pty');
 
-const ORBIT = process.env.AGENT_ORBIT_URL || 'http://127.0.0.1:47777';  // 개발·테스트용으로만 바꾼다
 const HOME_APP = path.join(os.homedir(), '.agent-orbit');
+const savedPort = () => { try { return +fs.readFileSync(path.join(HOME_APP, 'port'), 'utf8') || 47777; } catch { return 47777; } };  // 수집기가 다른 포트로 설치됐으면
+const ORBIT = process.env.AGENT_ORBIT_URL || `http://127.0.0.1:${savedPort()}`;  // 개발·테스트용으로만 바꾼다
 const BUNDLE = app.isPackaged ? path.join(process.resourcesPath, 'collector') : path.join(__dirname, '..');  // 앱에 들어 있는 수집기 (개발 중엔 저장소)
 const terms = new Map();  // 탭 id → pty
-let win, seq = 0;
+let win, seq = 0, quitting = false;
+const TEST = process.env.TYCHO_TEST === '1';  // 자동 테스트: 창을 띄우지 않는다 (사용자 화면을 가리지 않게)
 
 app.setName('Tycho');
 {  // 이름이 Agent Orbit 이던 때의 앱 데이터(프로젝트 목록 · 패널 폭)를 처음 한 번 옮긴다
   const oldData = path.join(app.getPath('appData'), 'Agent Orbit'), newData = path.join(app.getPath('appData'), 'Tycho');
   if (!fs.existsSync(newData) && fs.existsSync(oldData)) try { fs.cpSync(oldData, newData, {recursive: true}); } catch { /* 새로 시작 */ }
 }
+
+// ── 앱 설정 (창 위치 · 테마) — 앱 데이터 폴더의 JSON 하나 ──
+const confFile = () => path.join(app.getPath('userData'), 'app.json');
+const conf = () => { try { return JSON.parse(fs.readFileSync(confFile(), 'utf8')); } catch { return {}; } };
+const saveConf = patch => {
+  const c = {...conf(), ...patch};
+  fs.mkdirSync(path.dirname(confFile()), {recursive: true});
+  fs.writeFileSync(confFile(), JSON.stringify(c, null, 2));
+  return c;
+};
 
 // ── 프로젝트 목록 (앱 데이터 폴더의 JSON 하나) ──
 const storeFile = () => path.join(app.getPath('userData'), 'projects.json');
@@ -30,15 +42,22 @@ function saveProjects(list) {
   fs.writeFileSync(storeFile(), JSON.stringify(list, null, 2));
 }
 const projectsView = () => loadProjects().map(p => ({...p, exists: fs.existsSync(p.path)}));
+function addProject(dir) {
+  const list = loadProjects();
+  if (!list.some(p => p.path === dir)) list.unshift({path: dir, name: path.basename(dir), added: Date.now(), opened: Date.now()});
+  saveProjects(list);
+  return {list: projectsView(), added: dir};
+}
 
 ipcMain.handle('projects:list', () => projectsView());
 ipcMain.handle('projects:add', async () => {
   const r = await dialog.showOpenDialog(win, {title: '프로젝트 폴더 열기', properties: ['openDirectory', 'createDirectory']});
   if (r.canceled || !r.filePaths[0]) return {list: projectsView(), added: null};
-  const dir = r.filePaths[0], list = loadProjects();
-  if (!list.some(p => p.path === dir)) list.unshift({path: dir, name: path.basename(dir), added: Date.now(), opened: Date.now()});
-  saveProjects(list);
-  return {list: projectsView(), added: dir};
+  return addProject(r.filePaths[0]);
+});
+ipcMain.handle('projects:addPath', (_, dir) => {  // 폴더를 사이드바에 끌어다 놓기
+  try { if (typeof dir === 'string' && path.isAbsolute(dir) && fs.statSync(dir).isDirectory()) return addProject(dir); } catch { /* 폴더가 아님 */ }
+  return {list: projectsView(), added: null};
 });
 ipcMain.handle('projects:remove', (_, dir) => { saveProjects(loadProjects().filter(p => p.path !== dir)); return projectsView(); });
 ipcMain.handle('projects:touch', (_, dir) => {
@@ -74,10 +93,44 @@ ipcMain.on('pty:write', (_, id, data) => { const p = terms.get(id); if (p) p.wri
 ipcMain.on('pty:resize', (_, id, cols, rows) => { const p = terms.get(id); if (p && cols > 0 && rows > 0) p.resize(cols, rows); });
 ipcMain.on('pty:kill', (_, id) => { const p = terms.get(id); if (p) { p.kill(); terms.delete(id); } });
 
+// 탭에서 셸 말고 다른 프로그램(claude · codex · npm …)이 돌고 있으면 그 이름
+const SHELLS = /^-?(zsh|bash|fish|sh|tcsh|ksh|nu|login)$/;
+function busy(id) {
+  const p = terms.get(id);
+  try { const name = p && path.basename(p.process || ''); return name && !SHELLS.test(name) ? name : null; } catch { return null; }
+}
+ipcMain.handle('pty:confirmClose', async (_, id) => {  // 실행 중이면 묻고 닫는다 (작업 손실 방지)
+  const name = busy(id);
+  if (!name) return true;
+  const r = await dialog.showMessageBox(win, {type: 'warning', buttons: ['닫기', '취소'], defaultId: 1, cancelId: 1,
+    message: `${name} 이(가) 실행 중이에요`, detail: '탭을 닫으면 함께 끝나요. Claude · Codex 대화는 나중에 이어서 열 수 있어요.'});
+  return r.response === 0;
+});
+function confirmQuit() {
+  const names = [...new Set([...terms.keys()].map(busy).filter(Boolean))];
+  if (!names.length) return true;
+  return dialog.showMessageBoxSync(win, {type: 'warning', buttons: ['종료', '취소'], defaultId: 1, cancelId: 1,
+    message: '실행 중인 작업이 있어요', detail: `${names.join(', ')} — 종료하면 함께 끝나요. 다음에 켜면 탭과 Claude · Codex 대화를 다시 열어요.`}) === 0;
+}
+const killAll = () => { for (const p of terms.values()) p.kill(); terms.clear(); };
+
+// 터미널 우클릭 메뉴: 복사는 여기서, 붙여넣기 · 찾기 등은 화면이 (붙여넣기 모드를 지키려고 xterm 의 paste 로)
+ipcMain.on('term:menu', (_, selection) => {
+  const act = (action, text) => win.webContents.send('term:action', action, text);
+  Menu.buildFromTemplate([
+    {label: '복사', enabled: !!selection, click: () => clipboard.writeText(selection)},
+    {label: '붙여넣기', click: () => act('paste', clipboard.readText())},
+    {label: '모두 선택', click: () => act('selectAll')},
+    {type: 'separator'},
+    {label: '찾기…', click: () => act('find')},
+    {label: '화면 지우기', click: () => act('clear')},
+  ]).popup({window: win});
+});
+
 // ── 로컬 수집기 ──
-function getJSON(pathname) {
+function getJSON(pathname, timeout = 4000) {
   return new Promise(resolve => {
-    const req = http.get(`${ORBIT}${pathname}`, {timeout: 4000}, res => {
+    const req = http.get(`${ORBIT}${pathname}`, {timeout}, res => {
       let body = '';
       res.on('data', d => { body += d; });
       res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
@@ -86,10 +139,29 @@ function getJSON(pathname) {
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
 }
+function postJSON(pathname, body) {  // 수집기의 쓰기 API 는 허용된 Origin + JSON 만 받는다 → 수집기 자기 주소를 Origin 으로
+  return new Promise(resolve => {
+    const data = JSON.stringify(body || {});
+    const req = http.request(`${ORBIT}${pathname}`, {method: 'POST', timeout: 60000,
+      headers: {'Content-Type': 'application/json', Origin: ORBIT, 'Content-Length': Buffer.byteLength(data)}}, res => {
+      let out = '';
+      res.on('data', d => { out += d; });
+      res.on('end', () => { try { resolve(JSON.parse(out)); } catch { resolve({ok: false, message: '응답을 읽지 못했어요'}); } });
+    });
+    req.on('error', () => resolve({ok: false, message: '수집기에 연결할 수 없어요'}));
+    req.on('timeout', () => { req.destroy(); resolve({ok: false, message: '시간이 너무 오래 걸려요'}); });
+    req.end(data);
+  });
+}
 const collectorStatus = () => getJSON('/api/status');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// 하단 상태바: 오늘 에이전트별 도구 횟수 · 토큰(입력 · 출력 · 캐시 읽기) · 연결 상태 · 에이전트별 사용 한도
+// 앱 안 설정 화면: 상태 · 미리 보기는 읽기만, 쓰기는 정해진 동작만 (연결 · 해제 · 승인 · 설정)
+ipcMain.handle('orbit:get', (_, p) => (/^\/api\/(status|preview)(\?|$)/.test(p) ? getJSON(p, 25000) : null));
+const WRITES = new Set(['/api/connect', '/api/disconnect', '/api/trust', '/api/settings', '/api/autostart']);
+ipcMain.handle('orbit:post', (_, p, body) => (WRITES.has(p) ? postJSON(p, body) : null));
+
+// 하단 상태바: 오늘 에이전트별 도구 횟수 · 토큰(입력 · 출력 · 캐시 읽기) · 연결 상태 · 에이전트별 사용 한도 · 탭 ↔ 세션
 ipcMain.handle('collector:usage', async (_, refresh) => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const [status, sum] = await Promise.all([getJSON(refresh ? '/api/status?refresh=1' : '/api/status'), getJSON(`/api/summary?since=${today.getTime() / 1000}`)]);  // 새로고침 버튼이면 한도도 다시
@@ -100,11 +172,52 @@ ipcMain.handle('collector:usage', async (_, refresh) => {
     const b = by[x.agent];
     if (b) { b.calls += x.tools || 0; b.tin += x.tin || 0; b.tout += x.tokens || 0; b.tcache += x.tcache || 0; }
   }
-  return {ok: true, version: status.version, by, limits: status.limits || {}, claudeLimits: status.claudeLimits};  // limits: {codex|claude: {primary, secondary, plan, at} 또는 {error}}
+  return {ok: true, version: status.version, by, limits: status.limits || {}, claudeLimits: status.claudeLimits, tabs: status.tabs || {}};  // limits: {codex|claude: {primary, secondary, plan, at} 또는 {error}}
+});
+
+// 수집기 이벤트를 화면에 전달 (탭 상태 · 알림용, 궤도 화면과 별개). 끊기면 3초 뒤 다시
+let following = false;
+function followEvents() {
+  if (following) return;
+  following = true;
+  let buf = '';
+  const again = () => { if (!following) return; following = false; setTimeout(followEvents, 3000); };
+  const req = http.get(`${ORBIT}/api/events`, res => {
+    res.setEncoding('utf8');
+    res.on('data', d => {
+      buf += d;
+      for (let i; (i = buf.indexOf('\n\n')) >= 0; buf = buf.slice(i + 2)) {
+        const line = buf.slice(0, i).split('\n').find(l => l.startsWith('data: '));
+        if (!line || !win || win.isDestroyed()) continue;
+        try { win.webContents.send('orbit:event', JSON.parse(line.slice(6))); } catch { /* 깨진 줄은 건너뜀 */ }
+      }
+    });
+    res.on('end', again);
+    res.on('error', again);
+  });
+  req.on('error', again);
+}
+
+// 알림 · Dock 배지: 응답을 마쳤거나 권한 승인 · 입력을 기다리는 탭
+ipcMain.on('notify', (_, {title, body, tab}) => {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({title, body});
+  n.on('click', () => { if (!win || win.isDestroyed()) return; win.show(); win.focus(); win.webContents.send('tab:activate', tab); });
+  n.show();
+});
+ipcMain.on('badge', (_, count) => { app.setBadgeCount(Math.max(0, count | 0)); });
+
+// 테마: 시스템 · 라이트 · 다크 (궤도 패널은 밤하늘이라 늘 어둡게)
+ipcMain.handle('theme:get', () => conf().theme || 'system');
+ipcMain.handle('theme:set', (_, theme) => {
+  if (!['system', 'light', 'dark'].includes(theme)) return conf().theme || 'system';
+  nativeTheme.themeSource = theme;
+  saveConf({theme});
+  return theme;
 });
 
 // ── 앱이 켜지면 수집기도 바로: 없으면 설치, 앱에 든 것보다 오래됐으면 업데이트, 꺼져 있으면 깨운다 ──
-// 사용자가 터미널에 설치 명령을 칠 필요가 없다. 훅 연결(설정 파일 변경)은 여전히 대시보드에서 동의를 받고 한다
+// 사용자가 터미널에 설치 명령을 칠 필요가 없다. 훅 연결(설정 파일 변경)은 여전히 확인 창에서 동의를 받고 한다
 const bundledVersion = () => { try { return /^VERSION = '([^']+)'/m.exec(fs.readFileSync(path.join(BUNDLE, 'agent_orbit.py'), 'utf8'))[1]; } catch { return null; } };
 const newer = (a, b) => { const x = a.split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
 
@@ -152,7 +265,12 @@ function send(action) { if (win && !win.isDestroyed()) win.webContents.send('men
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    ...(isMac ? [{role: 'appMenu'}] : []),
+    ...(isMac ? [{label: app.name, submenu: [
+      {role: 'about'}, {type: 'separator'},
+      {label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => send('settings')},
+      {type: 'separator'}, {role: 'services'}, {type: 'separator'},
+      {role: 'hide'}, {role: 'hideOthers'}, {role: 'unhide'}, {type: 'separator'}, {role: 'quit'},
+    ]}] : []),
     {label: '파일', submenu: [
       {label: '폴더 열기…', accelerator: 'CmdOrCtrl+O', click: () => send('add-project')},
       {type: 'separator'},
@@ -161,8 +279,13 @@ function buildMenu() {
       {label: 'Codex 새 세션', accelerator: 'CmdOrCtrl+Shift+X', click: () => send('new-codex')},
       {type: 'separator'},
       {label: '탭 닫기', accelerator: 'CmdOrCtrl+W', click: () => send('close-tab')},
+      ...(isMac ? [] : [{type: 'separator'}, {label: '설정…', accelerator: 'CmdOrCtrl+,', click: () => send('settings')}]),
     ]},
-    {role: 'editMenu'},
+    {label: '편집', submenu: [
+      {role: 'undo'}, {role: 'redo'}, {type: 'separator'},
+      {role: 'cut'}, {role: 'copy'}, {role: 'paste'}, {role: 'selectAll'}, {type: 'separator'},
+      {label: '찾기…', accelerator: 'CmdOrCtrl+F', click: () => send('find')},
+    ]},
     {label: '보기', submenu: [
       {label: '사이드바', accelerator: 'CmdOrCtrl+B', click: () => send('toggle-side')},
       {label: '궤도 패널', accelerator: 'CmdOrCtrl+J', click: () => send('toggle-orbit')},
@@ -180,12 +303,25 @@ function buildMenu() {
 }
 
 function createWindow() {
+  // 지난번 창 크기 · 위치 (모니터가 바뀌어 화면 밖이면 기본값)
+  const c = conf(), b = c.bounds;
+  const onScreen = b && screen.getAllDisplays().some(({workArea: a}) => b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y);
   win = new BrowserWindow({
-    width: 1480, height: 920, minWidth: 980, minHeight: 600, title: 'Tycho', backgroundColor: '#0a0a0a',
+    ...(onScreen ? b : {width: 1480, height: 920}), minWidth: 980, minHeight: 600, title: 'Tycho', show: !TEST,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0a0a' : '#f6f6f6',
     // 신호등 버튼(높이 16) 가운데를 상단 바(52px)의 가운데 26px 에 맞춘다 — style.css 의 .side-top 과 짝
     titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 16, y: 18}, icon: path.join(__dirname, 'assets/icon.png'),
-    webPreferences: {preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true,
+    webPreferences: {preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: true, backgroundThrottling: !TEST,
       additionalArguments: [`--agent-orbit-url=${ORBIT}`]},
+  });
+  if (c.maximized) win.maximize();
+  let timer;
+  const keep = () => { if (win && !win.isDestroyed() && !win.isMinimized() && !win.isFullScreen()) saveConf({bounds: win.getNormalBounds(), maximized: win.isMaximized()}); };
+  for (const ev of ['resize', 'move']) win.on(ev, () => { clearTimeout(timer); timer = setTimeout(keep, 400); });
+  win.on('close', e => {  // 창을 닫으면 터미널도 끝난다 → 실행 중이면 묻는다 (앱 종료 중이면 이미 물었다)
+    keep();
+    if (!quitting && !confirmQuit()) return e.preventDefault();
+    killAll();
   });
   win.loadFile(path.join(__dirname, 'index.html'));
   // 궤도 패널(webview)은 로컬 수집기 대시보드만 열 수 있다
@@ -200,16 +336,23 @@ function createWindow() {
 app.on('web-contents-created', (_, wc) => {
   wc.setWindowOpenHandler(({url}) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); return {action: 'deny'}; });
   if (wc.getType() === 'webview') {
-    wc.on('will-navigate', (e, url) => { if (!url.startsWith(ORBIT + '/')) { e.preventDefault(); shell.openExternal(url); } });
+    wc.on('will-navigate', (e, url) => { if (!url.startsWith(ORBIT + '/')) { e.preventDefault(); if (/^https?:\/\//.test(url)) shell.openExternal(url); } });  // 끌어다 놓은 파일(file://)은 열지 않는다
   }
 });
 
 app.whenReady().then(() => {
+  nativeTheme.themeSource = conf().theme || 'system';
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(path.join(__dirname, 'assets/icon.png'));
   buildMenu();
   createWindow();
+  followEvents();
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 });
 
-app.on('before-quit', () => { for (const p of terms.values()) p.kill(); terms.clear(); });
+app.on('before-quit', e => {  // 실행 중인 작업이 있으면 한 번 묻는다
+  if (quitting) return;
+  if (!confirmQuit()) return e.preventDefault();
+  quitting = true;
+});
+app.on('will-quit', killAll);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

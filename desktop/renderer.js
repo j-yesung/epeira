@@ -1,21 +1,30 @@
 'use strict';
-/* 앱 화면: 프로젝트 사이드바 · 터미널 탭 · 궤도 패널. 터미널 탭을 바꾸면 궤도의 HUB 도 그 탭의 세션으로 바뀐다 */
+/* 앱 화면: 프로젝트 사이드바 · 터미널 탭 · 궤도 패널 · 설정. 터미널 탭을 바꾸면 궤도의 HUB 도 그 탭의 세션으로 바뀐다 */
 const api = window.orbit;
 const $ = id => document.getElementById(id);
 const ORBIT = api.orbitUrl;  // 로컬 수집기 (기본 http://127.0.0.1:47777)
-const INSTALL_CMD = 'curl -fsSL https://agent-orbit-app.vercel.app/install.sh | sh';
-const THEME = {
+const DARK = {
   background: '#0a0a0a', foreground: '#e5e5e5', cursor: '#5cc2ff', cursorAccent: '#0a0a0a', selectionBackground: 'rgba(59,158,255,.32)',
   black: '#1a1a1a', red: '#ff6b81', green: '#34d399', yellow: '#fbbf24', blue: '#3b9eff', magenta: '#a78bfa', cyan: '#22c3ee', white: '#e5e5e5',
   brightBlack: '#6b6b6b', brightRed: '#ff8a9c', brightGreen: '#6ee7b7', brightYellow: '#fcd34d', brightBlue: '#5cc2ff',
   brightMagenta: '#c4b5fd', brightCyan: '#67e8f9', brightWhite: '#ffffff',
 };
+const LIGHT = {  // 흰 바탕: 프로그램이 "흰색"으로 강조한 글자도 보이게 white 계열은 진한 회색
+  background: '#fbfbfb', foreground: '#1b1b1b', cursor: '#1c7ed6', cursorAccent: '#fbfbfb', selectionBackground: 'rgba(28,126,214,.22)',
+  black: '#1b1b1b', red: '#c92a2a', green: '#2b8a3e', yellow: '#a86b00', blue: '#1c7ed6', magenta: '#7048e8', cyan: '#0c8599', white: '#5c5c5c',
+  brightBlack: '#6b6b6b', brightRed: '#e03131', brightGreen: '#37b24d', brightYellow: '#e67700', brightBlue: '#339af0',
+  brightMagenta: '#845ef7', brightCyan: '#1098ad', brightWhite: '#2b2b2b',
+};
+const dark = matchMedia('(prefers-color-scheme: dark)');
+const termTheme = () => (dark.matches ? DARK : LIGHT);
 const LOGO = {claude: 'assets/claude.svg', codex: 'assets/codex.svg'};  // Codex 는 중립 마크 (OpenAI 공식 로고 파일을 받으면 교체)
 const kindIcon = kind => h('span', {class: 'k'}, LOGO[kind] ? h('img', {src: LOGO[kind], alt: ''}) : '›');
 const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(Math.round(x || 0));
+// 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 — GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
+const fontsReady = document.fonts.load('13px "Tycho Keys"', '⌘⌥⇧⏎↑').catch(() => {});
 
-const S = {projects: [], current: null, tabs: [], active: null, collector: null, usage: null, orbitReady: false};
-// tab = {id, dir, name, kind, term, fit, el, exited}
+const S = {projects: [], current: null, tabs: [], active: null, collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
+// tab = {id, dir, base, title, kind, sid, term, fit, search, el, exited, busy, waiting, unread}
 
 function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -36,6 +45,13 @@ const store = {
 const tilde = p => p.replace(/^\/(Users|home)\/[^/]+/, '~');
 const tab = id => S.tabs.find(t => t.id === id);
 const project = dir => S.projects.find(p => p.path === dir);
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3600);
+}
 
 // ── 프로젝트 ──
 async function loadProjects() {
@@ -69,7 +85,7 @@ function renderProjects() {
   const ul = $('projects');
   if (!S.projects.length) {
     return ul.replaceChildren(h('li', {class: 'side-empty'}, '아직 프로젝트가 없어요.', h('br'),
-      h('button', {class: 'link', type: 'button', onclick: addProject}, '+ 폴더 열기')));
+      h('button', {class: 'link', type: 'button', onclick: addProject}, '+ 폴더 열기'), h('br'), '폴더를 여기에 끌어다 놓아도 돼요.'));
   }
   ul.replaceChildren(...S.projects.map(p => {
     const open = S.tabs.filter(t => t.dir === p.path && !t.exited).length;
@@ -86,44 +102,71 @@ function renderProjects() {
 }
 
 // ── 터미널 탭 ──
-async function openTab(dir, kind = 'shell') {
+// 다시 켰을 때 이어 열 명령: 세션 id 를 알면 그 대화로 (모르면 셸만 — 엉뚱한 대화를 잇지 않게)
+function resumeCmd(kind, sid) {
+  if (!sid || !/^[\w-]+$/.test(sid)) return null;
+  if (kind === 'claude') return `claude --resume ${sid}`;
+  const uuid = kind === 'codex' && /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.exec(sid);  // Codex 로그 이름 끝의 세션 id
+  return uuid ? `codex resume ${uuid[0]}` : null;
+}
+
+async function openTab(dir, kind = 'shell', opts = {}) {
   dir = dir || S.current;
   if (!dir) return addProject();
+  await fontsReady;
+  const run = kind === 'shell' ? null : opts.resume ? resumeCmd(kind, opts.sid) : kind;
+  if (opts.resume && !run) kind = 'shell';
   const el = h('div', {class: 'term'});
   $('terms').append(el);
   // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 — 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
   const term = new Terminal({fontFamily: '"Tycho Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: 13, lineHeight: 1.2, cursorBlink: true,
-    scrollback: 10000, macOptionIsMeta: true, allowProposedApi: true, theme: THEME});
-  const fit = new FitAddon.FitAddon();
+    scrollback: 10000, macOptionIsMeta: true, allowProposedApi: true, theme: termTheme()});
+  const fit = new FitAddon.FitAddon(), search = new SearchAddon.SearchAddon();
   term.loadAddon(fit);
+  term.loadAddon(search);
   term.loadAddon(new WebLinksAddon.WebLinksAddon((ev, url) => api.openExternal(url)));
+  term.loadAddon(new Unicode11Addon.Unicode11Addon());
+  term.unicode.activeVersion = '11';  // 이모지 · 기호 칸 폭을 요즘 터미널 프로그램과 맞춘다
   term.open(el);
+  try {  // GPU 로 그린다 (Claude Code 처럼 화면을 자주 다시 그려도 가볍게). 안 되면 기본 렌더러
+    const gl = new WebglAddon.WebglAddon();
+    gl.onContextLoss(() => gl.dispose());
+    term.loadAddon(gl);
+  } catch { /* WebGL 을 못 쓰는 환경 */ }
   fit.fit();
-  const id = await api.createTerm({cwd: dir, run: kind === 'shell' ? null : kind, cols: term.cols, rows: term.rows});
+  const id = await api.createTerm({cwd: dir, run, cols: term.cols, rows: term.rows});
   const p = project(dir);
-  S.tabs.push({id, dir, name: p ? p.name : dir.split('/').pop(), kind, term, fit, el, exited: false});
+  const t = {id, dir, base: p ? p.name : dir.split('/').pop(), title: opts.title || null, kind, sid: opts.sid || null,
+    term, fit, search, el, exited: false, busy: false, waiting: false, unread: false};
+  S.tabs.push(t);
   term.onData(d => api.write(id, d));
   term.onResize(({cols, rows}) => api.resize(id, cols, rows));
+  el.addEventListener('contextmenu', e => { e.preventDefault(); api.termMenu(term.getSelection()); });
+  search.onDidChangeResults(r => { if (S.active === id && !$('find').hidden) $('find-n').textContent = r.resultCount ? `${r.resultIndex + 1}/${r.resultCount}` : '없음'; });
   S.current = dir;
-  activate(id);
+  if (!opts.quiet) activate(id);
+  saveTabs();
+  return t;
 }
 
 function activate(id) {
   const t = tab(id);
   if (!t) return;
-  S.active = id; S.current = t.dir;
+  S.active = id; S.current = t.dir; t.unread = false;
   for (const x of S.tabs) x.el.hidden = x.id !== id;
   requestAnimationFrame(() => { t.fit.fit(); t.term.focus(); });
-  renderTabs(); renderProjects(); renderWelcome(); tellOrbit();
+  if (!$('find').hidden) { for (const x of S.tabs) x.search.clearDecorations(); find(1); }
+  renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); updateBadge(); saveTabs();
 }
 
-function closeTab(id = S.active) {
+async function closeTab(id = S.active) {
   const t = tab(id);
-  if (!t) return;
+  if (!t || !(await api.confirmClose(id))) return;  // claude · codex 등이 돌고 있으면 먼저 묻는다
   api.kill(id);
   t.term.dispose(); t.el.remove();
   const i = S.tabs.indexOf(t);
   S.tabs.splice(i, 1);
+  saveTabs(); updateBadge();
   const next = S.tabs[i] || S.tabs[i - 1];
   if (next) return activate(next.id);
   S.active = null;
@@ -136,15 +179,43 @@ function cycleTab(step) {
   activate(S.tabs[(i + step + S.tabs.length) % S.tabs.length].id);
 }
 
+function tabLabel(t) {  // 직접 붙인 이름, 아니면 프로젝트 이름 (같은 프로젝트 탭이 여럿이면 2, 3 …)
+  if (t.title) return t.title;
+  const i = S.tabs.filter(x => x.dir === t.dir).indexOf(t);
+  return i > 0 ? `${t.base} ${i + 1}` : t.base;
+}
+
+const STATE = {wait: '입력 · 승인을 기다려요', busy: '일하는 중', new: '새 응답이 있어요'};
 function renderTabs() {
+  if (S.renaming) return;  // 이름을 바꾸는 중엔 다시 그리지 않는다 (입력칸이 사라지지 않게)
   // 탭은 container-type 이라 내용 너비가 0 으로 계산돼 탭 줄이 최소 폭(96px)으로 쪼그라든다 → 탭당 200px(+간격)를 미리 잡아 두고 좁으면 줄어들게
   $('tabs').style.flexBasis = `${S.tabs.length * 204}px`;
   $('tabs').replaceChildren(...S.tabs.map((t, i) => {
-    return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${t.exited ? ' dead' : ''}`, title: t.dir},
-      h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active), onclick: () => activate(t.id)},
-        kindIcon(t.kind), h('span', {}, t.name), i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null),
-      h('button', {class: 'tab-x', type: 'button', title: '탭 닫기 (⌘W)', 'aria-label': `${t.name} 탭 닫기`, onclick: () => closeTab(t.id)}, '×'));
+    const label = tabLabel(t), state = t.waiting ? 'wait' : t.busy ? 'busy' : t.unread ? 'new' : '';
+    // 이미 보고 있는 탭을 누르면 다시 그리지 않는다 — 다시 그리면 두 번 누르기(이름 바꾸기)가 새 요소에 떨어져 안 먹는다
+    const main = h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active),
+      onclick: () => (S.active === t.id ? t.term.focus() : activate(t.id)), ondblclick: () => renameTab(t, main)},
+      kindIcon(t.kind), h('span', {}, label), state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null, i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null);
+    return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${t.exited ? ' dead' : ''}`, title: `${t.dir}\n두 번 눌러 이름 바꾸기`}, main,
+      h('button', {class: 'tab-x', type: 'button', title: '탭 닫기 (⌘W)', 'aria-label': `${label} 탭 닫기`, onclick: () => closeTab(t.id)}, '×'));
   }));
+}
+
+function renameTab(t, main) {  // 탭을 두 번 누르면 이름 바꾸기 (비우면 원래 이름)
+  const input = h('input', {class: 'tab-rename', value: tabLabel(t), maxlength: '40', 'aria-label': '탭 이름', spellcheck: 'false'});
+  let done = false;
+  const finish = save => {
+    if (done) return;
+    done = true; S.renaming = false;
+    if (save) { t.title = input.value.trim() || null; saveTabs(); }
+    renderTabs();
+    t.term.focus();
+  };
+  input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
+  input.addEventListener('blur', () => finish(true));
+  S.renaming = true;
+  main.replaceWith(input);
+  input.focus(); input.select();
 }
 
 function renderWelcome() {
@@ -163,11 +234,133 @@ api.onData((id, data) => { const t = tab(id); if (t) t.term.write(data); });
 api.onExit(id => {
   const t = tab(id);
   if (!t) return;
-  t.exited = true;
+  t.exited = true; t.busy = t.waiting = false;
   t.term.write('\r\n\x1b[90m[프로세스가 끝났어요 · ⌘W 로 탭을 닫을 수 있어요]\x1b[0m\r\n');
-  renderTabs(); renderProjects();
+  renderTabs(); renderProjects(); updateBadge(); saveTabs();
 });
 new ResizeObserver(() => { const t = tab(S.active); if (t) t.fit.fit(); }).observe($('terms'));
+dark.addEventListener('change', () => { for (const t of S.tabs) t.term.options.theme = termTheme(); });
+
+// ── 탭 저장 · 복원: 다시 켜면 탭과 Claude · Codex 대화를 이어서 연다 ──
+function saveTabs() {
+  if (S.restoring) return;
+  const list = S.tabs.filter(t => !t.exited).map(t => ({dir: t.dir, kind: t.kind, title: t.title, sid: t.sid}));
+  store.set('tabs', JSON.stringify({active: S.tabs.filter(t => !t.exited).findIndex(t => t.id === S.active), list}));
+}
+async function restoreTabs() {
+  let saved = null;
+  try { saved = JSON.parse(store.get('tabs') || 'null'); } catch { /* 깨진 값이면 새로 시작 */ }
+  if (!saved || !Array.isArray(saved.list) || !saved.list.length) return false;
+  S.restoring = true;
+  for (const s of saved.list) {
+    const p = project(s.dir);
+    if (p && p.exists) await openTab(s.dir, s.kind, {sid: s.sid, title: s.title, resume: true, quiet: true});
+  }
+  S.restoring = false;
+  const t = S.tabs[saved.active] || S.tabs[S.tabs.length - 1];
+  if (t) activate(t.id);
+  saveTabs();
+  return S.tabs.length > 0;
+}
+
+// ── 탭 상태 · 알림: 일하는 중 · 입력 · 승인 대기 · 안 본 응답 (수집기 이벤트로) ──
+function linkTab(tabId, sid) {
+  const t = tab(tabId);
+  if (t && sid && t.sid !== sid) { t.sid = sid; saveTabs(); }
+}
+const seen = t => document.hasFocus() && S.active === t.id;
+function alertTab(t, msg, detail) {
+  if (seen(t)) return;
+  api.notify({title: `${tabLabel(t)} · ${t.kind === 'codex' ? 'Codex' : 'Claude'}`, body: detail ? `${msg} — ${detail}` : msg, tab: t.id});
+}
+function updateBadge() { api.badge(S.tabs.filter(t => t.waiting || t.unread).length); }
+api.onEvent(e => {
+  if (e.kind === 'tab') return linkTab(e.tab, e.id);
+  const sid = e.parent || e.id, t = sid && S.tabs.find(x => x.sid === sid);
+  if (!t || e.kind === 'stat' || e.kind === 'hello' || e.kind === 'name') return;
+  if (e.replay) {  // 앱을 켜기 전부터 돌던 도구
+    if (e.kind === 'start') { t.busy = true; renderTabs(); }
+    return;
+  }
+  if (e.kind === 'notify') {
+    if (!t.busy) return;  // 응답을 마친 뒤의 "입력 기다림" 알림은 이미 알렸다
+    t.waiting = true;
+    alertTab(t, STATE.wait, e.text);
+  } else if (e.kind === 'done') {
+    if (e.parent) return;  // 서브에이전트가 끝난 건 대화가 끝난 게 아니다
+    t.busy = t.waiting = false;
+    if (!seen(t)) { t.unread = true; alertTab(t, '응답을 마쳤어요'); }
+  } else if (e.kind === 'error' && e.text === 'interrupted') {
+    t.busy = t.waiting = false;
+  } else {
+    t.busy = true; t.waiting = false;
+  }
+  renderTabs(); updateBadge();
+});
+api.onActivateTab(id => { if (tab(id)) activate(id); });
+addEventListener('focus', () => { const t = tab(S.active); if (t && t.unread) { t.unread = false; renderTabs(); updateBadge(); } });
+
+// ── 터미널 찾기 (⌘F) ──
+const FIND = {decorations: {matchBackground: '#1e4f80', activeMatchBackground: '#3b9eff', matchOverviewRuler: '#3b9eff', activeMatchColorOverviewRuler: '#5cc2ff'}};
+function openFind() {
+  if (!tab(S.active)) return;
+  $('find').hidden = false;
+  $('find-q').focus(); $('find-q').select();
+  if ($('find-q').value) find(1);
+}
+function closeFind() {
+  $('find').hidden = true; $('find-n').textContent = '';
+  for (const t of S.tabs) t.search.clearDecorations();
+  const t = tab(S.active);
+  if (t) t.term.focus();
+}
+function find(dir, incremental) {
+  const t = tab(S.active), q = $('find-q').value;
+  if (!t) return;
+  if (!q) { t.search.clearDecorations(); $('find-n').textContent = ''; return; }
+  t.search[dir < 0 ? 'findPrevious' : 'findNext'](q, {...FIND, incremental});
+}
+$('find-q').addEventListener('input', () => find(1, true));
+$('find-q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); find(e.shiftKey ? -1 : 1); }
+  else if (e.key === 'Escape') closeFind();
+});
+$('find-next').onclick = () => find(1);
+$('find-prev').onclick = () => find(-1);
+$('find-close').onclick = closeFind;
+
+// 터미널 우클릭 메뉴의 동작 (복사는 메뉴가 바로 처리)
+api.onTermAction((action, text) => {
+  const t = tab(S.active);
+  if (!t) return;
+  if (action === 'paste' && text) t.term.paste(text);  // 붙여넣기 모드를 지켜 여러 줄도 한 번에
+  else if (action === 'selectAll') t.term.selectAll();
+  else if (action === 'clear') t.term.clear();
+  else if (action === 'find') return openFind();
+  t.term.focus();
+});
+
+// ── 끌어다 놓기: 폴더 → 사이드바(프로젝트 추가), 파일 → 터미널(경로 입력) ──
+const dropped = e => [...(e.dataTransfer.files || [])].map(f => api.pathForFile(f)).filter(Boolean);
+const shq = p => (/^[\w@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`);  // 셸에 그대로 넣어도 안전하게
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => e.preventDefault());
+const sideEl = document.querySelector('.side');
+sideEl.addEventListener('dragover', e => { e.preventDefault(); sideEl.classList.add('drop'); });
+sideEl.addEventListener('dragleave', e => { if (!sideEl.contains(e.relatedTarget)) sideEl.classList.remove('drop'); });
+sideEl.addEventListener('drop', async e => {
+  e.preventDefault(); sideEl.classList.remove('drop');
+  let added = null;
+  for (const p of dropped(e)) { const r = await api.addProjectPath(p); S.projects = r.list; added = r.added || added; }
+  renderProjects();
+  if (added) selectProject(added);
+  else toast('폴더를 끌어다 놓으면 프로젝트로 추가돼요');
+});
+$('terms').addEventListener('drop', e => {
+  e.preventDefault();
+  const t = tab(S.active), paths = dropped(e);
+  if (t && paths.length) { t.term.paste(paths.map(shq).join(' ') + ' '); t.term.focus(); }
+});
 
 // ── 궤도 패널: 로컬 수집기의 대시보드를 그대로 띄운다 ──
 const view = $('orbit-view');
@@ -175,35 +368,54 @@ view.addEventListener('dom-ready', () => { S.orbitReady = true; tellOrbit(); });
 
 function tellOrbit() {  // 지금 프로젝트 · 탭을 대시보드에 알린다: 프로젝트마다 독립된 궤도, HUB 는 그 탭의 세션
   const p = project(S.current), name = p ? p.name : '';
-  $('orbit-title').textContent = name ? `ORBIT · ${name}` : 'ORBIT';
   if (!S.orbitReady) return;
-  const args = `${JSON.stringify(name)}, ${JSON.stringify(S.active || '')}`;  // 예전 수집기(aoFocusTab 만 있음)도 그대로 동작
+  const args = [name, S.active || '', p ? p.path : ''].map(x => JSON.stringify(x)).join(', ');  // 예전 수집기(aoFocusTab 만 있음)도 그대로 동작
   view.executeJavaScript(`window.aoFocusProject ? aoFocusProject(${args}) : window.aoFocusTab && aoFocusTab(${JSON.stringify(S.active || '')})`).catch(() => {});
 }
 
-async function initOrbit() {  // 앱이 수집기를 알아서 설치 · 업데이트 · 실행한다 (처음엔 몇 초 걸릴 수 있음)
+// 앱이 수집기를 알아서 설치 · 업데이트 · 실행한다. 안 되면 사용자에게 명령을 시키지 않고 스스로 계속 다시 시도
+let orbitRetry = null, orbitFails = 0;
+const orbitWait = () => $('orbit-off').replaceChildren(h('div', {class: 'spinner', role: 'status', 'aria-label': '수집기를 준비하고 있어요'}));
+async function initOrbit() {
+  clearTimeout(orbitRetry);
   const off = $('orbit-off');
-  if (view.hidden) { off.hidden = false; off.replaceChildren(h('div', {class: 'spinner', role: 'status', 'aria-label': '수집기를 준비하고 있어요'})); }
+  if (view.hidden) { off.hidden = false; orbitWait(); }
   S.collector = await api.collector();
   await loadUsage();
   if (S.collector.ok) {
+    orbitFails = 0;
     off.hidden = true; view.hidden = false;
     if (view.getAttribute('src') === 'about:blank') view.setAttribute('src', `${ORBIT}/?view=mini&embed=1`);
     else if (S.collector.updated) view.reload();  // 수집기가 새 버전으로 바뀌었으면 궤도 화면도 새로
+    onboard();
     return;
   }
+  orbitFails++;
   view.hidden = true; off.hidden = false;
-  const copyBtn = h('button', {class: 'btn', type: 'button', onclick: async () => { await navigator.clipboard.writeText(INSTALL_CMD); copyBtn.textContent = '복사됨'; }}, '복사');
-  off.replaceChildren(...(S.collector.needPython
-    ? [h('h2', {}, 'Python 이 필요해요'), h('p', {}, 'macOS 개발자 도구를 설치하면 함께 설치돼요. 설치가 끝나면 다시 확인을 눌러 주세요.'),
-      h('button', {class: 'btn', type: 'button', onclick: () => api.installDevTools()}, '개발자 도구 설치')]
-    : [h('h2', {}, '수집기를 켜지 못했어요'), h('p', {}, '터미널 탭에서 아래 명령으로 직접 설치하거나, tycho doctor 로 상태를 확인해 보세요.'),
-      h('div', {class: 'cmd'}, h('code', {}, INSTALL_CMD), copyBtn)]),
-    h('button', {class: 'btn primary', type: 'button', onclick: initOrbit}, '다시 확인'));
+  if (S.collector.needPython) {  // 사람이 해야 하는 단 하나: Apple 개발자 도구 설치 (설치가 끝나면 알아서 이어감)
+    off.replaceChildren(h('h2', {}, 'Python 이 필요해요'), h('p', {}, 'macOS 개발자 도구를 설치하면 함께 설치돼요. 설치가 끝나면 자동으로 이어서 연결해요.'),
+      h('button', {class: 'btn primary', type: 'button', onclick: () => api.installDevTools()}, '개발자 도구 설치'));
+    orbitRetry = setTimeout(initOrbit, 10000);
+    return;
+  }
+  if (orbitFails < 3) { orbitWait(); orbitRetry = setTimeout(initOrbit, 4000); return; }  // 업데이트 · 재시작 중일 수 있다 → 조용히 다시
+  off.replaceChildren(h('h2', {}, '수집기에 연결하지 못했어요'), h('p', {}, '자동으로 계속 다시 시도하고 있어요. 지금 바로 해 보려면 아래 버튼을 누르세요.'),
+    h('button', {class: 'btn primary', type: 'button', onclick: () => { orbitFails = 0; initOrbit(); }}, '다시 시도'));
+  orbitRetry = setTimeout(initOrbit, 15000);
+}
+
+function onboard() {  // 처음 한 번: 연결 안 된 에이전트가 있으면 설정 창으로 안내
+  if (store.get('onboarded')) return;
+  store.set('onboarded', '1');
+  const u = S.usage;
+  if (u && u.ok && Object.values(u.by).some(a => a.installed && !a.connected)) {
+    openSettings('에이전트를 연결하면 Claude Code · Codex 가 하는 일이 궤도에 나타나요. 연결할 때 바뀌는 설정 파일을 먼저 보여 드려요.');
+  }
 }
 
 async function loadUsage(refresh) {
   S.usage = await api.usage(refresh);
+  if (S.usage && S.usage.tabs) for (const [tid, sid] of Object.entries(S.usage.tabs)) linkTab(tid, sid);
   renderStatusbar();
 }
 
@@ -219,7 +431,7 @@ const span = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m >= 
 const level = p => p >= 95 ? 'err' : p >= 80 ? 'warn' : '';
 function limitNote(key, L) {  // 한도를 못 보여줄 때 이유
   if (key === 'codex') return '아직 기록된 사용 한도가 없어요 · Codex 를 한 번 사용하면 나타나요';
-  if (!S.usage.claudeLimits) return '대시보드 아래 "Claude 사용 한도 보기"를 켜면 5시간 · 주간 한도가 보여요';
+  if (!S.usage.claudeLimits) return '설정(⌘,)에서 "Claude 사용 한도 보기"를 켜면 5시간 · 주간 한도가 보여요';
   const e = L && L.error;
   return e === 'no-login' || e === 'expired' ? 'Claude Code 로그인 정보를 읽지 못했어요 · Claude Code 를 한 번 실행하면 다시 가져와요'
     : e ? '사용 한도를 불러오지 못했어요 · 잠시 후 다시 시도해요' : '사용 한도를 불러오는 중이에요';
@@ -249,12 +461,17 @@ function showPop(item, key) {
 }
 function hidePop() { $('sb-pop').hidden = true; S.pop = null; }
 
-function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트별 오늘 사용량과 한도 요약 · 새로고침
+const ICON = {
+  refresh: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  gear: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+};
+function iconBtn(icon, label, onclick) { const b = h('button', {class: 'sb-btn', type: 'button', title: label, 'aria-label': label, onclick}); b.innerHTML = ICON[icon]; return b; }
+
+function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트별 오늘 사용량과 한도 요약 · 새로고침 · 설정
   const u = S.usage, bar = $('statusbar');
-  const refresh = h('button', {class: 'sb-btn', type: 'button', title: '새로고침', 'aria-label': '새로고침', onclick: refreshAll});
-  refresh.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13 3.5V7H9.5M12.6 6.6A5 5 0 1 0 13 9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const refresh = iconBtn('refresh', '새로고침', refreshAll), gear = iconBtn('gear', '설정 (⌘,)', () => openSettings());
   if (!u || !u.ok) {
-    return bar.replaceChildren(h('span', {class: 'sb-item'}, h('i', {class: 'led'}), '수집기가 꺼져 있어요'), h('span', {class: 'grow'}), refresh);
+    return bar.replaceChildren(h('span', {class: 'sb-item'}, h('i', {class: 'led'}), '수집기가 꺼져 있어요'), refresh, h('span', {class: 'grow'}), gear);
   }
   const agent = key => {
     const a = u.by[key];
@@ -271,7 +488,8 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
     h('span', {class: 'sb-item'}, h('i', {class: 'led ok'}), 'LIVE'),
     agent('claude'), agent('codex'), refresh,
     h('span', {class: 'grow'}),
-    needs ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '에이전트 연결하기 →') : null,
+    needs ? h('button', {class: 'link', type: 'button', onclick: () => openSettings()}, '에이전트 연결하기 →') : null,
+    gear,
   ].filter(Boolean));
   if (S.pop) { const k = S.pop.key, el = [...bar.querySelectorAll('.sb-item.hover')].find(x => x.matches(':hover')); if (el) showPop(el, k); else hidePop(); }  // 15초마다 다시 그려도 열린 상세는 유지
 }
@@ -282,6 +500,97 @@ async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널
   await initOrbit();
   await loadUsage(true);  // 사용 한도도 다시 조회 (수집기가 1분에 한 번까지만)
   if (S.orbitReady && !view.hidden) view.reload();
+}
+
+// ── 설정 창: 에이전트 연결 · 해제 · 승인(바뀌는 내용을 먼저 보여 주고 동의받음), 사용 한도 · 미니 창 · 자동 실행 · 테마 ──
+const modal = $('modal');
+let modalClose = null;
+function showSheet(title, body, actions, onClose) {
+  modalClose = onClose || closeModal;
+  modal.hidden = false;
+  modal.replaceChildren(h('div', {class: 'sheet'},
+    h('div', {class: 'sheet-hd'}, h('h2', {id: 'modal-title'}, title), h('button', {class: 'icon-btn', type: 'button', 'aria-label': '닫기', onclick: () => modalClose()}, '×')),
+    h('div', {class: 'sheet-body'}, ...body.filter(Boolean)),
+    actions ? h('div', {class: 'sheet-acts'}, ...actions) : null));
+}
+function closeModal() {
+  modal.hidden = true; modal.replaceChildren(); modalClose = null;
+  const t = tab(S.active);
+  if (t) t.term.focus();
+}
+modal.addEventListener('mousedown', e => { if (e.target === modal && modalClose) modalClose(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden && modalClose) { e.preventDefault(); modalClose(); } }, true);
+
+const AGENT_ACTIONS = {
+  connect: {title: n => `${n} 연결`, ok: '연결', intro: n => `아래 파일에 Tycho 훅이 추가돼요. ${n}가 도구를 실행하거나 승인 · 입력을 기다릴 때 이 컴퓨터의 수집기로만 신호를 보내요.`},
+  disconnect: {title: n => `${n} 연결 해제`, ok: '연결 해제', intro: () => '추가했던 Tycho 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.'},
+  trust: {title: () => 'Codex 훅 승인', ok: '승인', intro: () => 'Codex 는 새 훅을 승인해야 실행해요. 아래 명령을 승인합니다 — Codex 의 /hooks 화면에서 승인하는 것과 같아요.'},
+};
+async function confirmAgent(key, action, name) {
+  showSheet(AGENT_ACTIONS[action].title(name), [h('div', {class: 'spinner'})], null, () => openSettings());
+  const p = await api.get(`/api/preview?agent=${key}&action=${action}`);
+  if (!p || p.error) { toast((p && p.error) || '수집기에 연결할 수 없어요'); return openSettings(); }
+  const diff = p.diff && h('pre', {class: 'diff'}, ...p.diff.split('\n').map(l => h('span', {class: /^\+(?!\+\+)/.test(l) ? 'add' : /^-(?!--)/.test(l) ? 'del' : null}, l + '\n')));
+  const ok = h('button', {class: action === 'disconnect' ? 'btn danger' : 'btn primary', type: 'button', onclick: async () => {
+    ok.disabled = true;
+    const r = await api.post(`/api/${action}`, {agent: key});
+    toast((r && r.message) || '완료');
+    await loadUsage();
+    openSettings();
+  }}, AGENT_ACTIONS[action].ok);
+  showSheet(AGENT_ACTIONS[action].title(name), [
+    h('p', {}, AGENT_ACTIONS[action].intro(name)),
+    diff || (action !== 'trust' ? h('p', {}, '설정 파일은 바뀌지 않아요.') : null),
+    p.trust ? h('p', {}, action === 'connect' ? 'Codex 승인도 함께 처리해요. 승인할 명령:' : '승인할 명령:') : null,
+    p.trust ? h('pre', {class: 'codebox'}, p.command) : null,
+  ], [h('button', {class: 'btn', type: 'button', onclick: () => openSettings()}, '취소'), ok], () => openSettings());
+}
+
+function agentRow(key, a) {
+  const untrusted = key === 'codex' && a.connected && a.trust && a.trust !== 'trusted';
+  const state = !a.installed ? ['설치 안 됨', ''] : a.connected ? (untrusted ? ['승인 필요', 'warn'] : ['연결됨', 'ok']) : a.legacy ? ['업데이트 필요', 'warn'] : ['연결 안 됨', ''];
+  const btn = (label, action, primary) => h('button', {class: primary ? 'btn small primary' : action === 'disconnect' ? 'btn small' : 'btn small', type: 'button', onclick: () => confirmAgent(key, action, a.name)}, label);
+  const desc = !a.installed ? `${a.name}를 설치하면 연결할 수 있어요`
+    : a.notify === false ? '알림을 켜면 권한 승인 · 입력을 기다릴 때 알려 드려요'
+    : a.connected ? '도구 실행이 궤도에 실시간으로 나타나요' : '';
+  return h('div', {class: 'row'}, h('img', {src: LOGO[key], alt: ''}),
+    h('span', {class: 'grow'}, h('b', {}, a.name), desc ? h('small', {}, desc) : null),
+    h('span', {class: `chip ${state[1]}`}, state[0]),
+    ...(!a.installed ? [] : a.connected
+      ? [untrusted ? btn('승인', 'trust', true) : null, a.notify === false ? btn('알림 켜기', 'connect', true) : null, btn('해제', 'disconnect')]
+      : [btn(a.legacy ? '다시 연결' : '연결', 'connect', true)]));
+}
+
+function toggleRow(label, desc, on, flip) {
+  const sw = h('button', {class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(!!on), 'aria-label': label, onclick: async () => {
+    sw.disabled = true;
+    const r = await flip(!on);
+    if (r && r.message && r.ok === false) toast(r.message);
+    openSettings();
+  }}, h('i'));
+  return h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, label), desc ? h('small', {}, desc) : null), sw);
+}
+
+async function openSettings(intro) {
+  showSheet('설정', [h('div', {class: 'spinner'})]);
+  const [st, theme] = await Promise.all([api.get('/api/status'), api.getTheme()]);
+  if (modal.hidden) return;
+  if (!st) return showSheet('설정', [h('p', {}, '수집기에 연결할 수 없어요. 상태바의 새로고침을 눌러 보세요.')]);
+  const seg = h('span', {class: 'seg', role: 'group', 'aria-label': '테마'}, ...[['system', '시스템'], ['light', '라이트'], ['dark', '다크']].map(([v, label]) =>
+    h('button', {type: 'button', 'aria-pressed': String(theme === v), onclick: async () => { await api.setTheme(v); openSettings(intro); }}, label)));
+  showSheet('설정', [
+    intro ? h('p', {class: 'intro'}, intro) : null,
+    h('h3', {}, '에이전트'),
+    ...Object.entries(st.agents || {}).map(([key, a]) => agentRow(key, a)),
+    h('h3', {}, '수집기'),
+    st.claudeLimits != null ? toggleRow('Claude 사용 한도 보기', 'Claude Code 로그인 정보로 5시간 · 주간 한도를 5분마다 가져와요 (비용 없음)', st.claudeLimits,
+      async v => { const r = await api.post('/api/settings', {claudeLimits: v}); await loadUsage(); return r; }) : null,
+    st.autoMini != null ? toggleRow('세션 시작 시 미니 창', '앱 밖(다른 터미널)에서 시작한 세션이면 작은 궤도 창을 띄워요', st.autoMini, v => api.post('/api/settings', {autoMini: v})) : null,
+    st.autostart != null ? toggleRow('로그인할 때 수집기 실행', '꺼도 Tycho 앱을 켜면 수집기가 함께 켜져요', st.autostart, v => api.post('/api/autostart', {enabled: v})) : null,
+    h('h3', {}, '화면'),
+    h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '테마'), h('small', {}, '궤도 패널은 늘 어두운 밤하늘로 보여요')), seg),
+    h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '대시보드 크게 보기 →'),
+  ]);
 }
 
 // ── 레이아웃: 패널 너비 · 열고 닫기 ──
@@ -341,6 +650,8 @@ api.onMenu(action => ({
   'toggle-orbit': () => toggle('no-orbit'),
   'next-tab': () => cycleTab(1),
   'prev-tab': () => cycleTab(-1),
+  'find': openFind,
+  'settings': () => openSettings(),
 }[action] || (() => {}))());
 addEventListener('keydown', e => {  // ⌘1–9: 탭 이동
   if (e.metaKey && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
@@ -349,6 +660,9 @@ addEventListener('keydown', e => {  // ⌘1–9: 탭 이동
   }
 }, true);
 
-loadProjects();
+(async () => {
+  await loadProjects();
+  await restoreTabs();
+})();
 initOrbit();
-setInterval(loadUsage, 15000);  // 상태바 숫자는 15초마다
+setInterval(loadUsage, 15000);  // 상태바 숫자 · 탭 ↔ 세션은 15초마다

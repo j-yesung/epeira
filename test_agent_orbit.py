@@ -115,7 +115,7 @@ def test_store_and_resume():
         'id': mid, 'usage': {'output_tokens': tok}, 'stop_reason': 'tool_use',
         'content': [{'type': 'tool_use', 'name': tool, 'input': {'command': 'npm test'}}]}}
     write_lines(log, turn('m1', 100, 'Bash'), turn('m2', 50, 'Read'))
-    ao.poll()
+    ao.found["at"] = 0; ao.poll()  # 새 파일을 바로 찾게 (평소엔 3초마다)
     x = ao.summary(ao.day_start(), None)['sessions'][0]
     assert (x['id'], x['label'], x['tools'], x['run'], x['read'], x['tokens']) == ('sess-1', 'api', 2, 1, 1, 150)
     assert x['st'] == {'Bash': 1, 'Read': 1}, '노드별 횟수'
@@ -126,14 +126,14 @@ def test_store_and_resume():
     ao.checkpoint.clear()
     ao.checkpoint.update(ao.read_json(ao.CKPT_FILE)['files'])
     write_lines(log, turn('m3', 25, 'Edit'))
-    ao.poll()
+    ao.found["at"] = 0; ao.poll()  # 새 파일을 바로 찾게 (평소엔 3초마다)
     x = ao.summary(ao.day_start(), None)['sessions'][0]
     assert (x['tools'], x['edit'], x['tokens']) == (3, 1, 175), x
     # 처음 보는 오늘 파일은 오늘 기록만 채워 넣는다 (어제 줄과 그 토큰은 제외)
     old = os.path.join(TMP, '.claude/projects/-w/sess-2.jsonl')
     yesterday = datetime.fromtimestamp(ao.day_start() - 3600).isoformat()
     write_lines(old, dict(turn('y1', 999, 'Bash'), timestamp=yesterday), turn('t1', 10, 'Bash'))
-    ao.poll()
+    ao.found["at"] = 0; ao.poll()  # 새 파일을 바로 찾게 (평소엔 3초마다)
     y = [s for s in ao.summary(ao.day_start(), None)['sessions'] if s['id'] == 'sess-2'][0]
     assert (y['tools'], y['tokens']) == (1, 10), y
 
@@ -257,6 +257,24 @@ def test_codex_limits():  # Codex 공식 app-server 의 지금 한도로 로그 
     ao.codex_rpc = lambda calls, timeout=20: None  # codex 가 없으면 이전 값 그대로
     ao.fetch_codex_limits()
     assert ao.limits['secondary']['used'] == 3
+
+
+
+def test_notify_cwd_and_extra_hook():  # 권한 · 입력 대기 알림, 시작 폴더 경로, 알림 훅은 예전 연결을 바꾸지 않음
+    tp = os.path.join(TMP, 'n', 'sess-n.jsonl')
+    ao.hook('claude', {'hook_event_name': 'SessionStart', 'session_id': 'sess-n', 'transcript_path': tp, 'cwd': '/w/proj'}, 'tab-n')
+    ao.hook('claude', {'hook_event_name': 'Notification', 'session_id': 'sess-n', 'transcript_path': tp, 'cwd': '/w/proj/sub',
+                       'message': 'Claude needs your permission to use Bash'})
+    e = ao.history[-1]
+    assert e['kind'] == 'notify' and e['id'] == 'sess-n' and e['cwd'] == '/w/proj' and 'permission' in e['text'], e
+    assert ao.status()['tabs'].get('tab-n') == 'sess-n'
+    old = json.dumps({'hooks': {ev: [{'hooks': [{'type': 'command', 'command': ao.hook_cmd('claude')}]}] for ev in ao.AGENTS['claude']['events']}})
+    f = os.path.expanduser(ao.AGENTS['claude']['file'])
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    with open(f, 'w') as fp:
+        fp.write(old)
+    assert ao.hooks_state('claude') == 'connected' and ao.agent_state('claude')['notify'] is False, '알림 훅이 없어도 연결된 것으로'
+    assert 'Notification' in json.loads(ao.render('claude', old, True))['hooks'], '다시 연결하면 알림 훅 추가'
 
 
 if __name__ == '__main__':

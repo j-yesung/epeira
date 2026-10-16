@@ -1,20 +1,33 @@
 // 화면(renderer)에 노출하는 최소 API — Node 는 화면에 직접 열지 않는다
-const {contextBridge, ipcRenderer} = require('electron');
+const {contextBridge, ipcRenderer, webUtils} = require('electron');
 
 contextBridge.exposeInMainWorld('orbit', {
   projects: () => ipcRenderer.invoke('projects:list'),
   addProject: () => ipcRenderer.invoke('projects:add'),
+  addProjectPath: dir => ipcRenderer.invoke('projects:addPath', dir),
   removeProject: dir => ipcRenderer.invoke('projects:remove', dir),
   touchProject: dir => ipcRenderer.invoke('projects:touch', dir),
+  pathForFile: file => webUtils.getPathForFile(file),  // 끌어다 놓은 파일 · 폴더의 경로
   collector: () => ipcRenderer.invoke('collector:ensure'),
   installDevTools: () => ipcRenderer.send('install-devtools'),
   usage: refresh => ipcRenderer.invoke('collector:usage', !!refresh),
+  get: p => ipcRenderer.invoke('orbit:get', p),
+  post: (p, body) => ipcRenderer.invoke('orbit:post', p, body),
+  onEvent: fn => ipcRenderer.on('orbit:event', (_, e) => fn(e)),
   createTerm: opts => ipcRenderer.invoke('pty:create', opts),
+  confirmClose: id => ipcRenderer.invoke('pty:confirmClose', id),
   write: (id, data) => ipcRenderer.send('pty:write', id, data),
   resize: (id, cols, rows) => ipcRenderer.send('pty:resize', id, cols, rows),
   kill: id => ipcRenderer.send('pty:kill', id),
   onData: fn => ipcRenderer.on('pty:data', (_, id, data) => fn(id, data)),
   onExit: fn => ipcRenderer.on('pty:exit', (_, id, code) => fn(id, code)),
+  termMenu: selection => ipcRenderer.send('term:menu', selection),
+  onTermAction: fn => ipcRenderer.on('term:action', (_, action, text) => fn(action, text)),
+  notify: msg => ipcRenderer.send('notify', msg),
+  badge: n => ipcRenderer.send('badge', n),
+  onActivateTab: fn => ipcRenderer.on('tab:activate', (_, id) => fn(id)),
+  getTheme: () => ipcRenderer.invoke('theme:get'),
+  setTheme: t => ipcRenderer.invoke('theme:set', t),
   onMenu: fn => ipcRenderer.on('menu', (_, action) => fn(action)),
   openExternal: url => ipcRenderer.send('open-external', url),
   platform: process.platform,
