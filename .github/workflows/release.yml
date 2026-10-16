@@ -1,0 +1,58 @@
+# 릴리스: v<버전> 태그를 push 하면 테스트 → DMG 빌드 → 업데이트 서명 → GitHub 릴리스
+# 서명 비밀 키는 저장소 Secrets 의 TYCHO_SIGNING_KEY (서명 단계에서만 꺼낸다)
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write  # 릴리스 만들기
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: 태그와 버전이 같은지
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          test "$(node -p "require('./desktop/package.json').version")" = "$V"
+          grep -q "^VERSION = '$V'" agent_orbit.py
+          grep -q "^const LATEST = '$V';" app.js
+          grep -q "\"version\": \"$V\"" app-version.json
+
+      - run: npm ci
+        working-directory: desktop
+      - name: 테스트
+        run: |
+          python3 test_agent_orbit.py
+          cd desktop && npm test
+
+      - name: DMG 빌드
+        working-directory: desktop
+        run: npm run dist -- --publish never
+      - name: 업데이트 서명
+        working-directory: desktop
+        env:
+          KEY: ${{ secrets.TYCHO_SIGNING_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.pem"
+          TYCHO_SIGNING_KEY="$RUNNER_TEMP/key.pem" npm run sign
+          rm -f "$RUNNER_TEMP/key.pem"
+
+      - name: 릴리스
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/Tycho-*.dmg dist/Tycho-*.dmg.sig --verify-tag --title "Tycho ${GITHUB_REF_NAME#v}" --generate-notes

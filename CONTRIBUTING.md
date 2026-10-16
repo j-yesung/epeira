@@ -12,6 +12,7 @@
 | `desktop/` | Electron 앱: `main.js`(창 · 터미널 · 수집기 관리 · 업데이트), `preload.js`(화면에 여는 최소 API), `renderer.js` · `style.css`(화면), `test/`, `sign.mjs`(릴리스 서명) |
 | `app-version.json` | 앱이 하루 한 번 확인하는 최신 버전 (업데이트 버튼이 이 버전의 릴리스를 받음) |
 | `vercel.json` | 사이트 보안 헤더 |
+| `.github/workflows/release.yml` | 태그를 push 하면 테스트 · 빌드 · 서명 · 릴리스 |
 
 ## 개발 환경
 
@@ -82,13 +83,14 @@ cd desktop && npm test          # 앱 · 궤도 대시보드 (창을 띄우지 �
 [SemVer](https://semver.org/lang/ko/) 를 따르고 앱 · 수집기 · 대시보드가 같은 번호를 씁니다. 고치기(`fix`)는 1.0.1, 기능 추가(`feat`)는 1.1.0, 예전 것과 맞지 않게 바뀌면 2.0.0.
 
 1. 버전 올리기: `desktop/` 에서 `npm version <버전> --no-git-tag-version`, 그리고 `agent_orbit.py` 의 `VERSION`, `app.js` 의 `LATEST`, `app-version.json` 을 같은 값으로. 커밋합니다.
-2. `cd desktop && npm run dist` → `dist/` 에 Apple Silicon(`-arm64.dmg`) · Intel DMG. 지금은 임시 서명만 하고 공증하지 않습니다.
-3. `npm run sign` → DMG 마다 업데이트 서명(`.sig`). 비밀 키가 없거나 앱에 든 공개 키와 짝이 아니면 멈춥니다.
-4. 태그와 릴리스를 먼저: `git tag v<버전> && git push origin v<버전>`, `gh release create v<버전> dist/Tycho-<버전>*.dmg dist/Tycho-<버전>*.dmg.sig --verify-tag`.
-5. `git push origin main` → Vercel 이 사이트(대시보드 · 설치 파일 · `app-version.json`)를 배포하고, 사용자 앱에 새 버전이 보입니다. 릴리스를 먼저 올려야 업데이트 버튼이 빈 릴리스를 받지 않습니다.
+2. 태그 push: `git tag v<버전> && git push origin v<버전>` → GitHub Actions(`.github/workflows/release.yml`)가 테스트 → DMG 빌드 → 업데이트 서명 → 릴리스까지 합니다. 태그와 버전 파일이 다르면 멈춥니다. 진행은 `gh run watch` 나 저장소의 Actions 탭에서.
+3. 릴리스가 올라오면 `git push origin main` → Vercel 이 사이트(대시보드 · 설치 파일 · `app-version.json`)를 배포하고, 사용자 앱에 새 버전이 보입니다.
+
+Actions 를 쓸 수 없을 때는 직접: `cd desktop && npm run dist && npm run sign` 후 `gh release create v<버전> dist/Tycho-<버전>*.dmg dist/Tycho-<버전>*.dmg.sig --verify-tag`. 지금 DMG 는 임시 서명만 하고 공증하지 않습니다.
 
 ### 업데이트 서명 키
 
-- 비밀 키는 `~/.tycho-release/update-signing-key.pem`(또는 `TYCHO_SIGNING_KEY` 로 지정)에 두고 저장소에는 절대 넣지 않습니다. 앱에는 짝인 공개 키만 들어 있습니다(`main.js` 의 `UPDATE_KEY`).
-- 비밀번호 관리자 등에 백업해 두세요. 다른 Mac 에서 릴리스하려면 같은 위치에 복사하고 `chmod 600`.
+- 비밀 키를 쓰는 곳: 저장소 Secrets 의 `TYCHO_SIGNING_KEY`(Actions 용)와 관리자 Mac 의 `~/.tycho-release/update-signing-key.pem`(직접 릴리스용, `TYCHO_SIGNING_KEY` 로 다른 경로 지정 가능). 저장소 파일로는 절대 넣지 않습니다. 앱에는 짝인 공개 키만 들어 있습니다(`main.js` 의 `UPDATE_KEY`).
+- Secrets 등록 · 교체: `gh secret set TYCHO_SIGNING_KEY < ~/.tycho-release/update-signing-key.pem`
+- 비밀번호 관리자 등에 백업해 두세요. Secrets 는 다시 읽을 수 없어서 백업이 되지 않습니다.
 - 잃어버리면 그 뒤 버전에 서명할 수 없습니다. 새 키를 만들어 공개 키를 바꾼 버전을 내고, 사용자는 그 버전을 한 번 직접 받아야 합니다.
