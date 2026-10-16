@@ -133,7 +133,8 @@ async function ensureCollector() {
     for (let i = 0; i < 8 && !st; i++) { await sleep(400); st = await collectorStatus(); }
     if (st && !(want && newer(want, st.version))) return {ok: true, status: st};
   }
-  if (!want) return st ? {ok: true, status: st} : {ok: false, installed: fs.existsSync(path.join(HOME_APP, 'agent_orbit.py'))};
+  // 개발 · 테스트로 다른 수집기 주소를 쓰면 실제 설치(~/.agent-orbit)는 건드리지 않는다
+  if (!want || process.env.AGENT_ORBIT_URL) return st ? {ok: true, status: st} : {ok: false, installed: fs.existsSync(path.join(HOME_APP, 'agent_orbit.py'))};
   const r = await installCollector();
   st = await collectorStatus();
   if (st) return {ok: true, status: st, updated: true};

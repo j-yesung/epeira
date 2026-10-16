@@ -141,5 +141,6 @@ kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 
 #orbit-view { flex: 1; width: 100%; }
 .orbit-off { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 12px; padding: 24px; color: var(--dim); }
 .orbit-off h2 { color: var(--text); font-size: 15px; }
+.spinner { align-self: center; width: 26px; height: 26px; border: 2.5px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 .orbit-off .cmd { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: #000; font: 12px var(--mono); }
 .orbit-off code { flex: 1; overflow-x: auto; white-space: nowrap; }

@@ -183,7 +183,7 @@ function tellOrbit() {  // 지금 프로젝트 · 탭을 대시보드에 알린�
 
 async function initOrbit() {  // 앱이 수집기를 알아서 설치 · 업데이트 · 실행한다 (처음엔 몇 초 걸릴 수 있음)
   const off = $('orbit-off');
-  if (view.hidden) { off.hidden = false; off.replaceChildren(h('h2', {}, '수집기를 준비하고 있어요'), h('p', {}, '처음 한 번은 설치하느라 몇 초 걸려요.')); }
+  if (view.hidden) { off.hidden = false; off.replaceChildren(h('div', {class: 'spinner', role: 'status', 'aria-label': '수집기를 준비하고 있어요'})); }
   S.collector = await api.collector();
   await loadUsage();
   if (S.collector.ok) {
