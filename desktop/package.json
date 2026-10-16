@@ -1,14 +1,14 @@
 {
   "name": "tycho-app",
   "productName": "Tycho",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "프로젝트 사이드바 + 에이전트 터미널 + 궤도 시각화",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "postinstall": "electron-rebuild -f -w node-pty",
-    "dist": "electron-builder --mac dmg --arm64",
+    "dist": "electron-builder --mac dmg --arm64 --x64",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
@@ -70,7 +70,8 @@
         {
           "target": "dmg",
           "arch": [
-            "arm64"
+            "arm64",
+            "x64"
           ]
         }
       ],

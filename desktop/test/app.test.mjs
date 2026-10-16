@@ -8,12 +8,14 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {_electron as electron} from 'playwright-core';
+import {execFileSync} from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const APP_DIR = fileURLToPath(new URL('..', import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), 'tycho-test-'));
 const data = path.join(tmp, 'data'), alpha = path.join(tmp, 'alpha'), beta = path.join(tmp, 'beta');
 for (const d of [data, alpha, beta]) mkdirSync(d);
+execFileSync('git', ['init', '-q', beta]);  // beta 는 git 저장소 (사이드바 브랜치 표시)
 writeFileSync(path.join(data, 'projects.json'), JSON.stringify([{path: alpha, name: 'alpha'}, {path: beta, name: 'beta'}]));
 
 const launch = () => electron.launch({executablePath: require('electron'), args: [APP_DIR, `--user-data-dir=${data}`],
@@ -113,4 +115,52 @@ test('다시 켜면 프로젝트별 탭과 마지막 프로젝트가 돌아온�
   assert.deepEqual(await labels(page), before);
   const alphaTab = await page.evaluate(() => { const t = projTabs(S.projects[0].path)[0]; return {title: t.title, sid: t.sid}; });
   assert.deepEqual(alphaTab, {title: '백엔드', sid: 'sess-x'});
+});
+
+test('궤도 패널의 "이 탭으로 가기"로 그 탭을 연다', async () => {
+  await page.evaluate(() => document.getElementById('orbit-view').dispatchEvent(Object.assign(new Event('console-message'), {message: 'tycho:focus {"id":"sess-x"}'})));
+  assert.equal(await page.evaluate(() => S.current === S.projects[0].path && tab(S.active).sid), 'sess-x');
+});
+
+test('궤도 HUB 이름을 바꾸면 탭 이름도 바뀐다', async () => {
+  await send(app, {kind: 'name', id: 'sess-x', name: 'API 서버'});
+  await until(page, () => [...document.querySelectorAll('.tab-main span:not(.k)')].some(e => e.textContent === 'API 서버'));
+});
+
+test('지난 세션 목록: 열려 있는 세션을 누르면 그 탭으로', async () => {
+  await app.evaluate(({ipcMain}, dir) => {
+    ipcMain.removeHandler('orbit:get');
+    ipcMain.handle('orbit:get', (_, p) => (p.startsWith('/api/summary') ? {sessions: [{id: 'sess-x', agent: 'claude', cwd: dir, label: 'alpha', text: '버그 고치기', last: Date.now() / 1000 - 3600}]} : null));
+  }, alpha);
+  await page.evaluate(() => selectProject(S.projects[1].path));
+  await page.evaluate(() => loadSessions());
+  await page.evaluate(() => selectProject(S.projects[0].path));
+  await until(page, () => !!document.querySelector('.proj.on .sess'));
+  await page.click('.proj.on .sess');
+  assert.equal(await page.evaluate(() => tab(S.active).sid), 'sess-x');
+});
+
+test('다시 켤 때 대화는 그 탭을 처음 볼 때 이어서 연다', async () => {
+  const r = await page.evaluate(async () => { const t = await openTab(S.projects[0].path, 'claude', {sid: 'abc-123', resume: true, quiet: true}); return {id: t.id, run: t.pendingRun, active: S.active === t.id}; });
+  assert.deepEqual([r.run, r.active], ['claude --resume abc-123', false], '보기 전엔 실행하지 않는다');
+  await page.evaluate(id => closeTab(id), r.id);  // 실제 claude 를 띄우지 않고 닫는다
+  assert.equal(await page.evaluate(id => !!tab(id), r.id), false);
+});
+
+test('화면 나누기 (⌘D)', async () => {
+  await page.evaluate(() => toggleSplit());
+  await until(page, () => document.getElementById('terms').classList.contains('split') && [...document.querySelectorAll('.term')].filter(e => !e.hidden).length === 2);
+  await page.evaluate(() => toggleSplit());
+  await until(page, () => !document.getElementById('terms').classList.contains('split') && [...document.querySelectorAll('.term')].filter(e => !e.hidden).length === 1);
+});
+
+test('사이드바에 git 브랜치', async () => {
+  await page.evaluate(() => loadGit());
+  await until(page, () => [...document.querySelectorAll('.proj-text small')].some(e => e.textContent.startsWith('⎇')));
+});
+
+test('터미널 글자 크기 설정', async () => {
+  await page.evaluate(() => setPref('fontSize', 15));
+  assert.equal(await page.evaluate(() => tab(S.active).term.options.fontSize), 15);
+  await page.evaluate(() => setPref('fontSize', 13));
 });

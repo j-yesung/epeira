@@ -23,9 +23,10 @@ const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).t
 // 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 — GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
 const fontsReady = document.fonts.load('13px "Tycho Keys"', '⌘⌥⇧⏎↑').catch(() => {});
 
-const S = {projects: [], current: null, tabs: [], active: null, last: {}, collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
-// 터미널은 프로젝트마다 따로: 탭 줄엔 지금 프로젝트의 탭만, last 는 프로젝트별로 마지막에 보던 탭
-// tab = {id, dir, base, title, kind, sid, term, fit, search, el, exited, busy, waiting, unread}
+const S = {projects: [], current: null, tabs: [], active: null, last: {}, split: {}, sessions: [], names: {}, git: {}, update: null,
+  collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
+// 터미널은 프로젝트마다 따로: 탭 줄엔 지금 프로젝트의 탭만, last 는 프로젝트별로 마지막에 보던 탭, split 은 프로젝트별 나란히 보는 두 탭 {a, b}
+// tab = {id, dir, base, title, kind, sid, term, fit, search, el, exited, busy, waiting, unread, pendingRun}
 
 function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -46,6 +47,18 @@ const store = {
 const tilde = p => p.replace(/^\/(Users|home)\/[^/]+/, '~');
 const tab = id => S.tabs.find(t => t.id === id);
 const project = dir => S.projects.find(p => p.path === dir);
+const inPath = (cwd, dir) => !!cwd && (cwd === dir || cwd.startsWith(dir.endsWith('/') ? dir : dir + '/'));
+const projectOf = x => S.projects.find(p => (x.cwd ? inPath(x.cwd, p.path) : x.label === p.name));  // 세션이 어느 프로젝트 것인지 (경로를 모르면 폴더 이름)
+const ago = ts => { const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60)); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
+// 앱 설정 (이 컴퓨터의 이 앱에만): 알림 · 터미널
+const PREFS = {notify: true, notifyDone: true, notifyWait: true, sound: true, fontSize: 13, copyOnSelect: false, optionMeta: true};
+const prefs = (() => { try { return {...PREFS, ...JSON.parse(store.get('prefs') || '{}')}; } catch { return {...PREFS}; } })();
+function setPref(k, v) {
+  prefs[k] = v;
+  store.set('prefs', JSON.stringify(prefs));
+  for (const t of S.tabs) { t.term.options.fontSize = prefs.fontSize; t.term.options.macOptionIsMeta = prefs.optionMeta; }
+  fitVisible();
+}
 const projTabs = (dir = S.current) => S.tabs.filter(t => t.dir === dir);
 let toastTimer;
 function toast(msg) {
@@ -82,7 +95,7 @@ function selectProject(dir) {  // 그 프로젝트의 터미널로 (없으면 �
   const open = projTabs(dir), t = tab(S.last[dir]) || open[open.length - 1];
   if (t) return activate(t.id);
   S.active = null;
-  for (const x of S.tabs) x.el.hidden = true;
+  showPanes();
   if (!$('find').hidden) closeFind();
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); saveTabs();
 }
@@ -97,17 +110,33 @@ function renderProjects() {
     const tabs = projTabs(p.path), open = tabs.filter(t => !t.exited).length;
     // 다른 프로젝트에서 일어난 일도 보이게: 승인 대기 > 새 응답 > 일하는 중
     const state = tabs.some(t => t.waiting) ? 'wait' : tabs.some(t => t.unread) ? 'new' : tabs.some(t => t.busy) ? 'busy' : '';
+    const g = S.git[p.path], sub = !p.exists ? '폴더를 찾을 수 없어요' : g ? `⎇ ${g.branch}${g.changes ? ` · 변경 ${g.changes}` : ''}` : tilde(p.path);
     return h('li', {class: `proj${p.path === S.current ? ' on' : ''}${p.exists ? '' : ' gone'}`, title: p.path},
       h('button', {class: 'proj-main', type: 'button', onclick: () => p.exists && selectProject(p.path)},
         h('span', {class: 'tile'}, (p.name[0] || '?').toUpperCase()),
-        h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, p.exists ? tilde(p.path) : '폴더를 찾을 수 없어요')),
+        h('span', {class: 'proj-text'}, h('b', {}, p.name), h('small', {}, sub)),
         state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null,
         open ? h('span', {class: 'count', title: `열린 터미널 ${open}개`}, open) : null),
       h('span', {class: 'proj-acts'},
         p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Claude 새 세션', onclick: () => openTab(p.path, 'claude')}, 'C') : null,
         p.exists ? h('button', {class: 'mini-btn', type: 'button', title: 'Codex 새 세션', onclick: () => openTab(p.path, 'codex')}, 'X') : null,
-        h('button', {class: 'mini-btn', type: 'button', title: '목록에서 빼기 (폴더는 지우지 않아요)', onclick: () => removeProject(p.path)}, '×')));
+        h('button', {class: 'mini-btn', type: 'button', title: '목록에서 빼기 (폴더는 지우지 않아요)', onclick: () => removeProject(p.path)}, '×')),
+      p.path === S.current && p.exists ? projectDetail(p) : null);
   }));
+}
+
+function projectDetail(p) {  // 지금 프로젝트 아래: 오늘 사용량 + 지난 세션 (누르면 이어서 열기)
+  const today = (S.usage && S.usage.today) || [], byId = new Map(today.map(x => [x.id, x]));
+  let tools = 0, tok = 0;
+  for (const x of today) { const root = x.parent ? byId.get(x.parent) || x : x; if (projectOf(root) === p) { tools += x.tools; tok += x.tok; } }
+  const list = S.sessions.filter(x => projectOf(x) === p).slice(0, 6);
+  return h('div', {class: 'proj-detail'},
+    h('p', {class: 'proj-usage'}, tools || tok ? `오늘 도구 ${tools.toLocaleString()}회 · ${fmtK(tok)} tok` : '오늘은 아직 사용 기록이 없어요'),
+    list.length ? h('ul', {class: 'sess-list', 'aria-label': '지난 세션'}, ...list.map(x => {
+      const open = S.tabs.find(t => t.sid === x.id);
+      return h('li', {}, h('button', {class: 'sess', type: 'button', title: open ? '열려 있는 탭으로 가기' : '이 대화를 새 탭에서 이어서 열기', onclick: () => openSession(x)},
+        kindIcon(x.agent), h('span', {class: 'sess-name'}, S.names[x.id] || x.text || x.label), open ? h('i', {class: 'st new', title: '탭에 열려 있어요'}) : null, h('small', {}, ago(x.last))));
+    })) : null);
 }
 
 // ── 터미널 탭 ──
@@ -123,13 +152,14 @@ async function openTab(dir, kind = 'shell', opts = {}) {
   dir = dir || S.current;
   if (!dir) return addProject();
   await fontsReady;
-  const run = kind === 'shell' ? null : opts.resume ? resumeCmd(kind, opts.sid) : kind;
-  if (opts.resume && !run) kind = 'shell';
+  // 다시 켤 때는 대화를 바로 열지 않고 그 탭을 처음 볼 때 이어서 연다 (한꺼번에 여러 개를 띄우지 않게)
+  const pendingRun = opts.resume ? resumeCmd(kind, opts.sid) : null, run = kind === 'shell' || opts.resume ? null : kind;
+  if (opts.resume && !pendingRun) kind = 'shell';
   const el = h('div', {class: 'term'});
   $('terms').append(el);
   // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 — 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
-  const term = new Terminal({fontFamily: '"Tycho Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: 13, lineHeight: 1.2, cursorBlink: true,
-    scrollback: 10000, macOptionIsMeta: true, allowProposedApi: true, theme: termTheme()});
+  const term = new Terminal({fontFamily: '"Tycho Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: prefs.fontSize, lineHeight: 1.2, cursorBlink: true,
+    scrollback: 10000, macOptionIsMeta: prefs.optionMeta, allowProposedApi: true, theme: termTheme()});
   const fit = new FitAddon.FitAddon(), search = new SearchAddon.SearchAddon();
   term.loadAddon(fit);
   term.loadAddon(search);
@@ -146,8 +176,11 @@ async function openTab(dir, kind = 'shell', opts = {}) {
   const id = await api.createTerm({cwd: dir, run, cols: term.cols, rows: term.rows});
   const p = project(dir);
   const t = {id, dir, base: p ? p.name : dir.split('/').pop(), title: opts.title || null, kind, sid: opts.sid || null,
-    term, fit, search, el, exited: false, busy: false, waiting: false, unread: false};
+    term, fit, search, el, exited: false, busy: false, waiting: false, unread: false, pendingRun};
   S.tabs.push(t);
+  if (pendingRun) term.write('\x1b[90m↻ 이 탭을 열면 이전 대화를 이어서 열어요\x1b[0m\r\n');
+  term.onSelectionChange(() => { if (prefs.copyOnSelect && term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {}); });
+  el.addEventListener('mousedown', () => { if (S.active !== id) activate(id); });  // 나눈 화면: 누른 쪽이 지금 탭
   term.onData(d => api.write(id, d));
   term.onResize(({cols, rows}) => api.resize(id, cols, rows));
   el.addEventListener('contextmenu', e => { e.preventDefault(); api.termMenu(term.getSelection()); });
@@ -161,9 +194,12 @@ async function openTab(dir, kind = 'shell', opts = {}) {
 function activate(id) {
   const t = tab(id);
   if (!t) return;
+  const sp = S.split[t.dir];
+  if (sp && id !== sp.a && id !== sp.b) { if (S.active === sp.a) sp.b = id; else sp.a = id; }  // 나눈 화면에 다른 탭을 고르면 지금 쪽 옆에
   S.active = id; S.current = t.dir; S.last[t.dir] = id; t.unread = false;
-  for (const x of S.tabs) x.el.hidden = x.id !== id;
-  requestAnimationFrame(() => { t.fit.fit(); t.term.focus(); });
+  showPanes();
+  if (t.pendingRun) { api.write(id, t.pendingRun + '\r'); t.pendingRun = null; }
+  requestAnimationFrame(() => { fitVisible(); t.term.focus(); });
   if (!$('find').hidden) { for (const x of S.tabs) x.search.clearDecorations(); find(1); }
   renderTabs(); renderProjects(); renderWelcome(); tellOrbit(); updateBadge(); saveTabs();
 }
@@ -176,6 +212,8 @@ async function closeTab(id = S.active) {
   const list = projTabs(t.dir), i = list.indexOf(t);
   S.tabs.splice(S.tabs.indexOf(t), 1);
   if (S.last[t.dir] === id) delete S.last[t.dir];
+  const sp = S.split[t.dir];
+  if (sp && (sp.a === id || sp.b === id)) { delete S.split[t.dir]; showPanes(); }  // 나눈 화면의 한쪽을 닫으면 나누기를 푼다
   saveTabs(); updateBadge();
   const next = list[i + 1] || list[i - 1];  // 같은 프로젝트의 옆 탭으로
   if (S.active !== id) return renderTabs(), renderProjects();
@@ -192,7 +230,8 @@ function cycleTab(step) {  // 지금 프로젝트 안에서만
 }
 
 const KIND_NAME = {claude: 'Claude', codex: 'Codex', shell: '터미널'};
-function tabLabel(t) {  // 직접 붙인 이름, 아니면 종류 (같은 종류가 여럿이면 2, 3 …) — 탭 줄엔 한 프로젝트 탭만 보이니 프로젝트 이름은 빼고
+function tabLabel(t) {  // 세션 이름(궤도 HUB 와 같음) · 직접 붙인 이름, 아니면 종류 (같은 종류가 여럿이면 2, 3 …)
+  if (t.sid && S.names[t.sid]) return S.names[t.sid];
   if (t.title) return t.title;
   const i = projTabs(t.dir).filter(x => x.kind === t.kind).indexOf(t);
   return i > 0 ? `${KIND_NAME[t.kind]} ${i + 1}` : KIND_NAME[t.kind];
@@ -210,7 +249,8 @@ function renderTabs() {
     const main = h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active),
       onclick: () => (S.active === t.id ? t.term.focus() : activate(t.id)), ondblclick: () => renameTab(t, main)},
       kindIcon(t.kind), h('span', {}, label), state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null, i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null);
-    return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${t.exited ? ' dead' : ''}`, title: `${t.dir}\n두 번 눌러 이름 바꾸기`}, main,
+    const sp = S.split[t.dir], pane = sp && t.id !== S.active && (t.id === sp.a || t.id === sp.b);
+    return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${pane ? ' pane' : ''}${t.exited ? ' dead' : ''}`, title: `${t.dir}\n두 번 눌러 이름 바꾸기`}, main,
       h('button', {class: 'tab-x', type: 'button', title: '탭 닫기 (⌘W)', 'aria-label': `${label} 탭 닫기`, onclick: () => closeTab(t.id)}, '×'));
   }));
 }
@@ -218,11 +258,16 @@ function renderTabs() {
 function renameTab(t, main) {  // 탭을 두 번 누르면 이름 바꾸기 (비우면 원래 이름)
   const input = h('input', {class: 'tab-rename', value: tabLabel(t), maxlength: '40', 'aria-label': '탭 이름', spellcheck: 'false'});
   let done = false;
-  const finish = save => {
+  const finish = async save => {
     if (done) return;
     done = true; S.renaming = false;
-    if (save) { t.title = input.value.trim() || null; saveTabs(); }
-    renderTabs();
+    const name = input.value.trim();
+    if (save && t.sid) {  // 세션이 있는 탭: 수집기에 저장 → 궤도 HUB 이름도 같이 바뀐다 (못 하면 이 탭에만)
+      const r = await api.post('/api/rename', {id: t.sid, name});
+      if (r && r.ok) { if (r.name) S.names[t.sid] = r.name; else delete S.names[t.sid]; t.title = null; } else t.title = name || null;
+      saveTabs();
+    } else if (save) { t.title = name || null; saveTabs(); }
+    renderTabs(); renderProjects();
     t.term.focus();
   };
   input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
@@ -252,7 +297,28 @@ api.onExit(id => {
   t.term.write('\r\n\x1b[90m[프로세스가 끝났어요 · ⌘W 로 탭을 닫을 수 있어요]\x1b[0m\r\n');
   renderTabs(); renderProjects(); updateBadge(); saveTabs();
 });
-new ResizeObserver(() => { const t = tab(S.active); if (t) t.fit.fit(); }).observe($('terms'));
+new ResizeObserver(() => fitVisible()).observe($('terms'));
+
+// ── 화면 나누기 (⌘D): 한 프로젝트의 두 탭을 나란히 ──
+function showPanes() {
+  const sp = S.split[S.current], two = sp && tab(sp.a) && tab(sp.b);
+  $('terms').classList.toggle('split', !!two);
+  for (const x of S.tabs) {
+    const left = two && x.id === sp.a, right = two && x.id === sp.b;
+    x.el.hidden = !(left || right || (!two && x.id === S.active));
+    x.el.classList.toggle('left', !!left); x.el.classList.toggle('right', !!right);
+    x.el.classList.toggle('focus', !!two && x.id === S.active);
+  }
+}
+function fitVisible() { for (const x of S.tabs) if (!x.el.hidden) x.fit.fit(); }
+async function toggleSplit() {
+  const dir = S.current, t = tab(S.active);
+  if (!dir || !t) return;
+  if (S.split[dir]) { delete S.split[dir]; showPanes(); renderTabs(); return requestAnimationFrame(() => { fitVisible(); t.term.focus(); }); }
+  const list = projTabs(dir), other = list[list.indexOf(t) - 1] || list[list.indexOf(t) + 1] || await openTab(dir, 'shell', {quiet: true});
+  S.split[dir] = {a: t.id, b: other.id};
+  activate(t.id);
+}
 dark.addEventListener('change', () => { for (const t of S.tabs) t.term.options.theme = termTheme(); });
 
 // ── 탭 저장 · 복원: 다시 켜면 탭과 Claude · Codex 대화를 이어서 연다 ──
@@ -279,21 +345,50 @@ async function restoreTabs() {
   return S.tabs.length > 0;
 }
 
+// ── 지난 세션 · 다른 터미널에서 하던 세션을 탭으로 이어 열기 ──
+async function openSession(x) {
+  const open = S.tabs.find(t => t.sid === x.id);
+  if (open) return activate(open.id);
+  let p = projectOf(x);
+  if (!p && x.cwd) { const r = await api.addProjectPath(x.cwd); S.projects = r.list; p = project(r.added); }  // 목록에 없는 폴더면 프로젝트로 추가
+  if (!p) return toast('이 세션의 폴더를 찾지 못했어요');
+  if (!resumeCmd(x.agent, x.id)) return toast('이 세션은 이어서 열 수 없어요');
+  const go = () => openTab(p.path, x.agent, {sid: x.id, resume: true});
+  if (Date.now() / 1000 - (x.last || 0) > 120) return go();
+  // 방금까지 움직이던 세션: 다른 터미널에서 아직 실행 중일 수 있다 → 같은 대화를 두 곳에서 열지 않게 확인
+  showSheet('세션 이어 열기', [h('p', {}, '이 세션은 방금까지 다른 곳에서 움직였어요. 다른 터미널에서 아직 실행 중이면 같은 대화를 두 곳에서 열게 되니, 그쪽을 먼저 종료하는 게 안전해요.')],
+    [h('button', {class: 'btn', type: 'button', onclick: closeModal}, '취소'), h('button', {class: 'btn primary', type: 'button', onclick: () => { closeModal(); go(); }}, '그래도 열기')]);
+}
+async function loadSessions() {  // 최근 7일 세션 (사이드바 지난 세션)
+  const r = await api.get(`/api/summary?since=${Math.floor(Date.now() / 1000 - 7 * 86400)}`);
+  S.sessions = r && r.sessions ? r.sessions.filter(x => !x.parent).sort((a, b) => b.last - a.last) : [];
+  renderProjects();
+}
+async function loadGit() {
+  S.git = await api.gitInfo(S.projects.filter(p => p.exists).map(p => p.path)) || {};
+  renderProjects();
+}
+
 // ── 탭 상태 · 알림: 일하는 중 · 입력 · 승인 대기 · 안 본 응답 (수집기 이벤트로) ──
 function linkTab(tabId, sid) {
   const t = tab(tabId);
   if (t && sid && t.sid !== sid) { t.sid = sid; saveTabs(); }
 }
 const seen = t => document.hasFocus() && S.active === t.id;
-function alertTab(t, msg, detail) {
-  if (seen(t)) return;
-  api.notify({title: `${t.base} · ${tabLabel(t)}`, body: detail ? `${msg} — ${detail}` : msg, tab: t.id});
+function alertTab(t, msg, detail, type) {  // type: done(응답 끝) · wait(승인 · 입력 대기) — 설정에서 끌 수 있다
+  if (seen(t) || !prefs.notify || !prefs[type === 'wait' ? 'notifyWait' : 'notifyDone']) return;
+  api.notify({title: `${t.base} · ${tabLabel(t)}`, body: detail ? `${msg} — ${detail}` : msg, tab: t.id, silent: !prefs.sound});
 }
 function updateBadge() { api.badge(S.tabs.filter(t => t.waiting || t.unread).length); }
 api.onEvent(e => {
   if (e.kind === 'tab') return linkTab(e.tab, e.id);
+  if (e.kind === 'name') {  // 궤도 HUB 에서 이름을 바꾸면 탭 이름도
+    if (e.name) S.names[e.id] = e.name; else delete S.names[e.id];
+    for (const x of S.tabs) if (x.sid === e.id) x.title = null;
+    return renderTabs(), renderProjects();
+  }
   const sid = e.parent || e.id, t = sid && S.tabs.find(x => x.sid === sid);
-  if (!t || e.kind === 'stat' || e.kind === 'hello' || e.kind === 'name') return;
+  if (!t || e.kind === 'stat' || e.kind === 'hello') return;
   if (e.replay) {  // 앱을 켜기 전부터 돌던 도구
     if (e.kind === 'start') { t.busy = true; renderTabs(); }
     return;
@@ -301,11 +396,11 @@ api.onEvent(e => {
   if (e.kind === 'notify') {
     if (!t.busy) return;  // 응답을 마친 뒤의 "입력 기다림" 알림은 이미 알렸다
     t.waiting = true;
-    alertTab(t, STATE.wait, e.text);
+    alertTab(t, STATE.wait, e.text, 'wait');
   } else if (e.kind === 'done') {
     if (e.parent) return;  // 서브에이전트가 끝난 건 대화가 끝난 게 아니다
     t.busy = t.waiting = false;
-    if (!seen(t)) { t.unread = true; alertTab(t, '응답을 마쳤어요'); }
+    if (!seen(t)) { t.unread = true; alertTab(t, '응답을 마쳤어요', null, 'done'); }
   } else if (e.kind === 'error' && e.text === 'interrupted') {
     t.busy = t.waiting = false;
   } else {
@@ -381,6 +476,15 @@ $('terms').addEventListener('drop', e => {
 // ── 궤도 패널: 로컬 수집기의 대시보드를 그대로 띄운다 ──
 const view = $('orbit-view');
 view.addEventListener('dom-ready', () => { S.orbitReady = true; tellOrbit(); });
+view.addEventListener('console-message', e => {  // 궤도 패널의 "탭으로 열기 · 이 탭으로 가기" (대시보드가 콘솔로 알려 준다)
+  const m = /^tycho:(open|focus) (\{.*\})$/.exec(e.message || '');
+  if (!m) return;
+  let x;
+  try { x = JSON.parse(m[2]); } catch { return; }
+  if (typeof x.id !== 'string') return;
+  const open = S.tabs.find(t => t.sid === x.id);
+  if (open) activate(open.id); else if (m[1] === 'open') openSession(x);
+});
 
 function tellOrbit() {  // 지금 프로젝트 · 탭을 대시보드에 알린다: 프로젝트마다 독립된 궤도, HUB 는 그 탭의 세션
   const p = project(S.current), name = p ? p.name : '';
@@ -429,10 +533,14 @@ function onboard() {  // 처음 한 번: 연결 안 된 에이전트가 있으�
   }
 }
 
+let ticks = 0;
 async function loadUsage(refresh) {
   S.usage = await api.usage(refresh);
   if (S.usage && S.usage.tabs) for (const [tid, sid] of Object.entries(S.usage.tabs)) linkTab(tid, sid);
-  renderStatusbar();
+  if (S.usage && S.usage.names) S.names = S.usage.names;
+  renderStatusbar(); renderTabs();
+  loadGit();
+  if (refresh || ticks++ % 4 === 0) loadSessions();  // 지난 세션은 1분마다 (7일치를 읽으니 덜 자주)
 }
 
 // 사용 한도: 초기화 시각이 지났으면 이미 초기화된 것으로 본다 (마지막 기록이 그 전 값이라서)
@@ -504,6 +612,7 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
     h('span', {class: 'sb-item'}, h('i', {class: 'led ok'}), 'LIVE'),
     agent('claude'), agent('codex'), refresh,
     h('span', {class: 'grow'}),
+    S.update ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(S.update.url)}, `새 버전 ${S.update.version} →`) : null,
     needs ? h('button', {class: 'link', type: 'button', onclick: () => openSettings()}, '에이전트 연결하기 →') : null,
     gear,
   ].filter(Boolean));
@@ -602,10 +711,29 @@ async function openSettings(intro) {
     st.claudeLimits != null ? toggleRow('Claude 사용 한도 보기', 'Claude Code 로그인 정보로 5시간 · 주간 한도를 5분마다 가져와요 (비용 없음)', st.claudeLimits,
       async v => { const r = await api.post('/api/settings', {claudeLimits: v}); await loadUsage(); return r; }) : null,
     st.autostart != null ? toggleRow('로그인할 때 수집기 실행', '꺼도 Tycho 앱을 켜면 수집기가 함께 켜져요', st.autostart, v => api.post('/api/autostart', {enabled: v})) : null,
+    h('h3', {}, '알림'),
+    prefRow('알림 받기', 'Tycho 를 보고 있지 않을 때 macOS 알림과 Dock 배지로 알려요', 'notify'),
+    prefs.notify ? prefRow('응답을 마쳤을 때', '', 'notifyDone') : null,
+    prefs.notify ? prefRow('승인 · 입력을 기다릴 때', 'Claude Code 는 알림 켜기가 필요해요 (Codex 는 아직 이 신호를 보내지 않아요)', 'notifyWait') : null,
+    prefs.notify ? prefRow('소리', '', 'sound') : null,
+    h('h3', {}, '터미널'),
+    h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '글자 크기')),
+      h('span', {class: 'seg'}, h('button', {type: 'button', 'aria-label': '작게', onclick: () => { setPref('fontSize', Math.max(10, prefs.fontSize - 1)); openSettings(intro); }}, '−'),
+        h('button', {type: 'button', 'aria-pressed': 'true', disabled: true}, `${prefs.fontSize}px`),
+        h('button', {type: 'button', 'aria-label': '크게', onclick: () => { setPref('fontSize', Math.min(22, prefs.fontSize + 1)); openSettings(intro); }}, '+'))),
+    prefRow('선택하면 바로 복사', '터미널에서 글자를 드래그해 고르면 클립보드로', 'copyOnSelect'),
+    prefRow('Option 키를 Meta 로', '켜면 Option+←/→ 로 단어 이동 (끄면 Option 으로 특수 문자 입력)', 'optionMeta'),
     h('h3', {}, '화면'),
     h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, '테마'), h('small', {}, '궤도 패널은 늘 어두운 밤하늘로 보여요')), seg),
+    h('h3', {}, '문제 해결'),
+    h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `수집기 v${st.version} · 127.0.0.1:${st.port}`), h('small', {}, '정상으로 연결돼 있어요')),
+      h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; const out = await api.doctor(); await navigator.clipboard.writeText(out).catch(() => {}); toast('진단 정보를 복사했어요 — 문의할 때 붙여넣어 주세요'); openSettings(intro); }}, '진단 정보 복사'),
+      h('button', {class: 'btn small', type: 'button', onclick: async e => { e.currentTarget.disabled = true; toast('수집기를 다시 설치하고 있어요…'); const r = await api.reinstall(); toast(r.ok ? '다시 설치했어요' : `다시 설치하지 못했어요 ${r.log || ''}`.trim()); refreshAll(); }}, '다시 설치')),
+    S.update ? h('div', {class: 'row'}, h('span', {class: 'grow'}, h('b', {}, `새 버전 ${S.update.version}`), h('small', {}, '받아서 응용 프로그램 폴더의 Tycho 를 바꿔 주세요')),
+      h('button', {class: 'btn small primary', type: 'button', onclick: () => api.openExternal(S.update.url)}, '받기')) : null,
     h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '대시보드 크게 보기 →'),
   ]);
+  function prefRow(label, desc, key) { return toggleRow(label, desc, prefs[key], v => { setPref(key, v); }); }
 }
 
 // ── 레이아웃: 패널 너비 · 열고 닫기 ──
@@ -667,6 +795,7 @@ api.onMenu(action => ({
   'prev-tab': () => cycleTab(-1),
   'find': openFind,
   'settings': () => openSettings(),
+  'split': toggleSplit,
 }[action] || (() => {}))());
 addEventListener('keydown', e => {  // ⌘1–9: 지금 프로젝트의 탭 이동
   if (e.metaKey && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
@@ -680,4 +809,5 @@ addEventListener('keydown', e => {  // ⌘1–9: 지금 프로젝트의 탭 이�
   await restoreTabs();
 })();
 initOrbit();
-setInterval(loadUsage, 15000);  // 상태바 숫자 · 탭 ↔ 세션은 15초마다
+setInterval(loadUsage, 15000);  // 상태바 숫자 · 탭 ↔ 세션 · git 은 15초마다
+api.checkUpdate().then(u => { S.update = u; renderStatusbar(); }).catch(() => {});  // 새 버전 안내 (하루 한 번만 실제로 확인)

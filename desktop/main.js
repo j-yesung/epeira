@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const http = require('node:http');
+const https = require('node:https');
 const {spawn, execFile} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
 const pty = require('node-pty');
@@ -157,8 +158,8 @@ const collectorStatus = () => getJSON('/api/status');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // 앱 안 설정 화면: 상태 · 미리 보기는 읽기만, 쓰기는 정해진 동작만 (연결 · 해제 · 승인 · 설정)
-ipcMain.handle('orbit:get', (_, p) => (/^\/api\/(status|preview)(\?|$)/.test(p) ? getJSON(p, 25000) : null));
-const WRITES = new Set(['/api/connect', '/api/disconnect', '/api/trust', '/api/settings', '/api/autostart']);
+ipcMain.handle('orbit:get', (_, p) => (/^\/api\/(status|preview|summary)(\?|$)/.test(p) ? getJSON(p, 25000) : null));
+const WRITES = new Set(['/api/connect', '/api/disconnect', '/api/trust', '/api/settings', '/api/autostart', '/api/rename']);
 ipcMain.handle('orbit:post', (_, p, body) => (WRITES.has(p) ? postJSON(p, body) : null));
 
 // 하단 상태바: 오늘 에이전트별 도구 횟수 · 토큰(입력 · 출력 · 캐시 읽기) · 연결 상태 · 에이전트별 사용 한도 · 탭 ↔ 세션
@@ -172,7 +173,8 @@ ipcMain.handle('collector:usage', async (_, refresh) => {
     const b = by[x.agent];
     if (b) { b.calls += x.tools || 0; b.tin += x.tin || 0; b.tout += x.tokens || 0; b.tcache += x.tcache || 0; }
   }
-  return {ok: true, version: status.version, by, limits: status.limits || {}, claudeLimits: status.claudeLimits, tabs: status.tabs || {}};  // limits: {codex|claude: {primary, secondary, plan, at} 또는 {error}}
+  const todays = ((sum && sum.sessions) || []).map(x => ({id: x.id, parent: x.parent, agent: x.agent, cwd: x.cwd, label: x.label, tools: x.tools || 0, tok: (x.tin || 0) + (x.tokens || 0)}));  // 프로젝트별 오늘 사용량
+  return {ok: true, version: status.version, port: status.port, by, limits: status.limits || {}, claudeLimits: status.claudeLimits, tabs: status.tabs || {}, names: status.names || {}, today: todays};  // limits: {codex|claude: {primary, secondary, plan, at} 또는 {error}}
 });
 
 // 수집기 이벤트를 화면에 전달 (탭 상태 · 알림용, 궤도 화면과 별개). 끊기면 3초 뒤 다시
@@ -199,13 +201,58 @@ function followEvents() {
 }
 
 // 알림 · Dock 배지: 응답을 마쳤거나 권한 승인 · 입력을 기다리는 탭
-ipcMain.on('notify', (_, {title, body, tab}) => {
+ipcMain.on('notify', (_, {title, body, tab, silent}) => {
   if (!Notification.isSupported()) return;
-  const n = new Notification({title, body});
+  const n = new Notification({title, body, silent: !!silent});
   n.on('click', () => { if (!win || win.isDestroyed()) return; win.show(); win.focus(); win.webContents.send('tab:activate', tab); });
   n.show();
 });
 ipcMain.on('badge', (_, count) => { app.setBadgeCount(Math.max(0, count | 0)); });
+
+// git: 프로젝트의 브랜치와 바뀐 파일 수 (사이드바). git 저장소가 아니면 null
+function gitInfo(dir) {
+  return new Promise(resolve => execFile('git', ['-C', dir, 'status', '--porcelain=v1', '--branch', '--untracked-files=normal'], {timeout: 3000, maxBuffer: 4 << 20}, (err, out) => {
+    if (err) return resolve(null);
+    const [head, ...rest] = out.split('\n'), m = /^## (?:No commits yet on )?([^.\s]+)/.exec(head);
+    resolve({branch: m ? m[1] : 'HEAD', changes: rest.filter(Boolean).length});
+  }));
+}
+ipcMain.handle('git:info', async (_, dirs) => Object.fromEntries(await Promise.all((dirs || []).filter(d => typeof d === 'string').slice(0, 50).map(async d => [d, await gitInfo(d)]))));
+
+// 문제 해결: 진단 정보(tycho doctor) · 수집기 다시 설치
+ipcMain.handle('collector:doctor', async () => {
+  const bin = path.join(HOME_APP, 'bin', 'tycho');
+  if (!fs.existsSync(bin)) return '수집기가 설치되어 있지 않아요.';
+  const env = {...process.env, PATH: await userPath()};
+  return new Promise(resolve => execFile(bin, ['doctor'], {env, timeout: 30000}, (err, out, errOut) => resolve(`${out}${errOut}`.trim() || String(err))));
+});
+ipcMain.handle('collector:reinstall', async () => {
+  if (process.env.AGENT_ORBIT_URL || !bundledVersion()) return {ok: false, log: '개발 · 테스트 모드에서는 다시 설치하지 않아요.'};
+  const r = await installCollector();
+  return {ok: !!(await collectorStatus()), log: r.out};
+});
+
+// 새 버전 알림: 하루 한 번 사이트의 app-version.json 만 확인 (자동 설치는 서명이 있어야 해서 안내만)
+const SITE = 'https://agent-orbit-app.vercel.app';
+function latestApp() {
+  return new Promise(resolve => {
+    const req = https.get(`${SITE}/app-version.json`, {timeout: 8000}, res => {
+      let body = '';
+      res.on('data', d => { body += d; });
+      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+ipcMain.handle('update:check', async () => {
+  if (TEST) return null;
+  const c = conf();
+  if (c.latest && Date.now() - (c.checkedAt || 0) < 864e5) return newer(c.latest.version, app.getVersion()) ? c.latest : null;
+  const v = await latestApp();
+  if (v && typeof v.version === 'string' && /^https:\/\//.test(v.url || '')) saveConf({latest: {version: v.version, url: v.url}, checkedAt: Date.now()});
+  return v && v.version && newer(v.version, app.getVersion()) && /^https:\/\//.test(v.url || '') ? {version: v.version, url: v.url} : null;
+});
 
 // 테마: 시스템 · 라이트 · 다크 (궤도 패널은 밤하늘이라 늘 어둡게)
 ipcMain.handle('theme:get', () => conf().theme || 'system');
@@ -289,6 +336,7 @@ function buildMenu() {
     {label: '보기', submenu: [
       {label: '사이드바', accelerator: 'CmdOrCtrl+B', click: () => send('toggle-side')},
       {label: '궤도 패널', accelerator: 'CmdOrCtrl+J', click: () => send('toggle-orbit')},
+      {label: '화면 나누기', accelerator: 'CmdOrCtrl+D', click: () => send('split')},
       {label: '대시보드 크게 보기', click: () => shell.openExternal(ORBIT + '/')},
       {type: 'separator'},
       {label: '다음 탭', accelerator: 'Ctrl+Tab', click: () => send('next-tab')},

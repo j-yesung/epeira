@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-VERSION = '0.15.0'
+VERSION = '0.16.0'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -950,7 +950,7 @@ def save_setting(key, value):
 def status():
     return {'version': VERSION, 'protocol': PROTOCOL, 'port': PORT, 'boot': BOOT, 'platform': sys.platform,
             'autostart': autostart_state(), 'retentionDays': RETENTION_DAYS,
-            'claudeLimits': setting('claudeLimits'), 'tabs': dict(tabs),
+            'claudeLimits': setting('claudeLimits'), 'tabs': dict(tabs), 'names': dict(names),
             'limits': dict(({'codex': dict(limits)} if limits else {}), **({'claude': dict(claude_limits)} if claude_limits else {})),
             'agents': {k: agent_state(k) for k in AGENTS}}
 
