@@ -13,6 +13,7 @@
 | `app-version.json` | 앱이 6시간마다 확인하는 최신 버전 (업데이트 버튼이 이 버전의 릴리스를 받음) |
 | `vercel.json` | 사이트 보안 헤더 |
 | `.github/workflows/release.yml` | 태그를 push 하면 테스트 · 빌드 · 서명 · 릴리스 |
+| `docs/react-migration.md` | 앱 화면을 React · shadcn/ui 로 옮기는 계획 (앞으로의 방향) |
 
 ## 개발 환경
 
