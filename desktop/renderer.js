@@ -92,7 +92,7 @@ async function openTab(dir, kind = 'shell') {
   const el = h('div', {class: 'term'});
   $('terms').append(el);
   // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 — 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
-  const term = new Terminal({fontFamily: '"SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: 13, lineHeight: 1.2, cursorBlink: true,
+  const term = new Terminal({fontFamily: '"Tycho Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: 13, lineHeight: 1.2, cursorBlink: true,
     scrollback: 10000, macOptionIsMeta: true, allowProposedApi: true, theme: THEME});
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -137,6 +137,8 @@ function cycleTab(step) {
 }
 
 function renderTabs() {
+  // 탭은 container-type 이라 내용 너비가 0 으로 계산돼 탭 줄이 최소 폭(96px)으로 쪼그라든다 → 탭당 200px(+간격)를 미리 잡아 두고 좁으면 줄어들게
+  $('tabs').style.flexBasis = `${S.tabs.length * 204}px`;
   $('tabs').replaceChildren(...S.tabs.map((t, i) => {
     return h('div', {class: `tab${t.id === S.active ? ' on' : ''}${t.exited ? ' dead' : ''}`, title: t.dir},
       h('button', {class: 'tab-main', type: 'button', role: 'tab', 'aria-selected': String(t.id === S.active), onclick: () => activate(t.id)},
@@ -171,9 +173,12 @@ new ResizeObserver(() => { const t = tab(S.active); if (t) t.fit.fit(); }).obser
 const view = $('orbit-view');
 view.addEventListener('dom-ready', () => { S.orbitReady = true; tellOrbit(); });
 
-function tellOrbit() {  // 지금 탭을 대시보드에 알려 HUB 를 그 탭의 세션으로
+function tellOrbit() {  // 지금 프로젝트 · 탭을 대시보드에 알린다: 프로젝트마다 독립된 궤도, HUB 는 그 탭의 세션
+  const p = project(S.current), name = p ? p.name : '';
+  $('orbit-title').textContent = name ? `ORBIT · ${name}` : 'ORBIT';
   if (!S.orbitReady) return;
-  view.executeJavaScript(`window.aoFocusTab && window.aoFocusTab(${JSON.stringify(S.active || '')})`).catch(() => {});
+  const args = `${JSON.stringify(name)}, ${JSON.stringify(S.active || '')}`;  // 예전 수집기(aoFocusTab 만 있음)도 그대로 동작
+  view.executeJavaScript(`window.aoFocusProject ? aoFocusProject(${args}) : window.aoFocusTab && aoFocusTab(${JSON.stringify(S.active || '')})`).catch(() => {});
 }
 
 async function initOrbit() {
@@ -219,11 +224,10 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
   const needs = Object.values(u.by).some(a => a.installed && !a.connected);
   bar.replaceChildren(...[
     h('span', {class: 'sb-item'}, h('i', {class: 'led ok'}), 'LIVE'),
-    agent('claude'), agent('codex'),
+    agent('claude'), agent('codex'), refresh,
     lim ? h('span', {class: 'sb-item sb-dim', title: 'Codex 요금제 사용 한도 (마지막으로 기록된 값)'}, `Codex 한도 ${lim}`) : null,
     h('span', {class: 'grow'}),
     needs ? h('button', {class: 'link', type: 'button', onclick: () => api.openExternal(ORBIT + '/')}, '에이전트 연결하기 →') : null,
-    refresh,
   ].filter(Boolean));
 }
 
@@ -236,15 +240,18 @@ async function refreshAll(e) {  // 상태·사용량 다시 읽고 궤도 패널
 
 // ── 레이아웃: 패널 너비 · 열고 닫기 ──
 const appEl = $('app');
-function setOrbitWidth(w) {  // 터미널이 최소 360px 는 남도록, 그 안에서는 마음껏
+function setOrbitWidth(w, save = true) {  // 터미널이 최소 360px 는 남도록, 그 안에서는 마음껏
   const side = appEl.classList.contains('no-side') ? 0 : $('projects').closest('.side').offsetWidth;
   w = Math.max(320, Math.min(window.innerWidth - side - 5 - 360, Math.round(w)));
   appEl.style.setProperty('--orbit-w', w + 'px');
-  store.set('orbitW', w);
+  if (save) store.set('orbitW', w);
 }
+const fitOrbit = () => setOrbitWidth(+store.get('orbitW') || 440, false);  // 창 크기가 바뀌면 고른 너비 안에서 다시 맞춤 (저장값은 그대로)
+addEventListener('resize', fitOrbit);
 function toggle(cls) {
   appEl.classList.toggle(cls);
   store.set(cls, appEl.classList.contains(cls) ? '1' : '0');
+  fitOrbit();
   const t = tab(S.active);
   if (t) requestAnimationFrame(() => t.fit.fit());
 }
@@ -261,9 +268,9 @@ resizer.addEventListener('lostpointercapture', () => {
   if (t) t.fit.fit();
 });
 resizer.addEventListener('dblclick', () => setOrbitWidth(440));  // 두 번 누르면 기본 너비
-if (store.get('orbitW')) setOrbitWidth(+store.get('orbitW'));
 if (store.get('no-orbit') === '1') appEl.classList.add('no-orbit');
 if (store.get('no-side') === '1') appEl.classList.add('no-side');
+fitOrbit();
 
 // ── 버튼 · 메뉴 · 단축키 ──
 $('add-project').onclick = addProject;

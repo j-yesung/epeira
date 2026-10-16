@@ -3,7 +3,7 @@
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
-const LATEST = '0.9.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
+const LATEST = '0.10.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
 const SITE = 'https://agent-orbit-app.vercel.app';
@@ -84,6 +84,7 @@ const S = {
   sess: new Map(),           // 세션(HUB 후보)과 서브에이전트. 각자 쓰는 도구 노드(stations)를 가진다
   focus: null, pinned: false, // HUB 로 보고 있는 세션, 사용자가 고정했는지
   tabs: new Map(), tab: null, // Tycho 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
+  project: null, views: new Map(), // Tycho 앱: 지금 프로젝트의 세션만 궤도에. HUB 선택은 프로젝트마다 따로 기억
   names: new Map(),          // 사용자가 직접 붙인 세션 이름 (수집기에 저장)
   hubRect: null,             // 캔버스 위 HUB 위치 (더블클릭으로 이름 바꾸기)
   links: [],                 // 방금 끝난 실행: HUB(또는 서브에이전트) → 도구 노드로 쏘는 선
@@ -258,6 +259,21 @@ function focusTab(tab) {
 }
 window.aoFocusTab = focusTab;
 
+// 프로젝트마다 독립된 궤도: 그 폴더에서 시작한 세션(+ 그 프로젝트 탭의 세션)만 HUB · 칩 · 피드에
+// ponytail: 시작 폴더 "이름"으로 가른다. 이름이 같은 두 프로젝트를 나눠야 하면 수집기가 cwd 전체 경로를 보내게
+const inProject = s => !S.project || !!s && (s.label === S.project || S.tabs.get(S.tab) === s.id);
+function focusProject(name, tab) {  // 탭도 함께 받는다: 이전 프로젝트의 탭 세션이 새 궤도에 끼지 않게
+  name = name || null;
+  if (name !== S.project) {
+    S.views.set(S.project, {focus: S.focus, pinned: S.pinned});
+    ({focus: S.focus, pinned: S.pinned} = S.views.get(name) || {focus: null, pinned: false});
+    S.project = name; S.feedVer++; S.dirty = true;
+  }
+  focusTab(tab);
+  ensureFocus();
+}
+window.aoFocusProject = focusProject;
+
 // ── 궤도 모델: 세션 · 도구 노드 · HUB 따라가기 ──
 function sess(e) {
   let s = S.sess.get(e.id);
@@ -305,17 +321,18 @@ function activity(root) {  // 세션과 그 서브에이전트 중 가장 최근
 }
 
 function follow(root) {  // 자동 따라가기: 보던 세션이 잠잠할 때만 새로 움직인 세션으로 HUB 를 옮긴다 (번갈아 튀지 않게)
-  if (S.pinned || root.id === S.focus) return;
+  if (S.pinned || root.id === S.focus || !inProject(root)) return;
   const cur = S.sess.get(S.focus);
   if (!cur || epoch() - activity(cur) > FOLLOW_QUIET) { S.focus = root.id; S.chipsDirty = true; }
 }
 
 function ensureFocus() {
   const cur = S.sess.get(S.focus), t = epoch();
-  if (cur && (S.pinned || t - activity(cur) < ORBIT_WINDOW)) return;
+  if (cur && inProject(cur) && (S.pinned || t - activity(cur) < ORBIT_WINDOW)) return;
   let best = null, bestAt = 0;
-  for (const s of S.sess.values()) if (!s.parent) { const a = activity(s); if (a > bestAt) { best = s; bestAt = a; } }
-  if (best && t - bestAt < ORBIT_WINDOW && best !== cur) { S.focus = best.id; S.pinned = false; S.chipsDirty = true; }
+  for (const s of S.sess.values()) if (!s.parent && inProject(s)) { const a = activity(s); if (a > bestAt) { best = s; bestAt = a; } }
+  if (best && t - bestAt < ORBIT_WINDOW) { if (best !== cur) { S.focus = best.id; S.pinned = false; S.chipsDirty = true; } }
+  else if (cur && !inProject(cur)) { S.focus = null; S.pinned = false; S.chipsDirty = true; }  // 이 프로젝트엔 아직 움직인 세션이 없다
 }
 
 function pickFocus(id) {  // 칩 클릭: 그 세션을 HUB 로 고정. 고정된 칩을 다시 누르면 자동 따라가기
@@ -362,8 +379,9 @@ function onEvent(e) {
       if (root.id === S.focus) S.hubFlash = now();
       follow(root);
     }
+    e.root = root.id;  // 피드도 프로젝트별로 거른다
     S.feed.unshift(e);
-    S.feed.length = Math.min(S.feed.length, 6);
+    S.feed.length = Math.min(S.feed.length, 40);
     S.feedVer++;
     S.chipsDirty = true;
   }
@@ -507,16 +525,16 @@ function renderPanels() {
   const sum = t.read + t.edit + t.run + t.other || 1;
   for (const [k] of BARS) { const pc = Math.round(t[k] / sum * 100); $(`p-${k}`).textContent = pc + '%'; $(`f-${k}`).style.width = pc + '%'; }
   if (S.feedVer === feedDrawn.ver && S.mode === feedDrawn.mode) return;  // 목록이 바뀔 때만 다시 그림 (깜빡임 방지)
-  const feed = $('feed');
-  feed.replaceChildren(...S.feed.map((e, i) => h('li', {class: i === 0 && e !== feedDrawn.top && !e.replay ? 'new' : null, style: `--c:${(KIND[e.kind] || KIND.tool).c}`},
+  const feed = $('feed'), list = S.feed.filter(e => inProject(S.sess.get(e.root))).slice(0, 6);
+  feed.replaceChildren(...list.map((e, i) => h('li', {class: i === 0 && e !== feedDrawn.top && !e.replay ? 'new' : null, style: `--c:${(KIND[e.kind] || KIND.tool).c}`},
     h('span', {class: 'dot'}), h('b', {}, e.kind), h('p', {}, `${nameOf(e.id, e.label)} · ${e.text}`))));
-  if (!S.feed.length) feed.append(h('li', {class: 'empty'}, S.mode === 'live' ? '에이전트가 일하면 여기에 바로 나타나요' : '…'));
-  feedDrawn = {ver: S.feedVer, mode: S.mode, top: S.feed[0]};
+  if (!list.length) feed.append(h('li', {class: 'empty'}, S.mode === 'live' ? '에이전트가 일하면 여기에 바로 나타나요' : '…'));
+  feedDrawn = {ver: S.feedVer, mode: S.mode, top: list[0]};
 }
 
 function renderChips() {  // 지금 움직이는 세션들: 누르면 그 세션이 HUB 가 된다
   const t = epoch();
-  const roots = [...S.sess.values()].filter(s => !s.parent && (t - activity(s) < ORBIT_WINDOW || s.id === S.focus))
+  const roots = [...S.sess.values()].filter(s => !s.parent && inProject(s) && (t - activity(s) < ORBIT_WINDOW || s.id === S.focus))
     .sort((a, b) => activity(b) - activity(a)).slice(0, MINI ? 4 : 7);
   const box = $('chips');
   if (roots.length < 2 && !S.pinned) return box.replaceChildren();  // 세션이 하나뿐이면 고를 필요가 없다
@@ -923,7 +941,7 @@ let W = 0, H = 0, Z = 1, stars = [], rot = 0, lastFrame = now(), working = false
 
 function resize() {
   const dpr = devicePixelRatio || 1;
-  W = cv.clientWidth; Z = W < 600 ? .82 : Math.max(.7, Math.min(1, W / 760));  // 좁은 화면도 노드 글자가 읽히게
+  W = cv.clientWidth; Z = W < 600 ? Math.min(.82, .5 + W / 1400) : Math.max(.7, Math.min(1, W / 760));  // 좁은 화면도 노드 글자가 읽히게, 아주 좁은 패널은 조금 더 작게 (노드가 HUB 를 덮지 않게)
   if (MINI) {  // 미니 창: 다른 요소를 뺀 나머지 높이를 궤도가 채운다
     const rest = document.querySelector('.top').offsetHeight + document.querySelector('main').offsetHeight - cv.offsetHeight + $('statusbar').offsetHeight;
     H = Math.max(200, Math.round(innerHeight - rest));
@@ -941,7 +959,10 @@ cv.addEventListener('mousemove', ev => {  // HUB 위에선 손가락 커서 + �
 });
 cv.addEventListener('dblclick', ev => { if (onHub(ev) && S.focus) renameSession(S.focus); });
 
-const geo = () => ({cx: W / 2, cy: H * .52, rx: W * .41, ry: H * .37});
+const geo = () => {  // 미니 창 · 앱 패널은 크기가 바뀌어도 원형 유지, 넓은 대시보드는 납작한 타원
+  const r = Math.min(W * .41, H * .37);
+  return {cx: W / 2, cy: H * .52, rx: MINI ? r : W * .41, ry: MINI ? r : H * .37};
+};
 function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
 function circle(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); }
 function ellipse(g, k, c, lw) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.ellipse(g.cx, g.cy, g.rx * k, g.ry * k, 0, 0, 6.283); ctx.stroke(); }

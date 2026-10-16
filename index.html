@@ -226,6 +226,7 @@ body.mini #feed { margin-top: 6px; }
 body.mini #feed li { grid-template-columns: 10px 40px minmax(0, 1fr); align-items: center; padding: 4px 8px; }
 body.mini #feed .dot { margin-top: 0; }
 body.mini #feed p { grid-column: auto; }
+#feed li.empty { display: block; }  /* 빈 안내문은 격자 첫 칸(10px)에 갇혀 세로로 늘어서지 않게 */
 body.mini .brand span { display: inline; }
 body.embed .top, body.mini .cards, body.mini #refresh { display: none; }  /* 미니 창은 상태바에 새로고침 */
 
