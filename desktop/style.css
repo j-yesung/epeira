@@ -52,6 +52,7 @@ kbd { padding: 1px 4px 1px 6px; border: 1px solid var(--line-2); border-radius: 
 /* 사이드바 */
 .side { position: relative; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); background: var(--chrome); }
 .side.drop { outline: 2px dashed var(--accent); outline-offset: -6px; }  /* 폴더를 끌어다 놓는 중 */
+.brand { color: var(--dim); font-weight: 700; font-size: 12px; line-height: 1; }
 .side-top { display: flex; align-items: center; height: 52px; padding: 0 14px 0 84px; }  /* 신호등 버튼과 같은 세로 가운데 */
 .side-hd { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 6px 14px; color: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
 .projects { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 0 8px 8px; list-style: none; }
