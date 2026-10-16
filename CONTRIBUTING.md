@@ -1,4 +1,4 @@
-# Tycho 에 참여하기
+# Epeira 에 참여하기
 
 버그 제보, 제안, 코드 기여 모두 환영합니다. 보안 문제는 공개 이슈 대신 [SECURITY.md](SECURITY.md) 를 보세요.
 
@@ -20,8 +20,8 @@
 - 대시보드 테스트에는 Google Chrome 이 필요합니다 (없으면 그 테스트만 건너뜀)
 
 ```sh
-git clone https://github.com/j-yesung/agent-orbit.git
-cd agent-orbit/desktop
+git clone https://github.com/j-yesung/epeira.git
+cd epeira/desktop
 npm ci
 npm start
 ```
@@ -30,9 +30,9 @@ npm start
 
 ```sh
 # 저장소 맨 위에서: 가짜 HOME · 다른 포트로 시험용 수집기
-HOME=/tmp/tycho-dev AGENT_ORBIT_HOME=/tmp/tycho-dev/ao AGENT_ORBIT_PORT=47778 python3 agent_orbit.py serve
+HOME=/tmp/epeira-dev AGENT_ORBIT_HOME=/tmp/epeira-dev/ao AGENT_ORBIT_PORT=47778 python3 agent_orbit.py serve
 # desktop/ 에서
-AGENT_ORBIT_URL=http://127.0.0.1:47778 npm start -- --user-data-dir=/tmp/tycho-dev/app
+AGENT_ORBIT_URL=http://127.0.0.1:47778 npm start -- --user-data-dir=/tmp/epeira-dev/app
 ```
 
 ## 테스트
@@ -86,11 +86,11 @@ cd desktop && npm test          # 앱 · 궤도 대시보드 (창을 띄우지 �
 2. 태그 push: `git tag v<버전> && git push origin v<버전>` → GitHub Actions(`.github/workflows/release.yml`)가 테스트 → DMG 빌드 → 업데이트 서명 → 릴리스까지 합니다. 태그와 버전 파일이 다르면 멈춥니다. 진행은 `gh run watch` 나 저장소의 Actions 탭에서.
 3. 릴리스가 올라오면 `git push origin main` → Vercel 이 사이트(대시보드 · 설치 파일 · `app-version.json`)를 배포하고, 사용자 앱에 새 버전이 보입니다.
 
-Actions 를 쓸 수 없을 때는 직접: `cd desktop && npm run dist && npm run sign` 후 `gh release create v<버전> dist/Tycho-<버전>*.dmg dist/Tycho-<버전>*.dmg.sig --verify-tag`. 지금 DMG 는 임시 서명만 하고 공증하지 않습니다.
+Actions 를 쓸 수 없을 때는 직접: `cd desktop && npm run dist && npm run sign` 후 `gh release create v<버전> dist/Epeira-<버전>*.dmg dist/Epeira-<버전>*.dmg.sig --verify-tag`. 지금 DMG 는 임시 서명만 하고 공증하지 않습니다.
 
 ### 업데이트 서명 키
 
-- 비밀 키를 쓰는 곳: 저장소 Secrets 의 `TYCHO_SIGNING_KEY`(Actions 용)와 관리자 Mac 의 `~/.tycho-release/update-signing-key.pem`(직접 릴리스용, `TYCHO_SIGNING_KEY` 로 다른 경로 지정 가능). 저장소 파일로는 절대 넣지 않습니다. 앱에는 짝인 공개 키만 들어 있습니다(`main.js` 의 `UPDATE_KEY`).
-- Secrets 등록 · 교체: `gh secret set TYCHO_SIGNING_KEY < ~/.tycho-release/update-signing-key.pem`
+- 비밀 키를 쓰는 곳: 저장소 Secrets 의 `EPEIRA_SIGNING_KEY`(Actions 용)와 관리자 Mac 의 `~/.epeira-release/update-signing-key.pem`(직접 릴리스용, `EPEIRA_SIGNING_KEY` 로 다른 경로 지정 가능). 저장소 파일로는 절대 넣지 않습니다. 앱에는 짝인 공개 키만 들어 있습니다(`main.js` 의 `UPDATE_KEY`).
+- Secrets 등록 · 교체: `gh secret set EPEIRA_SIGNING_KEY < ~/.epeira-release/update-signing-key.pem`
 - 비밀번호 관리자 등에 백업해 두세요. Secrets 는 다시 읽을 수 없어서 백업이 되지 않습니다.
 - 잃어버리면 그 뒤 버전에 서명할 수 없습니다. 새 키를 만들어 공개 키를 바꾼 버전을 내고, 사용자는 그 버전을 한 번 직접 받아야 합니다.

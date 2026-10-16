@@ -13,7 +13,7 @@ import {chromium} from 'playwright-core';
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const skip = !existsSync(CHROME) && 'Chrome 이 없어 건너뜀';
-const tmp = mkdtempSync(path.join(tmpdir(), 'tycho-dash-'));
+const tmp = mkdtempSync(path.join(tmpdir(), 'epeira-dash-'));
 let port, collector, browser, page;
 const errors = [];
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Tycho collector → 이 컴퓨터의 Claude Code / Codex 세션을 모아 대시보드로 보낸다.
+"""Epeira collector → 이 컴퓨터의 Claude Code / Codex 세션을 모아 대시보드로 보낸다.
 
 데이터는 이 컴퓨터 밖으로 나가지 않는다. 127.0.0.1 에서만 열리고, 허용한 사이트(ORIGINS)만 읽을 수 있다.
 
-  tycho open                                 전체 대시보드를 브라우저로
-  tycho serve                                수집기 실행 (자동 실행 서비스가 호출)
-  tycho connect|disconnect <agent>           훅 연결/해제 (claude | codex) → 바뀔 내용을 보여주고 확인 후 적용
-  tycho doctor                               진단 정보 (피드백에 그대로 붙여넣기)
-  tycho uninstall                            훅·자동 실행·설치 파일·기록 모두 제거
-  tycho version                              (예전 이름 agent-orbit 도 그대로 동작)
+  epeira open                                 전체 대시보드를 브라우저로
+  epeira serve                                수집기 실행 (자동 실행 서비스가 호출)
+  epeira connect|disconnect <agent>           훅 연결/해제 (claude | codex) → 바뀔 내용을 보여주고 확인 후 적용
+  epeira doctor                               진단 정보 (피드백에 그대로 붙여넣기)
+  epeira uninstall                            훅·자동 실행·설치 파일·기록 모두 제거
+  epeira version                              (예전 이름 tycho · agent-orbit 도 그대로 동작)
 """
 import difflib
 import glob
@@ -46,7 +46,7 @@ NAMES_FILE = os.path.join(DATA_DIR, 'names.json')  # 사용자가 바꾼 세션(
 LIMITS_FILE = os.path.join(DATA_DIR, 'limits.json')  # Codex 요금제 사용 한도 (마지막으로 본 값)
 LOG_FILE = os.path.join(APP_DIR, 'collector.log')
 HERE = os.path.dirname(os.path.abspath(__file__))
-SITE = 'https://agent-orbit-app.vercel.app'
+SITE = 'https://epeira.vercel.app'
 # 이 주소에서 연 대시보드만 데이터를 읽고 버튼을 쓸 수 있다. 정확히 일치하는 것만 → '*' 면 아무 사이트나 로그를 읽어간다
 ORIGINS = {SITE} | set(filter(None, os.environ.get('AGENT_ORBIT_ORIGINS', '').split(',')))
 LOCAL_ORIGINS = {'http://127.0.0.1:%d' % PORT, 'http://localhost:%d' % PORT}
@@ -353,7 +353,7 @@ def fetch_claude_limits():
         claude_limits['error'] = 'expired'  # 토큰 갱신은 Claude Code 가 한다 (여기서 갱신하면 Claude Code 로그인이 풀릴 수 있음)
         return
     req = Request(CLAUDE_USAGE_URL, headers={'Authorization': 'Bearer ' + o['accessToken'], 'anthropic-beta': 'oauth-2025-04-20',
-                                             'User-Agent': 'tycho/' + VERSION})
+                                             'User-Agent': 'epeira/' + VERSION})
     try:
         with urlopen(req, timeout=10) as r:
             d = json.loads(r.read())
@@ -372,7 +372,7 @@ def fetch_claude_limits():
 
 def fetch_codex_limits():
     # 로그의 한도는 마지막으로 Codex 를 쓴 순간 값이라 늦다 (주간 사용량은 끝난 뒤에 서버에서 올라감)
-    # → Codex 공식 app-server 로 지금 값을 읽는다. Codex 가 자기 로그인으로 묻는 것이라 Tycho 는 로그인 정보를 보지 않는다
+    # → Codex 공식 app-server 로 지금 값을 읽는다. Codex 가 자기 로그인으로 묻는 것이라 Epeira 는 로그인 정보를 보지 않는다
     tried['codex'] = time.time()
     r = codex_rpc([('account/rateLimits/read', None)], timeout=30)
     rl = (((r or [None])[0] or {}).get('result') or {}).get('rateLimits')
@@ -666,7 +666,7 @@ def hook(agent, h, tab=''):
         publish({'id': main, 'parent': None, 'agent': agent, 'label': labels.get(main) or base(h.get('cwd') or '') or agent,
                  'cwd': cwds.get(main, ''), 'kind': 'notify', 'text': short(str(h.get('message') or '입력을 기다려요')), 'ts': time.time()})
         return
-    if h.get('hook_event_name') == 'SessionStart':  # 시작 폴더 · 탭만 기억 (궤도는 Tycho 앱이 보여준다)
+    if h.get('hook_event_name') == 'SessionStart':  # 시작 폴더 · 탭만 기억 (궤도는 Epeira 앱이 보여준다)
         return
     phase, tid = HOOK_PHASE.get(h.get('hook_event_name')), h.get('tool_use_id')
     if not phase or not tid:
@@ -686,7 +686,7 @@ act_lock = threading.Lock()
 
 def hook_cmd(agent):
     # 수집기가 꺼져 있어도 조용히 통과: 백그라운드(async), 1초 제한, 항상 exit 0
-    # AGENT_ORBIT_TAB: Tycho 앱 터미널 탭에서 실행된 세션이면 그 탭 ID (앱 밖에선 빈 값)
+    # AGENT_ORBIT_TAB: Epeira 앱 터미널 탭에서 실행된 세션이면 그 탭 ID (앱 밖에선 빈 값)
     return ("curl -s -m 1 -H 'Content-Type: application/json' --data-binary @- "
             '"http://127.0.0.1:%d/hook?agent=%s&tab=${AGENT_ORBIT_TAB:-}" >/dev/null 2>&1 || true' % (PORT, agent))
 
@@ -806,7 +806,7 @@ def act(agent, action):
                 codex_restore_config(rec)
             trust = None
             msg = '%s 연결 해제됨. ' % name + ('설정 파일을 연결 전 그대로 되돌렸습니다.' if exact
-                                           else 'Tycho 훅만 제거했습니다 (그 사이 다른 설정이 바뀌어 있어서).')
+                                           else 'Epeira 훅만 제거했습니다 (그 사이 다른 설정이 바뀌어 있어서).')
         write_text(RESTORE_FILE, json.dumps(recs))
         return {'ok': True, 'trust': trust, 'message': msg}
 
@@ -857,7 +857,7 @@ def codex_rpc(calls, timeout=20):
             buf[0] += chunk
 
     try:
-        send({'id': 0, 'method': 'initialize', 'params': {'clientInfo': {'name': 'tycho', 'version': VERSION}}})
+        send({'id': 0, 'method': 'initialize', 'params': {'clientInfo': {'name': 'epeira', 'version': VERSION}}})
         wait(0)
         send({'method': 'initialized'})
         out = []
@@ -1029,7 +1029,7 @@ def install_service():
                 return True, ''
             time.sleep(0.5)
         return False, r.stderr.strip()
-    write_text(f, '[Unit]\nDescription=Tycho collector\n\n[Service]\nExecStart=%s %s serve\n'
+    write_text(f, '[Unit]\nDescription=Epeira collector\n\n[Service]\nExecStart=%s %s serve\n'
                   '%sRestart=on-failure\n\n[Install]\nWantedBy=default.target\n' % (py, script, ''.join('Environment=%s=%s\n' % kv for kv in env.items())))
     run('systemctl', '--user', 'daemon-reload')
     r = run('systemctl', '--user', 'enable', '--now', 'agent-orbit.service')
@@ -1039,7 +1039,7 @@ def install_service():
     os.remove(f)  # systemd 사용자 서비스가 없는 환경: 지금만 백그라운드로 실행
     with open(LOG_FILE, 'a') as lf:
         subprocess.Popen([py, script, 'serve'], stdout=lf, stderr=lf, stdin=subprocess.DEVNULL, start_new_session=True)
-    return True, '자동 실행을 등록하지 못해(systemd 사용자 서비스 없음) 지금만 실행했습니다. 재부팅 후엔 tycho serve 로 켜세요.'
+    return True, '자동 실행을 등록하지 못해(systemd 사용자 서비스 없음) 지금만 실행했습니다. 재부팅 후엔 epeira serve 로 켜세요.'
 
 
 def remove_service():
@@ -1072,7 +1072,7 @@ def span(q):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'tycho/' + VERSION
+    server_version = 'epeira/' + VERSION
 
     def log_message(self, *a):
         pass
@@ -1272,11 +1272,11 @@ def serve():
     try:
         srv = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
     except OSError as ex:
-        sys.exit('tycho: 포트 %d 를 열 수 없습니다 (%s)' % (PORT, ex))
+        sys.exit('epeira: 포트 %d 를 열 수 없습니다 (%s)' % (PORT, ex))
     write_text(os.path.join(APP_DIR, 'port'), str(PORT))  # 앱이 수집기 주소를 알 수 있게
     threading.Thread(target=watch, daemon=True).start()
     threading.Thread(target=limits_loop, daemon=True).start()
-    log('tycho %s → http://127.0.0.1:%d' % (VERSION, PORT))
+    log('epeira %s → http://127.0.0.1:%d' % (VERSION, PORT))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -1286,7 +1286,7 @@ def serve():
 # ---------- CLI ----------
 
 def die(msg):
-    sys.exit('tycho: ' + msg)
+    sys.exit('epeira: ' + msg)
 
 
 def confirm(prompt):
@@ -1311,12 +1311,12 @@ def port_open():
 
 
 def cmd_setup(args):
-    print('Tycho %s 설치' % VERSION)
+    print('Epeira %s 설치' % VERSION)
     if os.path.exists(os.path.join(APP_DIR, 'mini.js')):  # 예전 미니 창 스크립트 (더 이상 쓰지 않음)
         os.remove(os.path.join(APP_DIR, 'mini.js'))
     if local_status(3) is None and port_open():
-        die('포트 %d 를 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나, 다른 포트로 설치하세요: AGENT_ORBIT_PORT=47787 tycho setup '
-            '(브라우저 대시보드는 47777 만 보므로 이때는 Tycho 앱이나 http://127.0.0.1:포트 로 여세요)' % PORT)
+        die('포트 %d 를 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나, 다른 포트로 설치하세요: AGENT_ORBIT_PORT=47787 epeira setup '
+            '(브라우저 대시보드는 47777 만 보므로 이때는 Epeira 앱이나 http://127.0.0.1:포트 로 여세요)' % PORT)
     for agent in AGENTS:
         if hooks_state(agent) == 'legacy':
             act(agent, 'connect')
@@ -1335,21 +1335,21 @@ def cmd_setup(args):
     print('✓ 수집기 실행 중 · http://127.0.0.1:%d%s' % (PORT, ' (로그인할 때 자동 실행)' if st.get('autostart') else ''))
     print('\n다음: 브라우저에서 %s 를 열고 Claude Code · Codex 를 연결하세요.' % SITE)
     print('      Safari 라면 http://127.0.0.1:%d 로 여세요.' % PORT)
-    cli = 'tycho' if shutil.which('tycho') else tilde(os.path.join(APP_DIR, 'bin', 'tycho'))
+    cli = 'epeira' if shutil.which('epeira') else tilde(os.path.join(APP_DIR, 'bin', 'epeira'))
     print('\n대시보드:  %s open' % cli)
     print('명령:     %s doctor | uninstall' % cli)
 
 
 def cmd_open(args):
     if local_status(3) is None:
-        die('수집기가 꺼져 있습니다. tycho doctor 로 확인하세요.')
+        die('수집기가 꺼져 있습니다. epeira doctor 로 확인하세요.')
     webbrowser.open('http://127.0.0.1:%d/' % PORT)
 
 
 def cmd_hooks(action, args):
     agent = args[0] if args else ''
     if agent not in AGENTS:
-        die('사용법: tycho %s claude|codex' % action)
+        die('사용법: epeira %s claude|codex' % action)
     try:
         p = preview(agent, action)
     except ValueError:
@@ -1364,7 +1364,7 @@ def cmd_hooks(action, args):
 
 def cmd_doctor(args):
     st = local_status()
-    lines = ['Tycho doctor',
+    lines = ['Epeira doctor',
              'version     %s (protocol %d)' % (VERSION, PROTOCOL),
              'python      %s (%s)' % (sys.version.split()[0], sys.executable),
              'platform    %s' % platform.platform(),
@@ -1385,7 +1385,7 @@ def cmd_doctor(args):
 
 
 def cmd_uninstall(args):
-    if '--yes' not in args and not confirm('Tycho 를 완전히 삭제할까요? 훅 해제, 자동 실행 해제, %s(기록 포함) 삭제 [y/N] ' % tilde(APP_DIR)):
+    if '--yes' not in args and not confirm('Epeira 를 완전히 삭제할까요? 훅 해제, 자동 실행 해제, %s(기록 포함) 삭제 [y/N] ' % tilde(APP_DIR)):
         return
     for k in AGENTS:
         if hooks_state(k) != 'none':
@@ -1393,7 +1393,7 @@ def cmd_uninstall(args):
     remove_service()
     print('· 자동 실행 해제')
     for d in (os.path.join(HOME, '.local/bin'), os.path.join(HOME, 'bin'), '/opt/homebrew/bin', '/usr/local/bin'):
-        for name in ('tycho', 'agent-orbit'):  # install.sh 가 만든 바로가기만
+        for name in ('epeira', 'tycho', 'agent-orbit'):  # install.sh 가 만든 바로가기만
             link = os.path.join(d, name)
             if os.path.islink(link) and os.readlink(link).startswith(APP_DIR):
                 os.remove(link)

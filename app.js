@@ -1,12 +1,12 @@
 'use strict';
-/* Tycho 대시보드 → 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다.
+/* Epeira 대시보드 → 데이터는 이 브라우저와 내 컴퓨터의 수집기(127.0.0.1) 사이에서만 오간다.
    궤도: 가운데 HUB = 지금 보고 있는 세션, 바깥 노드 = 그 세션이 쓰는 도구(Bash, Read, Edit…), 안쪽 노드 = 서브에이전트 */
 
 // ── 설정 ──
 const LATEST = '1.0.0';          // 이 화면이 기대하는 수집기 버전. 더 낮으면 업데이트 배너
 const MIN_PROTOCOL = 2;
 const PORT = 47777;
-const SITE = 'https://agent-orbit-app.vercel.app';
+const SITE = 'https://epeira.vercel.app';
 const INSTALL_CMD = `curl -fsSL ${SITE}/install.sh | sh`;
 const FEEDBACK_URL = '';         // 피드백 폼 주소. 비어 있으면 링크를 숨긴다
 const params = new URLSearchParams(location.search);
@@ -15,7 +15,7 @@ const API = LOCAL ? '' : /^http:\/\/127\.0\.0\.1:\d+$/.test(params.get('api') ||
 const LOCAL_URL = `http://127.0.0.1:${PORT}`;
 const SAFARI = !LOCAL && /^((?!chrome|chromium|crios|fxios|edg|android).)*safari/i.test(navigator.userAgent);
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const MINI = params.get('view') === 'mini';  // 작은 레이아웃 (Tycho 앱의 궤도 패널)
+const MINI = params.get('view') === 'mini';  // 작은 레이아웃 (Epeira 앱의 궤도 패널)
 const EMBED = !!params.get('embed');          // 앱의 궤도 패널: 요약·상태바는 앱이 그린다
 const IDLE = 120, ORBIT_WINDOW = 1800, SPARK_N = 30;
 const FOLLOW_QUIET = 8;           // 보던 세션이 이만큼(초) 조용해야 다른 세션으로 HUB 를 옮긴다
@@ -83,8 +83,8 @@ const S = {
   summary: new Map(), summarySeq: 0, summaryReady: false, pending: [],
   sess: new Map(),           // 세션(HUB 후보)과 서브에이전트. 각자 쓰는 도구 노드(stations)를 가진다
   focus: null, pinned: false, // HUB 로 보고 있는 세션, 사용자가 고정했는지
-  tabs: new Map(), tab: null, // Tycho 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
-  project: null, projectPath: '', views: new Map(), // Tycho 앱: 지금 프로젝트의 세션만 궤도에. HUB 선택은 프로젝트마다 따로 기억
+  tabs: new Map(), tab: null, // Epeira 앱: 터미널 탭 → 세션, 지금 보고 있는 탭
+  project: null, projectPath: '', views: new Map(), // Epeira 앱: 지금 프로젝트의 세션만 궤도에. HUB 선택은 프로젝트마다 따로 기억
   names: new Map(),          // 사용자가 직접 붙인 세션 이름 (수집기에 저장)
   hubRect: null,             // 캔버스 위 HUB 위치 (더블클릭으로 이름 바꾸기)
   links: [],                 // 방금 끝난 실행: HUB(또는 서브에이전트) → 도구 노드로 쏘는 선
@@ -244,7 +244,7 @@ function onMessage(e) {
   onEvent(e);
 }
 
-// Tycho 앱이 지금 보고 있는 터미널 탭을 알려준다 → 그 탭의 세션을 HUB 로 고정
+// Epeira 앱이 지금 보고 있는 터미널 탭을 알려준다 → 그 탭의 세션을 HUB 로 고정
 function focusTab(tab) {
   S.tab = tab || null;
   const id = S.tab && S.tabs.get(S.tab);
@@ -264,7 +264,7 @@ const inPath = (cwd, dir) => cwd === dir || cwd.startsWith(dir.endsWith('/') ? d
 // 앱의 궤도 패널(EMBED)은 고른 프로젝트가 없으면 아무것도 보이지 않는다 (프로젝트를 빼거나 닫으면 궤도도 사라지게)
 const inProject = s => (S.project ? !!s && (S.tabs.get(S.tab) === s.id || (s.cwd && S.projectPath ? inPath(s.cwd, S.projectPath) : s.label === S.project)) : !EMBED);
 
-// Tycho 앱에서 탭(터미널)을 닫은 세션은 궤도에서 뺀다. 닫은 뒤에 다시 움직이면(다른 곳에서 이어 열면) 돌아온다
+// Epeira 앱에서 탭(터미널)을 닫은 세션은 궤도에서 뺀다. 닫은 뒤에 다시 움직이면(다른 곳에서 이어 열면) 돌아온다
 const forgot = (() => { try { return new Map(Object.entries(JSON.parse(store.get('forgot') || '{}'))); } catch { return new Map(); } })();
 const forgotten = (id, ts) => forgot.has(id) && (ts || 0) <= forgot.get(id);
 function forget(id) {
@@ -614,7 +614,7 @@ function renderOnboard() {
     st === 'denied' ? [h('p', {class: 'warn'}, '이 사이트의 로컬 접근이 차단되어 있어요.'),
       h('p', {}, '주소창 왼쪽 아이콘 → 사이트 설정에서 "이 기기의 앱"(로컬 네트워크 액세스)을 허용으로 바꾼 뒤 다시 확인하세요.'), h('div', {class: 'actions'}, check)] :
     st === 'stopped' ? [h('p', {class: 'warn'}, '수집기가 꺼져 있어요.'),
-      h('p', {}, '터미널에서 tycho doctor 로 상태를 확인하거나, 설치 명령을 다시 실행하세요.'), h('div', {class: 'actions'}, check)] :
+      h('p', {}, '터미널에서 epeira doctor 로 상태를 확인하거나, 설치 명령을 다시 실행하세요.'), h('div', {class: 'actions'}, check)] :
     st === 'notfound' ? [h('p', {class: 'warn'}, '수집기를 찾지 못했어요.'), h('p', {}, '설치 명령이 끝까지 실행됐는지 확인하고 다시 눌러 주세요.'), h('div', {class: 'actions'}, check)] :
     [h('p', {}, '설치가 끝나면 아래 버튼을 누르세요. 브라우저가 "이 기기의 앱 및 서비스 액세스"를 물으면 허용을 눌러 주세요.'), h('div', {class: 'actions'}, check)];
   box.classList.toggle('single', !!live);
@@ -641,7 +641,7 @@ function agentCard(key) {
       chip = untrusted ? h('span', {class: 'chip warn'}, '승인 필요') : h('span', {class: 'chip ok'}, '연결됨');
       desc = untrusted ? 'Codex가 이 훅을 실행하려면 승인이 필요해요.' : '도구를 실행하는 순간 궤도에 나타나요.';
       if (untrusted) acts.push(h('button', {class: 'btn small primary', type: 'button', onclick: () => openAction(key, 'trust')}, '승인'));
-      if (st.notify === false) acts.push(h('button', {class: 'btn small', type: 'button', title: '권한 승인 · 입력을 기다릴 때 Tycho 앱이 알려 줘요', onclick: () => openAction(key, 'connect')}, '알림 켜기'));
+      if (st.notify === false) acts.push(h('button', {class: 'btn small', type: 'button', title: '권한 승인 · 입력을 기다릴 때 Epeira 앱이 알려 줘요', onclick: () => openAction(key, 'connect')}, '알림 켜기'));
       acts.push(h('button', {class: 'btn small', type: 'button', onclick: () => openAction(key, 'disconnect')}, '연결 해제'));
     } else {
       chip = h('span', {class: st.legacy ? 'chip warn' : 'chip'}, st.legacy ? '업데이트 필요' : '연결 안 됨');
@@ -662,7 +662,7 @@ function renderAgents() {
 }
 
 function renderFooter() {
-  const st = S.status, kids = [h('span', {class: 'grow'}, 'Tycho')];
+  const st = S.status, kids = [h('span', {class: 'grow'}, 'Epeira')];
   const toggle = (label, on, flip) => {
     const sw = h('button', {class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(on)}, h('i'), label);
     sw.onclick = async () => { try { await flip(); renderFooter(); } catch { toast('설정을 바꾸지 못했어요'); } };
@@ -702,8 +702,8 @@ async function openAction(agent, action) {
   if (p.error) return toast(p.error);
   const name = AGENTS[agent].name;
   const intro = {
-    connect: `아래 파일에 Tycho 훅이 추가돼요. ${name}가 도구를 실행할 때마다 이 컴퓨터의 수집기(127.0.0.1:${(S.status && S.status.port) || PORT})로만 신호를 보내요.`,
-    disconnect: '추가했던 Tycho 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.',
+    connect: `아래 파일에 Epeira 훅이 추가돼요. ${name}가 도구를 실행할 때마다 이 컴퓨터의 수집기(127.0.0.1:${(S.status && S.status.port) || PORT})로만 신호를 보내요.`,
+    disconnect: '추가했던 Epeira 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.',
     trust: 'Codex는 새 훅을 승인해야 실행해요. 아래 명령을 승인합니다 → Codex의 /hooks 화면에서 승인하는 것과 같아요.',
   }[action];
   const body = [h('p', {}, intro)];
@@ -813,10 +813,10 @@ async function openDrawer(id, st) {  // st: 도구 노드를 눌렀을 때 그 �
   const close = h('button', {class: 'btn small', type: 'button', 'aria-label': '닫기'}, '닫기');
   const ren = h('button', {class: 'btn small', type: 'button', onclick: () => renameSession(id)}, '이름 바꾸기');
   const title = h('h2', {}, (x.parent ? '↳ ' : '') + nameOf(id, x.label) + (st ? ` · ${st.startsWith('mcp:') ? 'MCP ' + st.slice(4) : st}` : ''));
-  // Tycho 앱의 궤도 패널: 다른 터미널에서 시작한 세션도 앱 탭으로 이어서 열기 (앱이 콘솔 메시지로 받는다)
+  // Epeira 앱의 궤도 패널: 다른 터미널에서 시작한 세션도 앱 탭으로 이어서 열기 (앱이 콘솔 메시지로 받는다)
   const inTab = [...S.tabs.values()].includes(id), cwd = x.cwd || (s0 && s0.cwd) || '';
   const toApp = EMBED && !x.parent && h('button', {class: 'btn small primary', type: 'button',
-    onclick: () => console.info(inTab ? 'tycho:focus' : 'tycho:open', JSON.stringify({id, agent: x.agent, cwd, last: x.last}))}, inTab ? '이 탭으로 가기' : '탭으로 열기');
+    onclick: () => console.info(inTab ? 'epeira:focus' : 'epeira:open', JSON.stringify({id, agent: x.agent, cwd, last: x.last}))}, inTab ? '이 탭으로 가기' : '탭으로 열기');
   S.drawer = {id, list, prev, title, label: x.label, parent: x.parent, st};
   close.onclick = closeDrawer;
   d.replaceChildren(
@@ -1091,7 +1091,7 @@ function drawCard(n, t, title, sub, o) {  // 노드 카드: 도구 노드와 서
   ctx.restore();
 }
 
-// 배터리: Tycho 앱이 뒤에 있으면(앱이 알려 준다) 초당 8번만 그린다. 브라우저 탭이 숨으면 브라우저가 알아서 멈춘다
+// 배터리: Epeira 앱이 뒤에 있으면(앱이 알려 준다) 초당 8번만 그린다. 브라우저 탭이 숨으면 브라우저가 알아서 멈춘다
 let slow = false;
 window.aoSetActive = on => { slow = !on; };
 function frame() {

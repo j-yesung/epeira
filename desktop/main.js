@@ -1,4 +1,4 @@
-// Tycho 앱 → 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
+// Epeira 앱 → 왼쪽 프로젝트, 가운데 터미널 탭(실제 셸), 오른쪽 궤도(로컬 수집기 대시보드)
 const {app, BrowserWindow, Menu, ipcMain, dialog, shell, Notification, nativeTheme, screen, clipboard, session} = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -18,12 +18,13 @@ const ORBIT = process.env.AGENT_ORBIT_URL || `http://127.0.0.1:${savedPort()}`; 
 const BUNDLE = app.isPackaged ? path.join(process.resourcesPath, 'collector') : path.join(__dirname, '..');  // 앱에 들어 있는 수집기 (개발 중엔 저장소)
 const terms = new Map();  // 탭 id → pty
 let win, seq = 0, quitting = false;
-const TEST = process.env.TYCHO_TEST === '1';  // 자동 테스트: 창을 띄우지 않는다 (사용자 화면을 가리지 않게)
+const TEST = process.env.EPEIRA_TEST === '1';  // 자동 테스트: 창을 띄우지 않는다 (사용자 화면을 가리지 않게)
 
-app.setName('Tycho');
-{  // 이름이 Agent Orbit 이던 때의 앱 데이터(프로젝트 목록 · 패널 폭)를 처음 한 번 옮긴다
-  const oldData = path.join(app.getPath('appData'), 'Agent Orbit'), newData = path.join(app.getPath('appData'), 'Tycho');
-  if (!fs.existsSync(newData) && fs.existsSync(oldData)) try { fs.cpSync(oldData, newData, {recursive: true}); } catch { /* 새로 시작 */ }
+app.setName('Epeira');
+{  // 이름이 Tycho · Agent Orbit 이던 때의 앱 데이터(프로젝트 목록 · 탭 · 설정)를 처음 한 번 옮긴다
+  const newData = path.join(app.getPath('appData'), 'Epeira');
+  const oldData = ['Tycho', 'Agent Orbit'].map(n => path.join(app.getPath('appData'), n)).find(d => fs.existsSync(d));
+  if (!fs.existsSync(newData) && oldData) try { fs.cpSync(oldData, newData, {recursive: true}); } catch { /* 새로 시작 */ }
 }
 
 // ── 앱 설정 (창 위치 · 테마) → 앱 데이터 폴더의 JSON 하나 ──
@@ -222,9 +223,9 @@ function gitInfo(dir) {
 }
 ipcMain.handle('git:info', async (_, dirs) => Object.fromEntries(await Promise.all((dirs || []).filter(d => typeof d === 'string').slice(0, 50).map(async d => [d, await gitInfo(d)]))));
 
-// 문제 해결: 진단 정보(tycho doctor) · 수집기 다시 설치
+// 문제 해결: 진단 정보(epeira doctor) · 수집기 다시 설치
 ipcMain.handle('collector:doctor', async () => {
-  const bin = path.join(HOME_APP, 'bin', 'tycho');
+  const bin = path.join(HOME_APP, 'bin', 'epeira');
   if (!fs.existsSync(bin)) return '수집기가 설치되어 있지 않아요.';
   const env = {...process.env, PATH: await userPath()};
   return new Promise(resolve => execFile(bin, ['doctor'], {env, timeout: 30000}, (err, out, errOut) => resolve(`${out}${errOut}`.trim() || String(err))));
@@ -237,9 +238,9 @@ ipcMain.handle('collector:reinstall', async () => {
 
 // 새 버전: 하루 한 번 사이트의 app-version.json 을 확인하고, 누르면 GitHub Releases 의 DMG 를 받아 바꾼다
 // 관리자가 릴리스할 때 비밀 키(저장소 밖)로 DMG 에 서명하고 앱엔 공개 키만 → 사이트나 내려받는 길이 털려도 우리가 서명하지 않은 파일은 설치하지 않는다
-const SITE = process.env.TYCHO_UPDATE_BASE || 'https://agent-orbit-app.vercel.app';
-const RELEASES = process.env.TYCHO_UPDATE_BASE || 'https://github.com/j-yesung/agent-orbit/releases/download';
-const UPDATE_KEY = crypto.createPublicKey({key: Buffer.from((TEST && process.env.TYCHO_UPDATE_KEY) || 'MCowBQYDK2VwAyEAWnNiV7VZ9Ba/TOrzn4zJ3AR1WUQXLw2nvZujRttGay8=', 'base64'), format: 'der', type: 'spki'});
+const SITE = process.env.EPEIRA_UPDATE_BASE || 'https://epeira.vercel.app';
+const RELEASES = process.env.EPEIRA_UPDATE_BASE || 'https://github.com/j-yesung/epeira/releases/download';
+const UPDATE_KEY = crypto.createPublicKey({key: Buffer.from((TEST && process.env.EPEIRA_UPDATE_KEY) || 'MCowBQYDK2VwAyEAWnNiV7VZ9Ba/TOrzn4zJ3AR1WUQXLw2nvZujRttGay8=', 'base64'), format: 'der', type: 'spki'});
 function latestApp() {
   return new Promise(resolve => {
     const req = (SITE.startsWith('https:') ? https : http).get(`${SITE}/app-version.json`, {timeout: 8000}, res => {
@@ -267,15 +268,15 @@ async function download(url, file) {
   await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(file));
 }
 async function stageUpdate(version) {  // 받기 → 서명 확인 → DMG 에서 앱 꺼내기 → 안의 버전 확인 (지금 앱은 아직 그대로)
-  const name = `Tycho-${version}${process.arch === 'arm64' ? '-arm64' : ''}.dmg`;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tycho-update-'));
-  const dmg = path.join(dir, name), mnt = path.join(dir, 'mnt'), next = path.join(dir, 'Tycho.app');
+  const name = `Epeira-${version}${process.arch === 'arm64' ? '-arm64' : ''}.dmg`;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'epeira-update-'));
+  const dmg = path.join(dir, name), mnt = path.join(dir, 'mnt'), next = path.join(dir, 'Epeira.app');
   try {
     await download(`${RELEASES}/v${version}/${name}`, dmg);
     await download(`${RELEASES}/v${version}/${name}.sig`, `${dmg}.sig`);
     if (!crypto.verify(null, fs.readFileSync(dmg), UPDATE_KEY, Buffer.from(fs.readFileSync(`${dmg}.sig`, 'utf8').trim(), 'base64'))) throw new Error('서명이 맞지 않아요');
     await run('hdiutil', ['attach', dmg, '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mnt]);
-    try { await run('ditto', [path.join(mnt, 'Tycho.app'), next]); } finally { await run('hdiutil', ['detach', mnt, '-force']).catch(() => {}); }
+    try { await run('ditto', [path.join(mnt, 'Epeira.app'), next]); } finally { await run('hdiutil', ['detach', mnt, '-force']).catch(() => {}); }
     const inner = await run('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', path.join(next, 'Contents/Info.plist')]);
     if (inner !== version) throw new Error(`받은 앱이 ${inner} 버전이에요`);  // 예전 버전 DMG 를 새 버전이라고 내미는 것 막기
   } catch (e) { fs.rmSync(dir, {recursive: true, force: true}); throw e; }
@@ -287,12 +288,12 @@ const SWAP = 'while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; old="$(dirname
 let staged = null, installing = null;
 async function installUpdate(version) {
   if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version) || !newer(version, app.getVersion())) return {ok: false};
-  const target = path.resolve(app.getPath('exe'), '../../..');  // …/Tycho.app
+  const target = path.resolve(app.getPath('exe'), '../../..');  // …/Epeira.app
   const canSwap = app.isPackaged && target.endsWith('.app') && !/^\/Volumes\/|\/AppTranslocation\//.test(target) && (() => { try { fs.accessSync(path.dirname(target), fs.constants.W_OK); return true; } catch { return false; } })();
   if (!canSwap && !TEST) return {ok: false, manual: true};  // DMG 안에서 켰거나 응용 프로그램 폴더에 쓸 수 없으면 직접 받기
   try { if (!staged || staged.version !== version) staged = await stageUpdate(version); } catch (e) { return {ok: false, manual: true, error: e.message}; }
   const {response} = await dialog.showMessageBox(win, {type: 'info', buttons: ['다시 시작', '나중에'], defaultId: 0, cancelId: 1,
-    message: `Tycho ${version} 을(를) 설치할 준비가 됐어요`, detail: '다시 시작하면 새 버전으로 바뀌어요. 탭과 Claude · Codex 대화는 다시 열어요.'});
+    message: `Epeira ${version} 을(를) 설치할 준비가 됐어요`, detail: '다시 시작하면 새 버전으로 바뀌어요. 탭과 Claude · Codex 대화는 다시 열어요.'});
   if (response !== 0 || !canSwap || !confirmQuit()) return {ok: true, later: true};  // 테스트(개발 앱)는 바꾸지 않는다
   spawn('/bin/sh', ['-c', SWAP, 'sh', String(process.pid), staged.app, target, staged.dmg], {detached: true, stdio: 'ignore'}).unref();
   quitting = true;
@@ -318,8 +319,8 @@ const newer = (a, b) => { const x = a.split('.').map(Number), y = String(b).spli
 function userPath() {  // Finder 에서 켠 앱은 PATH 가 짧다 → 로그인 셸의 PATH 를 받아 수집기에 넘긴다 (python3 · codex 를 찾게)
   return new Promise(resolve => {
     const sh = process.env.SHELL || os.userInfo().shell || '/bin/zsh';
-    execFile(sh, ['-ilc', 'printf "__TYCHO__%s__TYCHO__" "$PATH"'], {timeout: 8000}, (err, out) => {
-      const m = /__TYCHO__(.*)__TYCHO__/.exec(out || '');
+    execFile(sh, ['-ilc', 'printf "__EPEIRA__%s__EPEIRA__" "$PATH"'], {timeout: 8000}, (err, out) => {
+      const m = /__EPEIRA__(.*)__EPEIRA__/.exec(out || '');
       resolve(m ? m[1] : process.env.PATH);
     }).stdin.end();  // 셸 설정이 무언가를 물어도 기다리지 않게
   });
@@ -416,7 +417,7 @@ function createWindow() {
   const c = conf(), b = c.bounds;
   const onScreen = b && screen.getAllDisplays().some(({workArea: a}) => b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y);
   win = new BrowserWindow({
-    ...(onScreen ? b : {width: 1480, height: 920}), minWidth: 980, minHeight: 600, title: 'Tycho', show: !TEST,
+    ...(onScreen ? b : {width: 1480, height: 920}), minWidth: 980, minHeight: 600, title: 'Epeira', show: !TEST,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0a0a' : '#f6f6f6',
     // 신호등 버튼(높이 16) 가운데를 상단 바(52px)의 가운데 26px 에 맞춘다 → style.css 의 .side-top 과 짝
     titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 16, y: 18}, icon: path.join(__dirname, 'assets/icon.png'),

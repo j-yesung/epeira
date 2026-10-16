@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tycho</title>
+<title>Epeira</title>
 <meta name="description" content="내 컴퓨터의 Claude Code · Codex 세션을 실시간 궤도로 보여주는 대시보드. 데이터는 내 컴퓨터 밖으로 나가지 않습니다.">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a0a0a'/%3E%3Cellipse cx='16' cy='16' rx='12' ry='7' fill='none' stroke='%233b9eff' stroke-width='2'/%3E%3Crect x='11' y='11' width='10' height='10' rx='3' fill='%233b9eff'/%3E%3C/svg%3E">
@@ -203,7 +203,7 @@ footer .grow { margin-right: auto; }
 .toast { position: fixed; bottom: 24px; left: 50%; z-index: 40; max-width: min(560px, calc(100vw - 32px)); padding: 10px 16px; border: 1px solid var(--line-2); border-radius: 10px; background: #1c1c1c; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); opacity: 0; transform: translate(-50%, 6px); transition: opacity .2s, transform .2s; pointer-events: none; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* 작은 레이아웃 (?view=mini · Tycho 앱의 궤도 패널): 궤도가 남는 높이를 채우고 핵심만 */
+/* 작은 레이아웃 (?view=mini · Epeira 앱의 궤도 패널): 궤도가 남는 높이를 채우고 핵심만 */
 body.mini .seg, body.mini #banners, body.mini #onboard, body.mini #agents-panel, body.mini #sessions-panel,
 body.mini .privacy, body.mini footer, body.mini .panels .panel:nth-child(2),
 body.mini #feed li:nth-child(n+4) { display: none !important; }
@@ -243,7 +243,7 @@ body.embed .top, body.mini .cards, body.mini #refresh { display: none; }
   <div class="wrap">
     <div class="brand">
       <svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="16" rx="13" ry="7.5" fill="none" stroke="#3b9eff" stroke-width="2"/><rect x="11" y="11" width="10" height="10" rx="3" fill="#3b9eff"/></svg>
-      <span>Tycho</span>
+      <span>Epeira</span>
     </div>
     <nav class="seg" role="tablist" aria-label="기간">
       <button role="tab" data-range="today" aria-selected="true">오늘</button>
@@ -283,11 +283,11 @@ body.embed .top, body.mini .cards, body.mini #refresh { display: none; }
         <li>로그인 시 자동 실행 → macOS <code>~/Library/LaunchAgents/dev.agentorbit.collector.plist</code>, Linux <code>~/.config/systemd/user/agent-orbit.service</code></li>
         <li>Claude Code 연결 시 → <code>~/.claude/settings.json</code>의 hooks 항목 4개: 세션 시작, 도구 실행 전·후·실패 (최초 원본은 <code>settings.json.orbit-bak</code>)</li>
         <li>Codex 연결 시 → <code>~/.codex/hooks.json</code>의 hooks 항목 3개: 세션 시작, 도구 실행 전·후. 그리고 <code>~/.codex/config.toml</code>의 승인 기록</li>
-        <li>Codex 사용 한도는 Codex 공식 app-server(<code>codex app-server</code>)로 5분마다 읽습니다. Codex 가 자기 로그인으로 OpenAI 에 묻는 것이라 Tycho 는 로그인 정보를 보지 않습니다.</li>
-        <li>Tycho 앱은 새 버전이 있는지 하루 한 번 이 사이트의 <code>app-version.json</code>(버전 번호만)을 확인합니다.</li>
+        <li>Codex 사용 한도는 Codex 공식 app-server(<code>codex app-server</code>)로 5분마다 읽습니다. Codex 가 자기 로그인으로 OpenAI 에 묻는 것이라 Epeira 는 로그인 정보를 보지 않습니다.</li>
+        <li>Epeira 앱은 새 버전이 있는지 하루 한 번 이 사이트의 <code>app-version.json</code>(버전 번호만)을 확인합니다.</li>
         <li>"Claude 사용 한도 보기"를 켜면(기본은 꺼짐) 수집기가 Claude Code 로그인 정보(macOS 키체인 또는 <code>~/.claude/.credentials.json</code>)를 읽어 Anthropic(<code>api.anthropic.com</code>)에서 5시간 · 주간 한도를 5분마다 가져옵니다. 로그인 정보는 Anthropic 으로만 보내고 저장하지 않으며, 비용이나 한도 차감은 없습니다.</li>
       </ul>
-      <p>모두 지우기: 터미널에서 <code>tycho uninstall</code> → 훅, 자동 실행, 설치 파일, 기록을 한 번에 지웁니다. 연결 해제만 하려면 위 에이전트 카드의 해제 버튼을 쓰세요.</p>
+      <p>모두 지우기: 터미널에서 <code>epeira uninstall</code> → 훅, 자동 실행, 설치 파일, 기록을 한 번에 지웁니다. 연결 해제만 하려면 위 에이전트 카드의 해제 버튼을 쓰세요.</p>
     </div>
   </details>
 </main>

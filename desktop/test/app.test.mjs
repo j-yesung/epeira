@@ -14,20 +14,20 @@ import {execFileSync} from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const APP_DIR = fileURLToPath(new URL('..', import.meta.url));
-const tmp = mkdtempSync(path.join(tmpdir(), 'tycho-test-'));
+const tmp = mkdtempSync(path.join(tmpdir(), 'epeira-test-'));
 const data = path.join(tmp, 'data'), alpha = path.join(tmp, 'alpha'), beta = path.join(tmp, 'beta');
 for (const d of [data, alpha, beta]) mkdirSync(d);
 execFileSync('git', ['init', '-q', beta]);  // beta 는 git 저장소 (사이드바 브랜치 표시)
 writeFileSync(path.join(data, 'projects.json'), JSON.stringify([{path: alpha, name: 'alpha'}, {path: beta, name: 'beta'}]));
 
-// 릴리스 서버 흉내: 시험용 키로 서명한 DMG 를 준다 (앱에 든 공개 키는 TYCHO_TEST 일 때만 바꿀 수 있다)
+// 릴리스 서버 흉내: 시험용 키로 서명한 DMG 를 준다 (앱에 든 공개 키는 EPEIRA_TEST 일 때만 바꿀 수 있다)
 const testKey = generateKeyPairSync('ed25519'), releases = new Map();
 const updates = createServer((req, res) => { const f = releases.get(req.url); res.writeHead(f ? 200 : 404); res.end(f); });
 await new Promise(r => updates.listen(0, '127.0.0.1', r));
 
 const launch = () => electron.launch({executablePath: require('electron'), args: [APP_DIR, `--user-data-dir=${data}`],
-  env: {...process.env, AGENT_ORBIT_URL: 'http://127.0.0.1:9', TYCHO_TEST: '1', TMPDIR: tmp,  // 수집기 없음 → 실제 설치를 건드리지 않음, 창은 숨김, 받은 업데이트도 임시 폴더에
-    TYCHO_UPDATE_BASE: `http://127.0.0.1:${updates.address().port}`, TYCHO_UPDATE_KEY: testKey.publicKey.export({type: 'spki', format: 'der'}).toString('base64')}});
+  env: {...process.env, AGENT_ORBIT_URL: 'http://127.0.0.1:9', EPEIRA_TEST: '1', TMPDIR: tmp,  // 수집기 없음 → 실제 설치를 건드리지 않음, 창은 숨김, 받은 업데이트도 임시 폴더에
+    EPEIRA_UPDATE_BASE: `http://127.0.0.1:${updates.address().port}`, EPEIRA_UPDATE_KEY: testKey.publicKey.export({type: 'spki', format: 'der'}).toString('base64')}});
 const until = async (page, fn, arg) => page.waitForFunction(fn, arg, {timeout: 8000});
 const labels = page => page.$$eval('.tab-main span:not(.k)', els => els.map(e => e.textContent));
 const send = (app, e) => app.evaluate(({BrowserWindow}, ev) => BrowserWindow.getAllWindows()[0].webContents.send('orbit:event', ev), e);
@@ -103,8 +103,8 @@ test('수집기 이벤트로 탭 상태 표시: 일하는 중 → 승인 대기 
 });
 
 test('터미널 찾기 (⌘F)', async () => {
-  await page.evaluate(() => { tab(S.active).term.write('\r\nhello tycho search\r\n'); openFind(); });
-  await page.fill('#find-q', 'tycho search');
+  await page.evaluate(() => { tab(S.active).term.write('\r\nhello epeira search\r\n'); openFind(); });
+  await page.fill('#find-q', 'epeira search');
   await until(page, () => /\d+\/\d+/.test(document.getElementById('find-n').textContent));
   await page.keyboard.press('Escape');
   assert.equal(await page.evaluate(() => document.getElementById('find').hidden), true);
@@ -142,7 +142,7 @@ test('다시 켜면 프로젝트별 탭과 마지막 프로젝트가 돌아온�
 });
 
 test('궤도 패널의 "이 탭으로 가기"로 그 탭을 연다', async () => {
-  await page.evaluate(() => document.getElementById('orbit-view').dispatchEvent(Object.assign(new Event('console-message'), {message: 'tycho:focus {"id":"sess-x"}'})));
+  await page.evaluate(() => document.getElementById('orbit-view').dispatchEvent(Object.assign(new Event('console-message'), {message: 'epeira:focus {"id":"sess-x"}'})));
   assert.equal(await page.evaluate(() => S.current === S.projects[0].path && tab(S.active).sid), 'sess-x');
 });
 
@@ -258,12 +258,12 @@ test('놓친 알림은 종 아이콘에 모인다', async () => {
 });
 
 test('업데이트: 우리 서명이 맞고 안의 버전도 맞는 DMG 만 받아 둔다', async () => {
-  const contents = path.join(tmp, 'pkg/Tycho.app/Contents'), dmgFile = path.join(tmp, 'u.dmg');
+  const contents = path.join(tmp, 'pkg/Epeira.app/Contents'), dmgFile = path.join(tmp, 'u.dmg');
   mkdirSync(contents, {recursive: true});
   writeFileSync(path.join(contents, 'Info.plist'), '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>9.9.9</string></dict></plist>');
-  execFileSync('hdiutil', ['create', '-quiet', '-srcfolder', path.join(tmp, 'pkg'), '-volname', 'Tycho', '-format', 'UDZO', dmgFile]);
+  execFileSync('hdiutil', ['create', '-quiet', '-srcfolder', path.join(tmp, 'pkg'), '-volname', 'Epeira', '-format', 'UDZO', dmgFile]);
   const dmg = readFileSync(dmgFile), arch = process.arch === 'arm64' ? '-arm64' : '';
-  const put = (v, sig) => { releases.set(`/v${v}/Tycho-${v}${arch}.dmg`, dmg); releases.set(`/v${v}/Tycho-${v}${arch}.dmg.sig`, sig.toString('base64')); };
+  const put = (v, sig) => { releases.set(`/v${v}/Epeira-${v}${arch}.dmg`, dmg); releases.set(`/v${v}/Epeira-${v}${arch}.dmg.sig`, sig.toString('base64')); };
   put('9.9.9', sign(null, dmg, testKey.privateKey));
   put('9.9.8', sign(null, Buffer.from('다른 파일'), testKey.privateKey));  // 다른 파일의 서명
   put('9.9.7', sign(null, dmg, testKey.privateKey));  // 서명은 맞지만 안의 앱은 9.9.9 → 예전 DMG 를 새 버전이라 내미는 경우

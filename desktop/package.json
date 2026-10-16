@@ -1,6 +1,6 @@
 {
-  "name": "tycho-app",
-  "productName": "Tycho",
+  "name": "epeira-app",
+  "productName": "Epeira",
   "version": "1.0.0",
   "private": true,
   "description": "프로젝트 사이드바 + 에이전트 터미널 + 궤도 시각화",
@@ -30,9 +30,9 @@
     "playwright-core": "^1.64.1"
   },
   "build": {
-    "appId": "dev.tycho.app",
-    "productName": "Tycho",
-    "copyright": "Tycho",
+    "appId": "dev.epeira.app",
+    "productName": "Epeira",
+    "copyright": "Epeira",
     "directories": {
       "output": "dist"
     },
@@ -82,11 +82,11 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "extendInfo": {
-        "NSHumanReadableCopyright": "Tycho"
+        "NSHumanReadableCopyright": "Epeira"
       }
     },
     "dmg": {
-      "title": "Tycho",
+      "title": "Epeira",
       "contents": [
         {
           "x": 140,

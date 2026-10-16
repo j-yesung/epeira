@@ -256,12 +256,12 @@ def test_notify_cwd_and_extra_hook():  # 권한 · 입력 대기 알림, 시작 
 def test_title_and_search():  # 첫 질문이 세션 제목, 기록 검색은 최근 것부터
     now = time.time()
     evs = [{'id': 'sx', 'parent': None, 'agent': 'claude', 'label': 'p', 'cwd': '/w/p', 'kind': k, 'text': t, 'ts': now + i}
-           for i, (k, t) in enumerate([('you', '로그인 버그 고쳐줘'), ('run', 'Bash make tycho-xyz'), ('you', '테스트도 추가해줘')])]
+           for i, (k, t) in enumerate([('you', '로그인 버그 고쳐줘'), ('run', 'Bash make epeira-xyz'), ('you', '테스트도 추가해줘')])]
     assert ao.summarize(evs)[0]['title'] == '로그인 버그 고쳐줘'
     for e in evs:
         ao.store_append(e)
-    r = ao.search('TYCHO-XYZ')
-    assert [x['text'] for x in r] == ['Bash make tycho-xyz'] and r[0]['cwd'] == '/w/p', r
+    r = ao.search('EPEIRA-XYZ')
+    assert [x['text'] for x in r] == ['Bash make epeira-xyz'] and r[0]['cwd'] == '/w/p', r
     assert ao.search('x') == [], '두 글자 이상'
 
 

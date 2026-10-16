@@ -29,8 +29,8 @@ async function chooseTheme(v) { themePref = await api.setTheme(v); applyTheme();
 const LOGO = {claude: 'assets/claude.svg', codex: 'assets/codex.svg'};  // Codex 는 중립 마크 (OpenAI 공식 로고 파일을 받으면 교체)
 const kindIcon = kind => h('span', {class: 'k'}, LOGO[kind] ? h('img', {src: LOGO[kind], alt: ''}) : '›');
 const fmtK = x => x >= 1e6 ? (x / 1e6).toFixed(1) + 'M' : x >= 1e3 ? (x / 1e3).toFixed(1) + 'k' : String(Math.round(x || 0));
-// 터미널 단축키 기호 글꼴(Tycho Keys)을 먼저 불러 둔다 → GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
-const fontsReady = document.fonts.load('13px "Tycho Keys"', '⌘⌥⇧⏎↑').catch(() => {});
+// 터미널 단축키 기호 글꼴(Epeira Keys)을 먼저 불러 둔다 → GPU 렌더러는 글꼴이 준비된 뒤 그려야 그 글꼴을 쓴다
+const fontsReady = document.fonts.load('13px "Epeira Keys"', '⌘⌥⇧⏎↑').catch(() => {});
 
 const S = {projects: [], current: null, tabs: [], active: null, last: {}, layout: {}, zoom: {}, sessions: [], names: {}, git: {}, update: null, inbox: [], settingsTab: 'agents',
   collector: null, usage: null, orbitReady: false, restoring: false, renaming: false, pop: null};
@@ -177,7 +177,7 @@ async function openTab(dir, kind = 'shell', opts = {}) {
   const el = h('div', {class: 'term'});
   $('terms').append(el);
   // 한글: D2Coding 이 있으면 그것, 없으면 macOS 기본 한글 글꼴 → 지정하지 않으면 대체 글꼴 때문에 글자 사이가 벌어진다
-  const term = new Terminal({fontFamily: '"Tycho Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: prefs.fontSize, lineHeight: 1.2, cursorBlink: true,
+  const term = new Terminal({fontFamily: '"Epeira Keys", "SF Mono", Menlo, D2Coding, "Apple SD Gothic Neo", monospace', fontSize: prefs.fontSize, lineHeight: 1.2, cursorBlink: true,
     scrollback: 10000, macOptionIsMeta: prefs.optionMeta, allowProposedApi: true, theme: termTheme()});
   const fit = new FitAddon.FitAddon(), search = new SearchAddon.SearchAddon();
   term.loadAddon(fit);
@@ -282,10 +282,10 @@ function renderTabs() {
       kindIcon(t.kind), h('span', {}, label), state ? h('i', {class: `st ${state}`, title: STATE[state], 'aria-label': STATE[state]}) : null, i < 9 ? h('kbd', {}, `⌘${i + 1}`) : null);
     const pane = t.id !== S.active && !t.el.hidden;  // 나눈 화면의 다른 칸에 보이는 탭
     const div = h('div', {class: `tab${t.id === S.active ? ' on' : ''}${pane ? ' pane' : ''}${t.exited ? ' dead' : ''}`, title: `${t.dir}\n두 번 눌러 이름 바꾸기 · 끌어서 순서 바꾸기`, draggable: 'true',
-      ondragstart: e => { e.dataTransfer.setData('text/tycho-tab', t.id); e.dataTransfer.effectAllowed = 'move'; },
-      ondragover: e => { if (e.dataTransfer.types.includes('text/tycho-tab')) { e.preventDefault(); div.classList.add('drop'); } },
+      ondragstart: e => { e.dataTransfer.setData('text/epeira-tab', t.id); e.dataTransfer.effectAllowed = 'move'; },
+      ondragover: e => { if (e.dataTransfer.types.includes('text/epeira-tab')) { e.preventDefault(); div.classList.add('drop'); } },
       ondragleave: () => div.classList.remove('drop'),
-      ondrop: e => { e.preventDefault(); div.classList.remove('drop'); moveTab(e.dataTransfer.getData('text/tycho-tab'), t.id); }}, main,
+      ondrop: e => { e.preventDefault(); div.classList.remove('drop'); moveTab(e.dataTransfer.getData('text/epeira-tab'), t.id); }}, main,
       h('button', {class: 'tab-x', type: 'button', title: '탭 닫기 (⌘W)', 'aria-label': `${label} 탭 닫기`, onclick: () => closeTab(t.id)}, '×'));
     return div;
   }));
@@ -625,7 +625,7 @@ sideEl.addEventListener('drop', async e => {
 });
 $('terms').addEventListener('drop', e => {
   e.preventDefault();
-  const dragged = e.dataTransfer.getData('text/tycho-tab');
+  const dragged = e.dataTransfer.getData('text/epeira-tab');
   if (dragged) return dropTabOnPane(dragged, e.clientX, e.clientY);
   const t = tab(S.active), paths = dropped(e);
   if (t && paths.length) { t.term.paste(paths.map(shq).join(' ') + ' '); t.term.focus(); }
@@ -637,7 +637,7 @@ const tellActive = () => S.orbitReady && view.executeJavaScript(`window.aoSetAct
 view.addEventListener('dom-ready', () => { S.orbitReady = true; tellOrbit(); tellActive(); });
 addEventListener('blur', () => setTimeout(tellActive, 50));  // 앱이 뒤로 가면 궤도 애니메이션을 초당 8번으로 (배터리)
 view.addEventListener('console-message', async e => {  // 궤도 패널의 "탭으로 열기 · 이 탭으로 가기" (대시보드가 콘솔로 알려 준다)
-  const m = /^tycho:(open|focus) (\{.*\})$/.exec(e.message || '');
+  const m = /^epeira:(open|focus) (\{.*\})$/.exec(e.message || '');
   if (!m) return;
   let x;
   try { x = JSON.parse(m[2]); } catch { return; }
@@ -799,7 +799,7 @@ function renderStatusbar() {  // 창 맨 아래 한 줄: 연결 · 에이전트�
 async function installUpdate() {  // 새 버전: 받아서 우리 서명을 확인하고 다시 시작 (못 하면 내려받기 페이지)
   if (S.updating) return;
   S.updating = true; renderStatusbar();
-  toast(`Tycho ${S.update.version} 을(를) 받고 있어요…`);
+  toast(`Epeira ${S.update.version} 을(를) 받고 있어요…`);
   const r = await api.installUpdate(S.update.version).catch(e => ({manual: true, error: e.message}));
   S.updating = false; renderStatusbar();
   if (r.manual) { toast(r.error ? `${r.error} → 내려받기 페이지를 열어요` : '내려받기 페이지를 열어요'); api.openExternal(S.update.url); }
@@ -833,8 +833,8 @@ modal.addEventListener('mousedown', e => { if (e.target === modal && modalClose)
 addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden && modalClose) { e.preventDefault(); modalClose(); } }, true);
 
 const AGENT_ACTIONS = {
-  connect: {title: n => `${n} 연결`, ok: '연결', intro: n => `아래 파일에 Tycho 훅이 추가돼요. ${n}가 도구를 실행하거나 승인 · 입력을 기다릴 때 이 컴퓨터의 수집기로만 신호를 보내요.`},
-  disconnect: {title: n => `${n} 연결 해제`, ok: '연결 해제', intro: () => '추가했던 Tycho 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.'},
+  connect: {title: n => `${n} 연결`, ok: '연결', intro: n => `아래 파일에 Epeira 훅이 추가돼요. ${n}가 도구를 실행하거나 승인 · 입력을 기다릴 때 이 컴퓨터의 수집기로만 신호를 보내요.`},
+  disconnect: {title: n => `${n} 연결 해제`, ok: '연결 해제', intro: () => '추가했던 Epeira 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.'},
   trust: {title: () => 'Codex 훅 승인', ok: '승인', intro: () => 'Codex 는 새 훅을 승인해야 실행해요. 아래 명령을 승인합니다 → Codex 의 /hooks 화면에서 승인하는 것과 같아요.'},
 };
 async function confirmAgent(key, action, name) {
@@ -901,10 +901,10 @@ async function openSettings(intro, section) {  // 왼쪽 목차 + 오른쪽 내�
     h('h3', {}, '수집기'),
     st.claudeLimits != null ? toggleRow('Claude 사용 한도 보기', 'Claude Code 로그인 정보로 5시간 · 주간 한도를 5분마다 가져와요 (비용 없음)', st.claudeLimits,
       async v => { const r = await api.post('/api/settings', {claudeLimits: v}); await loadUsage(); return r; }) : null,
-    st.autostart != null ? toggleRow('로그인할 때 수집기 실행', '꺼도 Tycho 앱을 켜면 수집기가 함께 켜져요', st.autostart, v => api.post('/api/autostart', {enabled: v})) : null,
+    st.autostart != null ? toggleRow('로그인할 때 수집기 실행', '꺼도 Epeira 앱을 켜면 수집기가 함께 켜져요', st.autostart, v => api.post('/api/autostart', {enabled: v})) : null,
   ], alerts: [
     h('h3', {}, '알림'),
-    prefRow('알림 받기', 'Tycho 를 보고 있지 않을 때 macOS 알림과 Dock 배지로 알려요', 'notify'),
+    prefRow('알림 받기', 'Epeira 를 보고 있지 않을 때 macOS 알림과 Dock 배지로 알려요', 'notify'),
     prefs.notify ? prefRow('응답을 마쳤을 때', '', 'notifyDone') : null,
     prefs.notify ? prefRow('승인 · 입력을 기다릴 때', 'Claude Code 는 알림 켜기가 필요해요 (Codex 는 아직 이 신호를 보내지 않아요)', 'notifyWait') : null,
     prefs.notify ? prefRow('소리', '', 'sound') : null,

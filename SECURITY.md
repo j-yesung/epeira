@@ -7,20 +7,20 @@
 
 알려 주시면 좋은 것:
 
-- 영향받는 버전(앱 · 수집기 → `tycho doctor` 결과를 붙여 주면 됩니다)
+- 영향받는 버전(앱 · 수집기 → `epeira doctor` 결과를 붙여 주면 됩니다)
 - 재현 방법과 영향 (어떤 데이터에 누가 접근할 수 있는지)
 
 확인하는 대로 답하고, 고친 버전을 낸 뒤 신고하신 분과 협의해 공개합니다.
 
 ## 지원 버전
 
-가장 최근 [릴리스](https://github.com/j-yesung/agent-orbit/releases/latest)만 고칩니다. 앱과 수집기를 최신으로 유지해 주세요. 앱을 업데이트하면 수집기도 함께 업데이트됩니다.
+가장 최근 [릴리스](https://github.com/j-yesung/epeira/releases/latest)만 고칩니다. 앱과 수집기를 최신으로 유지해 주세요. 앱을 업데이트하면 수집기도 함께 업데이트됩니다.
 
 ## 범위
 
 - 수집기(`agent_orbit.py`): 로컬 API · 훅 신호 · 기록 저장 · 에이전트 설정 파일 변경
-- Tycho 앱(`desktop/`): Electron 메인 · 화면 · 궤도 패널
-- 설치 스크립트(`install.sh`)와 사이트(`agent-orbit-app.vercel.app`)
+- Epeira 앱(`desktop/`): Electron 메인 · 화면 · 궤도 패널
+- 설치 스크립트(`install.sh`)와 사이트(`epeira.vercel.app`)
 
 Claude Code · Codex 자체의 문제는 각 서비스에 알려 주세요.
 

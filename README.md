@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="desktop/assets/icon.png" alt="Tycho 앱 아이콘" width="112">
+  <img src="desktop/assets/icon.png" alt="Epeira 앱 아이콘" width="112">
 </p>
 
-# Tycho · Agent Orbit
+# Epeira · Agent Orbit
 
 프로젝트별 터미널과 Claude Code · Codex 세션을 한곳에서 다루고, 에이전트가 하는 일을 실시간 궤도로 보여 주는 macOS 데스크톱 앱입니다.
 
-![Tycho 화면: 왼쪽 프로젝트와 지난 세션, 가운데 나눈 터미널, 오른쪽 에이전트 궤도](docs/tycho-app.png)
+![Epeira 화면: 왼쪽 프로젝트와 지난 세션, 가운데 나눈 터미널, 오른쪽 에이전트 궤도](docs/epeira-app.png)
 
 *가짜 세션 데이터로 찍은 화면입니다.*
 
@@ -23,7 +23,7 @@
 
 | 필요한 것 | 설명 |
 | --- | --- |
-| macOS 13 이상 | Apple Silicon 용(`Tycho-<버전>-arm64.dmg`)과 Intel 용(`Tycho-<버전>.dmg`) 설치 파일. Intel 용은 아직 실제 Intel Mac 에서 시험하지 않았습니다 |
+| macOS 13 이상 | Apple Silicon 용(`Epeira-<버전>-arm64.dmg`)과 Intel 용(`Epeira-<버전>.dmg`) 설치 파일. Intel 용은 아직 실제 Intel Mac 에서 시험하지 않았습니다 |
 | Claude Code · Codex | 쓰려는 CLI 를 따로 설치하고 로그인 |
 | Python 3.9 이상 | 궤도 · 사용량을 모으는 수집기용. macOS 개발자 도구(`xcode-select --install`)에 들어 있고, 없으면 앱이 설치 버튼을 보여 줍니다 |
 
@@ -31,19 +31,19 @@ DMG 에 Electron 이 들어 있어서 Node.js · npm 은 따로 필요 없습니
 
 ## 설치
 
-**[⬇ 최신 버전 받기 (GitHub Releases)](https://github.com/j-yesung/agent-orbit/releases/latest)**
+**[⬇ 최신 버전 받기 (GitHub Releases)](https://github.com/j-yesung/epeira/releases/latest)**
 
-1. Releases 에서 내 Mac 에 맞는 DMG 를 받습니다. Apple Silicon(M1 이후)은 `Tycho-<버전>-arm64.dmg`, Intel 은 `Tycho-<버전>.dmg` 입니다. (Apple 메뉴 → 이 Mac에 관하여 → 칩)
-2. DMG 를 열고 **Tycho 를 Applications 폴더로 끌어다 놓습니다.**
-3. Finder 의 **응용 프로그램**에서 Tycho 를 실행합니다. DMG 안에서 바로 실행하지 마세요.
+1. Releases 에서 내 Mac 에 맞는 DMG 를 받습니다. Apple Silicon(M1 이후)은 `Epeira-<버전>-arm64.dmg`, Intel 은 `Epeira-<버전>.dmg` 입니다. (Apple 메뉴 → 이 Mac에 관하여 → 칩)
+2. DMG 를 열고 **Epeira 를 Applications 폴더로 끌어다 놓습니다.**
+3. Finder 의 **응용 프로그램**에서 Epeira 를 실행합니다. DMG 안에서 바로 실행하지 마세요.
 4. 앱이 켜지면 **수집기를 알아서 설치하고 실행합니다.** 터미널에 명령을 칠 필요가 없습니다.
 
 ### 첫 실행이 차단될 때
 
 지금 배포본은 Apple Developer 인증서 서명 · 공증 없이 임시 서명(ad-hoc)으로 빌드합니다. 처음 실행할 때 개발자를 확인할 수 없다는 경고가 나오면:
 
-1. Tycho 를 한 번 실행하고 경고를 닫습니다.
-2. **시스템 설정 → 개인정보 보호 및 보안**의 아래쪽 **보안**에서 Tycho 의 **확인 없이 열기**를 누릅니다.
+1. Epeira 를 한 번 실행하고 경고를 닫습니다.
+2. **시스템 설정 → 개인정보 보호 및 보안**의 아래쪽 **보안**에서 Epeira 의 **확인 없이 열기**를 누릅니다.
 3. 암호 또는 Touch ID 로 인증하고 **열기**를 고릅니다.
 
 회사 · 학교에서 관리하는 Mac 은 정책에 따라 막힐 수 있습니다. 자세한 내용은 [Apple 안내](https://support.apple.com/ko-kr/102445)를 참고하세요.
@@ -81,21 +81,21 @@ Claude 의 사용 한도까지 보려면 **설정 → 에이전트 → Claude �
 
 수집기는 `127.0.0.1:47777` 에서만 열리고, 에이전트 활동 기록은 이 컴퓨터에만 7일 동안 보관합니다(질문 · 명령의 앞부분, 파일 이름, 토큰 수). 기록 폴더는 이 사용자만 읽을 수 있게 만들어 같은 Mac 의 다른 계정은 볼 수 없습니다.
 
-- **앱 데이터**(프로젝트 목록 · 창 위치 · 테마): `~/Library/Application Support/Tycho/`
+- **앱 데이터**(프로젝트 목록 · 창 위치 · 테마): `~/Library/Application Support/Epeira/`
 - **수집기 · 활동 기록**: `~/.agent-orbit`
 - **연결할 때 바뀌는 설정**: Claude 의 `~/.claude/settings.json`, Codex 의 `~/.codex/hooks.json` 과 `~/.codex/config.toml` 승인 기록. 처음 원본은 `*.orbit-bak` 으로 남고, 연결을 해제하면 연결 전 파일 그대로 되돌립니다.
 - **밖으로 나가는 요청**: Claude 사용 한도(켰을 때만, Anthropic 으로), Codex 사용 한도(Codex 자기 로그인으로 OpenAI 에), 새 버전 확인(하루 한 번 사이트의 `app-version.json` 버전 번호만), 업데이트(누를 때만 GitHub Releases 에서 DMG 와 서명 파일).
 
 ## 업데이트와 삭제
 
-새 버전이 있으면 상태바와 설정에 **새 버전**이 나옵니다. 누르면 Tycho 가 새 버전을 받아 관리자 서명을 확인하고, 다시 시작하면서 바꿉니다. 수집기도 앱에 든 버전으로 알아서 업데이트됩니다.
+새 버전이 있으면 상태바와 설정에 **새 버전**이 나옵니다. 누르면 Epeira 가 새 버전을 받아 관리자 서명을 확인하고, 다시 시작하면서 바꿉니다. 수집기도 앱에 든 버전으로 알아서 업데이트됩니다.
 
-응용 프로그램 폴더에 쓸 권한이 없는 등 자동으로 바꾸지 못하면 내려받기 페이지나 DMG 를 열어 주니 직접 바꿔 주세요. 1.0.0 보다 오래된 버전은 1.0.0 을 한 번 직접 받아야 합니다.
+응용 프로그램 폴더에 쓸 권한이 없는 등 자동으로 바꾸지 못하면 내려받기 페이지나 DMG 를 열어 주니 직접 바꿔 주세요. 예전 이름(Tycho)으로 설치한 0.x 버전은 Epeira 1.0.0 을 한 번 직접 받아 주세요. 프로젝트 목록과 탭은 그대로 옮겨집니다.
 
-앱만 지우려면 Applications 의 Tycho 를 휴지통으로 옮깁니다. 수집기는 별도 서비스라 남습니다. 수집기까지 지우려면:
+앱만 지우려면 Applications 의 Epeira 를 휴지통으로 옮깁니다. 수집기는 별도 서비스라 남습니다. 수집기까지 지우려면:
 
 ```sh
-~/.agent-orbit/bin/tycho uninstall
+~/.agent-orbit/bin/epeira uninstall
 ```
 
 연결한 훅, 자동 실행, 수집기 파일, 활동 기록을 지웁니다. 설정 파일의 최초 백업(`*.orbit-bak`)과 앱 데이터 폴더는 남습니다.

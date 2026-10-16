@@ -1,5 +1,5 @@
 # 릴리스: v<버전> 태그를 push 하면 테스트 → DMG 빌드 → 업데이트 서명 → GitHub 릴리스
-# 서명 비밀 키는 저장소 Secrets 의 TYCHO_SIGNING_KEY (서명 단계에서만 꺼낸다)
+# 서명 비밀 키는 저장소 Secrets 의 EPEIRA_SIGNING_KEY (서명 단계에서만 꺼낸다)
 name: release
 
 on:
@@ -44,15 +44,15 @@ jobs:
       - name: 업데이트 서명
         working-directory: desktop
         env:
-          KEY: ${{ secrets.TYCHO_SIGNING_KEY }}
+          KEY: ${{ secrets.EPEIRA_SIGNING_KEY }}
         run: |
           umask 077
           printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.pem"
-          TYCHO_SIGNING_KEY="$RUNNER_TEMP/key.pem" npm run sign
+          EPEIRA_SIGNING_KEY="$RUNNER_TEMP/key.pem" npm run sign
           rm -f "$RUNNER_TEMP/key.pem"
 
       - name: 릴리스
         working-directory: desktop
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/Tycho-*.dmg dist/Tycho-*.dmg.sig --verify-tag --title "Tycho ${GITHUB_REF_NAME#v}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/Epeira-*.dmg dist/Epeira-*.dmg.sig --verify-tag --title "Epeira ${GITHUB_REF_NAME#v}" --generate-notes

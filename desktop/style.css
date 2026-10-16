@@ -1,5 +1,5 @@
 /* 터미널 단축키 기호(⌘ ⌥ ⇧ ⌃ ⏎ ⌫ 화살표)만 Menlo 로: SF Mono 는 칸을 꽉 채워서 ⌥↑ · ↑↓ 처럼 붙어 보인다 */
-@font-face { font-family: "Tycho Keys"; src: local("Menlo-Regular"), local("Menlo"); unicode-range: U+2190-21FF, U+2303-2326, U+232B, U+238B, U+23CE-23CF; }
+@font-face { font-family: "Epeira Keys"; src: local("Menlo-Regular"), local("Menlo"); unicode-range: U+2190-21FF, U+2303-2326, U+232B, U+238B, U+23CE-23CF; }
 :root {
   color-scheme: light dark;
   --bg: #0a0a0a; --panel: #111111; --panel-2: #191919; --line: #242424; --line-2: #303030;
