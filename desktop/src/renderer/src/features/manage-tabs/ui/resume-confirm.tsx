@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 
+import { focusActive } from "../model/actions";
 import { openSession, useResumeConfirm } from "../model/sessions";
 
 export function ResumeConfirm() {
@@ -12,7 +13,14 @@ export function ResumeConfirm() {
   const close = () => useResumeConfirm.setState({ session: null });
   return (
     <Dialog open={!!session} onOpenChange={(o) => !o && close()}>
-      <DialogContent showCloseButton={false} className="max-w-[440px]">
+      <DialogContent
+        showCloseButton={false}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          focusActive();
+        }}
+        className="sm:max-w-[440px]"
+      >
         <DialogHeader>
           <DialogTitle>{t("session.recentTitle")}</DialogTitle>
           <DialogDescription>{t("session.recentBody")}</DialogDescription>

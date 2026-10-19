@@ -6,8 +6,11 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { refocusAfterResize } from "@/features/manage-tabs/model/actions";
 import { ResumeConfirm } from "@/features/manage-tabs/ui/resume-confirm";
+import { CommandPalette } from "@/widgets/command-palette/ui/command-palette";
 import { OrbitPanel } from "@/widgets/orbit-panel/ui/orbit-panel";
 import { PaneLayout } from "@/widgets/pane-layout/ui/pane-layout";
+import { SettingsDialog } from "@/widgets/settings-dialog/ui/settings-dialog";
+import { ShortcutsDialog } from "@/widgets/shortcuts-dialog/ui/shortcuts-dialog";
 import { Sidebar } from "@/widgets/sidebar/ui/sidebar";
 import { Statusbar } from "@/widgets/statusbar/ui/statusbar";
 import { TabBar } from "@/widgets/tab-bar/ui/tab-bar";
@@ -21,7 +24,7 @@ import {
   saveSideWidth,
   useLayout,
 } from "../model/layout";
-import { useWorkspaceEvents } from "../model/use-workspace-events";
+import { runMenuAction, useWorkspaceEvents } from "../model/use-workspace-events";
 import { TabDnd } from "./tab-dnd";
 
 export function WorkspacePage() {
@@ -84,6 +87,9 @@ export function WorkspacePage() {
       </Group>
       <Statusbar />
       <ResumeConfirm />
+      <CommandPalette onAction={runMenuAction} />
+      <SettingsDialog />
+      <ShortcutsDialog />
     </div>
   );
 }

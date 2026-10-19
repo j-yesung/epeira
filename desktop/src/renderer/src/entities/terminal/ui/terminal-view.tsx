@@ -1,6 +1,7 @@
 // 탭의 터미널을 이 자리에 붙인다 (터미널 자체는 registry 가 들고 있다). 이 자리가 사라지면 숨김 자리로 돌려놓는다
 import { useEffect, useLayoutEffect, useRef } from "react";
 
+import { dialogOpen } from "@/shared/lib/dialogs";
 import { cn } from "@/shared/lib/utils";
 
 import { fitTerminal, getTerminal, parkTerminal, runPending } from "../model/registry";
@@ -31,9 +32,9 @@ export function TerminalView({ id, focused, className }: TerminalViewProps) {
     };
   }, [id]);
 
-  // 붙인 뒤에 옮긴다. 그 사이 팔레트 · 설정 같은 창이 열렸으면 거기 입력을 빼앗지 않는다
+  // 붙인 뒤에 옮긴다. 그 사이 팔레트 · 설정 같은 창이 열렸으면 거기 입력을 빼앗지 않는다 (닫히는 중인 창은 빼고)
   useEffect(() => {
-    if (focused && !document.querySelector('[role="dialog"]')) getTerminal(id)?.term.focus();
+    if (focused && !dialogOpen()) getTerminal(id)?.term.focus();
   }, [id, focused]);
 
   return <div ref={box} className={cn("absolute inset-0 bg-background pt-2.5 pr-1.5 pb-1.5 pl-3.5", className)} />;

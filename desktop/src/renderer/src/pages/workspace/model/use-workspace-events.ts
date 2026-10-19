@@ -1,6 +1,7 @@
 // 메인 창이 듣는 신호: 메뉴 · 단축키(메인 프로세스가 동작 이름만 보낸다) · ⌘1–9 · 터미널 우클릭 메뉴 · 셸이 끝남 · 수집기 이벤트
 import { useEffect } from "react";
 
+import type { MenuAction } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
 
 import { useProjects } from "@/entities/project/model/store";
@@ -20,9 +21,40 @@ import {
 } from "@/features/manage-tabs/model/actions";
 import { moveFocus, splitPane, toggleZoom, unsplit } from "@/features/manage-tabs/model/panes";
 import { restoreTabs } from "@/features/manage-tabs/model/persist";
+import { initUpdates } from "@/features/update/model/update";
 import { epeira } from "@/shared/api/epeira";
+import { openSettings, useDialogs } from "@/shared/lib/dialogs";
 
 import { useLayout } from "./layout";
+
+/** 메뉴 · 단축키 · 명령 팔레트의 동작 */
+export const runMenuAction = (action: MenuAction) => {
+  const layout = useLayout.getState();
+  const run: Partial<Record<MenuAction, () => unknown>> = {
+    "add-project": () => useProjects.getState().add(),
+    "new-shell": () => openTab("shell"),
+    "new-claude": () => openTab("claude"),
+    "new-codex": () => openTab("codex"),
+    "close-tab": () => closeTab(),
+    "next-tab": () => cycleTab(1),
+    "prev-tab": () => cycleTab(-1),
+    split: () => splitPane("cols"),
+    "split-rows": () => splitPane("rows"),
+    "pane-left": () => moveFocus("left"),
+    "pane-right": () => moveFocus("right"),
+    "pane-up": () => moveFocus("up"),
+    "pane-down": () => moveFocus("down"),
+    "pane-zoom": toggleZoom,
+    unsplit,
+    find: () => useFind.getState().show(),
+    "toggle-side": layout.toggleSide,
+    "toggle-orbit": layout.toggleOrbit,
+    settings: () => openSettings(),
+    palette: () => useDialogs.setState({ palette: true, shortcuts: false, settings: null }),
+    shortcuts: () => useDialogs.setState({ shortcuts: true, palette: false, settings: null }),
+  };
+  run[action]?.();
+};
 
 export const useWorkspaceEvents = () => {
   const { t } = useTranslation();
@@ -32,6 +64,8 @@ export const useWorkspaceEvents = () => {
     initTerminals();
     useProjects.getState().load().then(restoreTabs);
   }, []);
+
+  useEffect(initUpdates, []);
 
   // 수집기: 준비(설치 · 업데이트 · 실행) → 이벤트로 탭 상태 · 알림, 15초마다 사용량 · 탭 ↔ 세션 짝
   useEffect(() => {
@@ -50,34 +84,7 @@ export const useWorkspaceEvents = () => {
     };
   }, []);
 
-  useEffect(
-    () =>
-      epeira.onMenu((action) => {
-        const layout = useLayout.getState();
-        const run: Partial<Record<typeof action, () => unknown>> = {
-          "add-project": () => useProjects.getState().add(),
-          "new-shell": () => openTab("shell"),
-          "new-claude": () => openTab("claude"),
-          "new-codex": () => openTab("codex"),
-          "close-tab": () => closeTab(),
-          "next-tab": () => cycleTab(1),
-          "prev-tab": () => cycleTab(-1),
-          split: () => splitPane("cols"),
-          "split-rows": () => splitPane("rows"),
-          "pane-left": () => moveFocus("left"),
-          "pane-right": () => moveFocus("right"),
-          "pane-up": () => moveFocus("up"),
-          "pane-down": () => moveFocus("down"),
-          "pane-zoom": toggleZoom,
-          unsplit,
-          find: () => useFind.getState().show(),
-          "toggle-side": layout.toggleSide,
-          "toggle-orbit": layout.toggleOrbit,
-        };
-        run[action]?.();
-      }),
-    [],
-  );
+  useEffect(() => epeira.onMenu(runMenuAction), []);
 
   // ⌘1–9: 지금 프로젝트의 탭
   useEffect(() => {
