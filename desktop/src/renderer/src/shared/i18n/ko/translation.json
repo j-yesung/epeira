@@ -112,10 +112,8 @@
     "removeSub": "폴더는 지우지 않아요"
   },
   "session": {
-    "list": "지난 세션",
+    "list": "열린 세션",
     "goToTab": "열려 있는 탭으로 가기",
-    "resume": "이 대화를 새 탭에서 이어서 열기",
-    "inTab": "탭에 열려 있어요",
     "noFolder": "이 세션의 폴더를 찾지 못했어요",
     "cannotResume": "이 세션은 이어서 열 수 없어요",
     "recentTitle": "세션 이어 열기",

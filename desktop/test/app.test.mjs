@@ -427,7 +427,7 @@ test("다시 켜면: 예전 형식(app.tabs)의 탭 · 칸 배치를 되살리�
   await closeAll();
 });
 
-test("사이드바: 프로젝트 고르기 · 펼치기, 지난 세션 이어 열기, ⋯ · 우클릭 메뉴, 목록에서 빼기", async () => {
+test("사이드바: 프로젝트 고르기 · 펼치기, 탭에 열린 세션만, ⋯ 메뉴는 닫혀도 제자리 · 우클릭 메뉴, 목록에서 빼기", async () => {
   const beta = path.join(tmp, "beta");
   mkdirSync(beta, { recursive: true });
   await page.evaluate((d) => window.epeira.addProjectPath(d), beta);
@@ -435,44 +435,78 @@ test("사이드바: 프로젝트 고르기 · 펼치기, 지난 세션 이어 �
   const row = (dir) => `aside li[title="${dir}"]`;
   await page.waitForSelector(row(beta));
   const names = () =>
-    page.$$eval('[aria-label="지난 세션"] button', (els) => els.map((e) => e.innerText.split("\n")[0]));
+    page.$$eval('[aria-label="열린 세션"] button', (els) => els.map((e) => e.innerText.split("\n")[0]));
   const main = (dir) => `${row(dir)} > button[aria-expanded]:not([aria-label])`;
   await page.click(main(beta)); // 다른 프로젝트를 누르면 고르고 펼친다 (지금 프로젝트를 다시 누르면 접기 · 펼치기)
   await until(async () => (await page.getAttribute(main(beta), "aria-expanded")) === "true", "beta 고르기");
   await page.click(main(alpha));
-  await until(async () => (await names()).length === 2, "지난 세션 (서브에이전트는 빼고)");
-  assert.deepEqual(await names(), ["방금 하던 대화", "로그인 버그 고쳐줘"]);
+  await page.waitForSelector(`${row(alpha)} p:has-text("오늘")`);
+  assert.deepEqual(await names(), [], "닫은 지난 세션은 사이드바에 없다");
 
-  // 지난 세션을 누르면 새 탭에서 이어 연다. 이미 탭에 있으면 그 탭으로
+  // 지난 세션은 명령 팔레트에서 이어 연다 → 탭에 열리면 사이드바의 열린 세션에
   await holdResume();
   const tabCount = () => page.$$eval('[role="tab"]', (t) => t.length);
-  await page.click('[aria-label="지난 세션"] button:has-text("로그인 버그 고쳐줘")');
+  const palette = async (q) => {
+    await menu("palette");
+    await page.waitForFunction(() => document.activeElement?.matches("[cmdk-input]"));
+    await page.keyboard.type(q);
+  };
+  await palette("로그인 버그");
+  await page.click('[cmdk-group]:has-text("지난 세션") [cmdk-item]:has-text("로그인 버그 고쳐줘")');
   await until(async () => (await ptyIn()).includes("claude --resume abc-1\r"), "이어 열기");
-  assert.equal(await tabCount(), 1);
+  await until(async () => (await names()).join() === "로그인 버그 고쳐줘", "열린 세션");
   assert.equal(await page.$eval(`${row(alpha)} [title="열린 터미널 1개"]`, (e) => e.textContent), "1");
-  await page.click('[aria-label="지난 세션"] button:has-text("로그인 버그 고쳐줘")');
-  assert.equal(await tabCount(), 1, "이미 열린 대화는 그 탭으로");
+
+  // 열린 세션을 누르면 그 탭으로
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await tabCount()) === 2, "다른 탭");
+  await page.click('[aria-label="열린 세션"] button:has-text("로그인 버그 고쳐줘")');
+  await until(
+    async () => (await page.$eval('[role="tab"][aria-selected="true"] .truncate', (e) => e.textContent)) === "Claude",
+    "그 세션의 탭으로",
+  );
 
   // 방금까지 움직이던 세션은 먼저 묻는다 (다른 터미널에서 아직 실행 중일 수 있어서)
-  await page.click('[aria-label="지난 세션"] button:has-text("방금 하던 대화")');
+  await palette("방금 하던");
+  await page.click('[cmdk-item]:has-text("방금 하던 대화")');
   await page.waitForSelector('[role="dialog"]:has-text("세션 이어 열기")');
   await page.click('[role="dialog"] button:has-text("취소")');
   await until(async () => !(await page.$('[role="dialog"]')), "취소");
-  assert.equal(await tabCount(), 1);
+  assert.equal(await tabCount(), 2);
   await releaseResume();
+
+  // ⋯ 메뉴: 닫히는 동안에도 제자리 (버튼이 숨으며 기준 위치를 잃어 왼쪽 위로 튀지 않게)
+  await page.hover(row(alpha));
+  await page.click('button[aria-label="alpha 메뉴"]');
+  await page.waitForSelector("[role=menu]");
+  await page.evaluate(() => {
+    window.menuX = [];
+    const tick = () => {
+      const m = document.querySelector("[role=menu]");
+      if (!m) return;
+      window.menuX.push(m.getBoundingClientRect().x);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+  await page.mouse.move(700, 500);
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$("[role=menu]")), "메뉴 닫기");
+  const xs = await page.evaluate(() => window.menuX);
+  assert.ok(Math.min(...xs) > 100, `닫히는 동안 메뉴 위치: ${[...new Set(xs.map(Math.round))]}`);
 
   // ⋯ 메뉴로 새 터미널, 우클릭 메뉴로 목록에서 빼기
   await page.hover(row(alpha));
   await page.click('button[aria-label="alpha 메뉴"]');
   await page.click('[role="menuitem"]:has-text("새 터미널")');
-  await until(async () => (await tabCount()) === 2, "⋯ → 새 터미널");
+  await until(async () => (await tabCount()) === 3, "⋯ → 새 터미널");
   await page.click(row(beta), { button: "right", position: { x: 120, y: 20 } });
   await page.click('[role="menuitem"]:has-text("목록에서 빼기")');
   await until(async () => !(await page.$(row(beta))), "목록에서 빼기");
 
   // 펼침 상태는 예전과 같은 키에 기억
   await page.click('button[aria-label="alpha 세션 접기"]');
-  await until(async () => !(await page.$('[aria-label="지난 세션"]')), "접기");
+  await until(async () => !(await page.$(`${row(alpha)} p:has-text("오늘")`)), "접기");
   assert.equal(await page.evaluate((d) => JSON.parse(localStorage.getItem("app.folds"))[d], alpha), false);
 
   await answer(0);

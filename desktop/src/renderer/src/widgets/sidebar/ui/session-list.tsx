@@ -1,17 +1,18 @@
-// 펼친 프로젝트 아래: 오늘 쓴 토큰 + 지난 세션 (누르면 이어서 열기, 이미 탭에 있으면 그 탭으로)
+// 펼친 프로젝트 아래: 오늘 쓴 토큰 + 지금 탭에 열린 세션(Claude · Codex 대화, 누르면 그 탭으로)
+// 닫은 지난 세션은 명령 팔레트(⌘P)에서 이어 연다
 import type { Project } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
 
 import { useProjects } from "@/entities/project/model/store";
-import { projectOf, sessionKind, sessionName, useSessions } from "@/entities/session/model/store";
+import { projectOf, sessionName, useSessions } from "@/entities/session/model/store";
+import { tabLabel } from "@/entities/tab/model/label";
 import { useTabs } from "@/entities/tab/model/store";
 import { KindIcon } from "@/entities/tab/ui/kind-icon";
+import { StateDot, tabState } from "@/entities/tab/ui/state-dot";
 import { useUsage } from "@/entities/usage/model/store";
-import { openSession } from "@/features/manage-tabs/model/sessions";
+import { activateTab } from "@/features/manage-tabs/model/actions";
 import { fmtK } from "@/shared/lib/format";
 import { ago } from "@/shared/lib/time";
-
-const SHOWN = 6;
 
 export function SessionList({ project }: { project: Project }) {
   const { t } = useTranslation();
@@ -20,7 +21,8 @@ export function SessionList({ project }: { project: Project }) {
   const projects = useProjects((s) => s.projects);
   const tabs = useTabs((s) => s.tabs);
   const today = useUsage((s) => s.usage?.today);
-  const list = sessions.filter((x) => projectOf(x, projects)?.path === project.path).slice(0, SHOWN);
+  // 세션이 짝지어진 탭 (수집기가 탭 ↔ 세션을 알려 준 것)
+  const open = tabs.filter((tab) => tab.dir === project.path && tab.sid);
 
   // 오늘 쓴 토큰: 서브에이전트는 부모 세션의 프로젝트로 센다
   const byId = new Map((today ?? []).map((x) => [x.id, x]));
@@ -35,31 +37,26 @@ export function SessionList({ project }: { project: Project }) {
       <p title={t("sidebar.usageHint")} className="mb-1 font-mono text-faint-foreground text-xs">
         {tok ? t("sidebar.usageToday", { tok: fmtK(tok) }) : t("sidebar.usageNone")}
       </p>
-      {list.length > 0 && (
+      {open.length > 0 && (
         <ul aria-label={t("session.list")} className="grid grid-cols-[minmax(0,1fr)] gap-px">
-          {list.map((x) => {
-            const inTab = tabs.some((tab) => tab.sid === x.id);
-            const name = sessionName(x, names);
+          {open.map((tab) => {
+            const x = sessions.find((s) => s.id === tab.sid);
+            const name = x ? sessionName(x, names) : tabLabel(tab, tabs, names);
+            const state = tabState(tab);
             return (
-              <li key={x.id}>
+              <li key={tab.id}>
                 <button
                   type="button"
-                  title={inTab ? t("session.goToTab") : t("session.resume")}
-                  onClick={() => openSession(x)}
+                  title={t("session.goToTab")}
+                  onClick={() => activateTab(tab.id)}
                   className="flex h-[26px] w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-muted-foreground text-sm hover:bg-card hover:text-foreground"
                 >
-                  <KindIcon kind={sessionKind(x)} />
+                  <KindIcon kind={tab.kind} />
                   <span title={name} className="min-w-0 flex-1 truncate">
                     {name}
                   </span>
-                  {inTab && (
-                    <span
-                      role="img"
-                      aria-label={t("session.inTab")}
-                      className="size-[7px] shrink-0 rounded-full bg-primary"
-                    />
-                  )}
-                  <small className="shrink-0 font-mono text-2xs text-faint-foreground">{ago(x.last)}</small>
+                  {state && <StateDot state={state} />}
+                  {x && <small className="shrink-0 font-mono text-2xs text-faint-foreground">{ago(x.last)}</small>}
                 </button>
               </li>
             );

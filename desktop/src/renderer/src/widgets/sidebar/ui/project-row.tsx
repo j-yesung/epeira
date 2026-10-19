@@ -117,7 +117,8 @@ export function ProjectRow({ project: p }: { project: Project }) {
                 type="button"
                 title={t("sidebar.menu")}
                 aria-label={t("sidebar.menuNamed", { name: p.name })}
-                className="absolute top-[9px] right-1.5 hidden size-6 cursor-pointer place-items-center rounded-md bg-secondary text-lg text-muted-foreground leading-none hover:bg-input hover:text-foreground group-focus-within:grid group-hover:grid data-[state=open]:grid"
+                // 숨길 때 display:none 이면 메뉴가 닫히는 동안 기준 위치를 잃어 왼쪽 위(0,0)로 튄다 → 투명하게만
+                className="absolute top-[9px] right-1.5 grid size-6 cursor-pointer place-items-center rounded-md bg-secondary text-lg text-muted-foreground leading-none opacity-0 hover:bg-input hover:text-foreground group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
               >
                 ⋯
               </button>
