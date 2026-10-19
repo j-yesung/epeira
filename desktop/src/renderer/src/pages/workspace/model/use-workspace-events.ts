@@ -1,4 +1,4 @@
-// 메인 창이 듣는 신호: 메뉴 · 단축키(메인 프로세스가 동작 이름만 보낸다) · ⌘1–9 · 터미널 우클릭 메뉴 · 셸이 끝남
+// 메인 창이 듣는 신호: 메뉴 · 단축키(메인 프로세스가 동작 이름만 보낸다) · ⌘1–9 · 터미널 우클릭 메뉴 · 셸이 끝남 · 수집기 이벤트
 import { useEffect } from "react";
 
 import { useTranslation } from "react-i18next";
@@ -9,6 +9,7 @@ import { getTerminal, initTerminals } from "@/entities/terminal/model/registry";
 import { useFind } from "@/features/find-in-terminal/model/store";
 import { activateNth, closeTab, cycleTab, focusActive, openTab } from "@/features/manage-tabs/model/actions";
 import { moveFocus, splitPane, toggleZoom, unsplit } from "@/features/manage-tabs/model/panes";
+import { restoreTabs } from "@/features/manage-tabs/model/persist";
 import { epeira } from "@/shared/api/epeira";
 
 import { useLayout } from "./layout";
@@ -16,10 +17,22 @@ import { useLayout } from "./layout";
 export const useWorkspaceEvents = () => {
   const { t } = useTranslation();
 
+  // 켤 때 한 번: 프로젝트 목록을 읽고 지난번 탭 · 칸 배치를 되살린다
   useEffect(() => {
     initTerminals();
-    useProjects.getState().load();
+    useProjects.getState().load().then(restoreTabs);
   }, []);
+
+  // 수집기가 탭 ↔ 세션을 짝지어 주면 저장해 둔다 → 다시 켰을 때 그 대화를 이어 연다
+  useEffect(
+    () =>
+      epeira.onEvent((e) => {
+        if (e.kind !== "tab" || typeof e.tab !== "string" || typeof e.id !== "string") return;
+        const tab = useTabs.getState().tabs.find((t) => t.id === e.tab);
+        if (tab && tab.sid !== e.id) useTabs.getState().patch(tab.id, { sid: e.id });
+      }),
+    [],
+  );
 
   useEffect(
     () =>
