@@ -1,10 +1,23 @@
 // 앱 메뉴 · 단축키: 앱 전체 단축키는 여기서 맡고, 누르면 화면에 동작 이름만 보낸다
-import { app, Menu, type MenuItemConstructorOptions, shell } from "electron";
+import { app, BrowserWindow, Menu, type MenuItemConstructorOptions, shell } from "electron";
 
 import type { MenuAction } from "../ipc/contract";
 import { ORBIT, sendToWin } from "./context";
 
 const send = (action: MenuAction) => () => sendToWin("menu", action);
+
+/** 개발 모드에서만: 디자인 시스템 창 (토큰 · 부품 모아 보기). 개발 서버 주소가 있을 때만 메뉴에 나온다 */
+const DEV_URL = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
+const openDesignSystem = () => {
+  if (!DEV_URL) return;
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 860,
+    title: "Epeira 디자인 시스템",
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  win.loadURL(`${DEV_URL}/design-system.html`);
+};
 
 export const buildMenu = () => {
   const isMac = process.platform === "darwin";
@@ -85,6 +98,9 @@ export const buildMenu = () => {
           ],
         },
         { label: "대시보드 크게 보기", click: () => shell.openExternal(`${ORBIT}/`) },
+        ...(DEV_URL
+          ? ([{ label: "디자인 시스템 (개발)", click: openDesignSystem }] satisfies MenuItemConstructorOptions[])
+          : []),
         { type: "separator" },
         { label: "다음 탭", accelerator: "Ctrl+Tab", click: send("next-tab") },
         { label: "이전 탭", accelerator: "Ctrl+Shift+Tab", click: send("prev-tab") },

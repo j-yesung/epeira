@@ -248,6 +248,10 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/renderer/**"],
+      "plugins": ["./biome-plugins/no-raw-color.grit"]
     }
   ]
 }
