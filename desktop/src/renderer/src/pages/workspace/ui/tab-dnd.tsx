@@ -4,6 +4,7 @@ import { type ReactNode, useState } from "react";
 
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, useSensor, useSensors } from "@dnd-kit/core";
 
+import { useSessions } from "@/entities/session/model/store";
 import { tabLabel } from "@/entities/tab/model/label";
 import { useTabs } from "@/entities/tab/model/store";
 import { KindIcon } from "@/entities/tab/ui/kind-icon";
@@ -12,12 +13,13 @@ import { dropTabOnPane } from "@/features/manage-tabs/model/panes";
 
 function DraggedTab({ id }: { id: string }) {
   const tabs = useTabs((s) => s.tabs);
+  const names = useSessions((s) => s.names);
   const tab = tabs.find((t) => t.id === id);
   if (!tab) return null;
   return (
     <div className="flex h-[30px] w-[200px] cursor-grabbing items-center gap-[7px] rounded-lg border border-input bg-secondary px-2 text-foreground shadow-md">
       <KindIcon kind={tab.kind} />
-      <span className="truncate">{tabLabel(tab, tabs)}</span>
+      <span className="truncate">{tabLabel(tab, tabs, names)}</span>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { refocusAfterResize } from "@/features/manage-tabs/model/actions";
+import { ResumeConfirm } from "@/features/manage-tabs/ui/resume-confirm";
 import { OrbitPanel } from "@/widgets/orbit-panel/ui/orbit-panel";
 import { PaneLayout } from "@/widgets/pane-layout/ui/pane-layout";
 import { Sidebar } from "@/widgets/sidebar/ui/sidebar";
@@ -82,6 +83,7 @@ export function WorkspacePage() {
         )}
       </Group>
       <Statusbar />
+      <ResumeConfirm />
     </div>
   );
 }

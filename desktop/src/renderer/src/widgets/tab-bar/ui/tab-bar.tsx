@@ -4,10 +4,12 @@ import { Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useProjects } from "@/entities/project/model/store";
+import { useSessions } from "@/entities/session/model/store";
 import { tabLabel } from "@/entities/tab/model/label";
 import { leaves } from "@/entities/tab/model/panes";
 import { projectTabs, type Tab, useTabs } from "@/entities/tab/model/store";
 import { KindIcon } from "@/entities/tab/ui/kind-icon";
+import { StateDot, tabState } from "@/entities/tab/ui/state-dot";
 import { getTerminal } from "@/entities/terminal/model/registry";
 import { activateTab, closeTab, openTab } from "@/features/manage-tabs/model/actions";
 import { cn } from "@/shared/lib/utils";
@@ -36,6 +38,7 @@ function TabItem({ tab, index, label, active, paned }: TabItemProps) {
   const { t } = useTranslation();
   // 키보드로 끌기는 쓰지 않는다 (↩ · space 는 탭 고르기). 그래서 attributes(role=button 등)는 붙이지 않는다
   const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: tab.id });
+  const state = tabState(tab);
   return (
     <div
       ref={setNodeRef}
@@ -59,6 +62,7 @@ function TabItem({ tab, index, label, active, paned }: TabItemProps) {
       >
         <KindIcon kind={tab.kind} />
         <span className="truncate">{label}</span>
+        {state && <StateDot state={state} />}
         {index < 9 && (
           <kbd className="ml-auto border-0 p-0 text-2xs text-faint-foreground tracking-normal">⌘{index + 1}</kbd>
         )}
@@ -80,6 +84,7 @@ export function TabBar({ sideOpen, orbitOpen, onToggleOrbit }: TabBarProps) {
   const { t } = useTranslation();
   const current = useProjects((s) => s.current);
   const tabs = useTabs((s) => s.tabs);
+  const names = useSessions((s) => s.names);
   const active = useTabs((s) => s.active);
   const root = useTabs((s) => (current ? s.layout[current] : null));
   const zoomed = useTabs((s) => !!current && !!s.zoom[current]);
@@ -104,7 +109,7 @@ export function TabBar({ sideOpen, orbitOpen, onToggleOrbit }: TabBarProps) {
               key={tab.id}
               tab={tab}
               index={i}
-              label={tabLabel(tab, tabs)}
+              label={tabLabel(tab, tabs, names)}
               active={tab.id === active}
               paned={panes.includes(tab.id)}
             />

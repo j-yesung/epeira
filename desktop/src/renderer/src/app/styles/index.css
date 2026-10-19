@@ -109,6 +109,10 @@
     @apply overflow-hidden bg-background font-sans text-base text-foreground;
     line-height: 1.45;
   }
+  /* 구분선을 끄는 동안 궤도 패널(webview)이 포인터를 가져가지 않게 */
+  body:has([data-separator="active"]) webview {
+    pointer-events: none;
+  }
   /* 단축키 표시. 글자 사이를 조금 벌려 ⇧⌘C 가 붙어 보이지 않게 */
   kbd {
     @apply rounded-xs border border-input py-px pr-1 pl-1.5 font-sans text-muted-foreground text-xs tracking-[0.16em];
