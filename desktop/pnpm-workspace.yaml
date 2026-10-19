@@ -1,0 +1,14 @@
+# pnpm 설정. Node 프로젝트는 desktop/ 하나라 워크스페이스로 나누지 않는다
+
+# electron-builder · node-pty 가 pnpm 의 링크 구조에서도 패키지를 찾게
+shamefullyHoist: true
+
+# 나온 지 3일(4320분)이 안 된 버전은 설치하지 않는다 → 막 올라온 악성 버전 피하기
+minimumReleaseAge: 4320
+
+# 설치 스크립트는 꼭 필요한 패키지만 돌린다 (나머지는 막아 공급망 공격 위험을 줄인다)
+allowBuilds:
+  node-pty: true # 터미널 (네이티브 모듈 빌드)
+  electron-winstaller: false # Windows 설치 파일용 → 쓰지 않음
+  lefthook: false # Git 훅은 package.json 의 prepare 에서 직접 설치
+  electron: false # Electron 44 는 설치 스크립트 없이 처음 실행할 때 내려받음

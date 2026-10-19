@@ -1,0 +1,20 @@
+# Git 훅 (lefthook). 설치는 desktop 의 pnpm install 이 한다 (package.json 의 prepare)
+
+# 커밋 직전: 스테이징한 desktop 파일만 Biome 으로 고치고 검사. 고친 파일은 다시 스테이징, 고칠 수 없는 오류면 커밋을 멈춘다
+pre-commit:
+  jobs:
+    - name: biome
+      root: desktop/
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx,json,jsonc,css}"
+      run: pnpm exec biome check --write --no-errors-on-unmatched --colors=off {staged_files}
+      stage_fixed: true
+
+# push 직전: 타입 검사 · FSD 구조 검사 (Electron 을 띄우는 테스트는 무거워서 CI 에서만)
+pre-push:
+  jobs:
+    - name: typecheck
+      root: desktop/
+      run: pnpm typecheck
+    - name: fsd
+      root: desktop/
+      run: pnpm fsd
