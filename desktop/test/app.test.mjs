@@ -518,6 +518,7 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
     "놓친 알림 (최근 것부터) · 모두 지우기",
   );
   await page.keyboard.press("Escape");
+  await until(async () => !(await page.$("[role=menu]")), "놓친 알림 닫기");
   await until(async () => !!(await page.$('footer button[aria-label="알림 기록"]')), "열어 보면 읽은 것으로");
 
   // 궤도 대시보드의 "이 탭으로 가기": 그 세션의 탭으로
@@ -583,6 +584,8 @@ test("설정 · 명령 팔레트 · 단축키 안내 · 탭 이름 바꾸기", a
   await page.keyboard.type("버그");
   await page.waitForSelector('[cmdk-group]:has-text("기록") [cmdk-item]:has-text("찾은 질문 버그")');
   await page.keyboard.press("Escape");
+  // 닫히는 애니메이션이 끝나야 화면을 누를 수 있다 (그동안 Radix 가 화면의 포인터를 막는다)
+  await until(async () => !(await page.$("[role=dialog]")), "팔레트 닫기");
 
   // 탭 이름 바꾸기: 세션이 있는 탭은 수집기에 저장 (궤도 HUB 이름과 같이)
   const tabId = await page.$eval("[data-pane]", (e) => e.dataset.pane);
@@ -775,6 +778,7 @@ test("설정의 업데이트 확인: 바로 묻고, 새 버전이 있으면 업�
   await page.waitForSelector('[role=dialog] button:text-is("업데이트")');
   await page.waitForSelector('footer button:has-text("새 버전 9.9.9")');
   await page.keyboard.press("Escape");
+  await until(async () => !(await page.$("[role=dialog]")), "설정 닫기");
   releases.delete("/app-version.json");
 });
 
