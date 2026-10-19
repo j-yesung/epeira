@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!out", "!dist", "!legacy", "!test/legacy", "!test/dashboard.test.mjs", "!sign.mjs"]
+    "includes": ["**", "!out", "!dist", "!test/dashboard.test.mjs", "!sign.mjs"]
   },
   "formatter": {
     "enabled": true,
