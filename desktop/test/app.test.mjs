@@ -22,6 +22,24 @@ const data = path.join(tmp, "data");
 const alpha = path.join(tmp, "alpha");
 for (const d of [data, alpha]) mkdirSync(d);
 
+// 수집기 흉내: 지난 세션만 준다 (나머지는 404 → 꺼진 수집기처럼). 주소를 넘기면(AGENT_ORBIT_URL) 앱은 실제 수집기 설치를 건드리지 않는다
+const NOW = Date.now() / 1000;
+const sessions = [
+  { id: "abc-1", agent: "claude", cwd: alpha, label: "alpha", title: "로그인 버그 고쳐줘", last: NOW - 3600 },
+  { id: "recent-1", agent: "claude", cwd: alpha, label: "alpha", title: "방금 하던 대화", last: NOW + 600 },
+  { id: "sub-1", parent: "abc-1", agent: "claude", cwd: alpha, label: "alpha", title: "서브에이전트", last: NOW },
+];
+const collector = createServer((req, res) => {
+  if (!req.url.startsWith("/api/summary")) {
+    res.writeHead(404);
+    return res.end();
+  }
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ sessions }));
+});
+await new Promise((r) => collector.listen(0, "127.0.0.1", r));
+const ORBIT_URL = `http://127.0.0.1:${collector.address().port}`;
+
 // 릴리스 서버 흉내: 시험용 키로 서명한 DMG 를 준다 (앱에 든 공개 키는 EPEIRA_TEST 일 때만 바꿀 수 있다)
 const testKey = generateKeyPairSync("ed25519");
 const releases = new Map();
@@ -50,6 +68,24 @@ const until = async (fn, what) => {
   assert.fail(what);
 };
 
+/** 화면이 셸에 보내는 입력을 모은다. 이어 열기 명령은 실제 claude 를 띄우지 않게 셸에 보내지 않는다 → 끝나면 release */
+const holdResume = () =>
+  app.evaluate(({ ipcMain }) => {
+    globalThis.ptyWrite = ipcMain.listeners("pty:write");
+    globalThis.ptyIn = [];
+    ipcMain.removeAllListeners("pty:write");
+    ipcMain.on("pty:write", (e, id, data) => {
+      globalThis.ptyIn.push(data);
+      if (!data.includes("--resume")) for (const f of globalThis.ptyWrite) f(e, id, data);
+    });
+  });
+const releaseResume = () =>
+  app.evaluate(({ ipcMain }) => {
+    ipcMain.removeAllListeners("pty:write");
+    for (const f of globalThis.ptyWrite) ipcMain.on("pty:write", f);
+  });
+const ptyIn = () => app.evaluate(() => globalThis.ptyIn.join(""));
+
 /** ⌘W 로 지금 프로젝트의 탭을 하나씩 모두 닫고 시작 화면으로 (닫기가 끝나야 다음 탭이 지금 탭이 된다) */
 const closeAll = async () => {
   const count = () => page.$$eval('[role="tab"]', (t) => t.length);
@@ -66,7 +102,7 @@ before(async () => {
     args: [APP_DIR, `--user-data-dir=${data}`],
     env: {
       ...process.env,
-      AGENT_ORBIT_URL: "http://127.0.0.1:9", // 수집기 없음 → 실제 설치를 건드리지 않음
+      AGENT_ORBIT_URL: ORBIT_URL, // 수집기 흉내 → 실제 설치를 건드리지 않음
       EPEIRA_TEST: "1", // 창은 숨김
       TMPDIR: tmp, // 받은 업데이트도 임시 폴더에
       EPEIRA_UPDATE_BASE: `http://127.0.0.1:${updates.address().port}`,
@@ -85,6 +121,7 @@ after(async () => {
     await app.close().catch(() => {});
   }
   updates.close();
+  collector.close();
   rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -92,7 +129,7 @@ test("React 화면이 뜨고 preload API 만 열린다", async () => {
   await page.waitForSelector('[role="tablist"]', { state: "attached" });
   assert.equal(await page.evaluate(() => window.epeira.appVersion()), VERSION);
   assert.equal(await page.evaluate(() => typeof window.require), "undefined", "화면에 Node 를 열지 않는다");
-  assert.equal(await page.evaluate(() => window.epeira.orbitUrl), "http://127.0.0.1:9");
+  assert.equal(await page.evaluate(() => window.epeira.orbitUrl), ORBIT_URL);
   assert.match(await page.evaluate(() => document.documentElement.dataset.theme), /^(dark|light)$/, "테마를 건다");
 });
 
@@ -267,17 +304,7 @@ test("칸: ⌘D · ⇧⌘D 로 나누고, 옆 칸으로 · 크게 보기 · 탭�
 });
 
 test("다시 켜면: 예전 형식(app.tabs)의 탭 · 칸 배치를 되살리고, 대화는 그 탭을 처음 볼 때 이어 연다", async () => {
-  // 화면이 셸에 보내는 입력을 모은다. 이어 열기 명령은 실제 claude 를 띄우지 않게 셸에 보내지 않는다
-  await app.evaluate(({ ipcMain }) => {
-    globalThis.ptyWrite = ipcMain.listeners("pty:write");
-    globalThis.ptyIn = [];
-    ipcMain.removeAllListeners("pty:write");
-    ipcMain.on("pty:write", (e, id, data) => {
-      globalThis.ptyIn.push(data);
-      if (!data.includes("--resume")) for (const f of globalThis.ptyWrite) f(e, id, data);
-    });
-  });
-  const ptyIn = () => app.evaluate(() => globalThis.ptyIn.join(""));
+  await holdResume();
   const saved = {
     current: alpha,
     list: [
@@ -318,10 +345,59 @@ test("다시 켜면: 예전 형식(app.tabs)의 탭 · 칸 배치를 되살리�
   );
   assert.deepEqual(stored.layouts[alpha], { dir: "cols", ratio: 0.3, a: { t: 0 }, b: { t: 1 } }, "고른 탭이 그 칸에");
 
-  await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeAllListeners("pty:write");
-    for (const f of globalThis.ptyWrite) ipcMain.on("pty:write", f);
-  });
+  await releaseResume();
+  await answer(0);
+  await closeAll();
+});
+
+test("사이드바: 프로젝트 고르기 · 펼치기, 지난 세션 이어 열기, ⋯ · 우클릭 메뉴, 목록에서 빼기", async () => {
+  const beta = path.join(tmp, "beta");
+  mkdirSync(beta, { recursive: true });
+  await page.evaluate((d) => window.epeira.addProjectPath(d), beta);
+  await page.reload(); // 프로젝트 목록 · 지난 세션을 다시 읽는다
+  const row = (dir) => `aside li[title="${dir}"]`;
+  await page.waitForSelector(row(beta));
+  const names = () =>
+    page.$$eval('[aria-label="지난 세션"] button', (els) => els.map((e) => e.innerText.split("\n")[0]));
+  const main = (dir) => `${row(dir)} > button[aria-expanded]:not([aria-label])`;
+  await page.click(main(beta)); // 다른 프로젝트를 누르면 고르고 펼친다 (지금 프로젝트를 다시 누르면 접기 · 펼치기)
+  await until(async () => (await page.getAttribute(main(beta), "aria-expanded")) === "true", "beta 고르기");
+  await page.click(main(alpha));
+  await until(async () => (await names()).length === 2, "지난 세션 (서브에이전트는 빼고)");
+  assert.deepEqual(await names(), ["방금 하던 대화", "로그인 버그 고쳐줘"]);
+
+  // 지난 세션을 누르면 새 탭에서 이어 연다. 이미 탭에 있으면 그 탭으로
+  await holdResume();
+  const tabCount = () => page.$$eval('[role="tab"]', (t) => t.length);
+  await page.click('[aria-label="지난 세션"] button:has-text("로그인 버그 고쳐줘")');
+  await until(async () => (await ptyIn()).includes("claude --resume abc-1\r"), "이어 열기");
+  assert.equal(await tabCount(), 1);
+  assert.equal(await page.$eval(`${row(alpha)} [title="열린 터미널 1개"]`, (e) => e.textContent), "1");
+  await page.click('[aria-label="지난 세션"] button:has-text("로그인 버그 고쳐줘")');
+  assert.equal(await tabCount(), 1, "이미 열린 대화는 그 탭으로");
+
+  // 방금까지 움직이던 세션은 먼저 묻는다 (다른 터미널에서 아직 실행 중일 수 있어서)
+  await page.click('[aria-label="지난 세션"] button:has-text("방금 하던 대화")');
+  await page.waitForSelector('[role="dialog"]:has-text("세션 이어 열기")');
+  await page.click('[role="dialog"] button:has-text("취소")');
+  await until(async () => !(await page.$('[role="dialog"]')), "취소");
+  assert.equal(await tabCount(), 1);
+  await releaseResume();
+
+  // ⋯ 메뉴로 새 터미널, 우클릭 메뉴로 목록에서 빼기
+  await page.hover(row(alpha));
+  await page.click('button[aria-label="alpha 메뉴"]');
+  await page.click('[role="menuitem"]:has-text("새 터미널")');
+  await until(async () => (await tabCount()) === 2, "⋯ → 새 터미널");
+  await page.click(row(beta), { button: "right", position: { x: 120, y: 20 } });
+  await page.click('[role="menuitem"]:has-text("목록에서 빼기")');
+  await until(async () => !(await page.$(row(beta))), "목록에서 빼기");
+
+  // 펼침 상태는 예전과 같은 키에 기억
+  await page.click('button[aria-label="alpha 세션 접기"]');
+  await until(async () => !(await page.$('[aria-label="지난 세션"]')), "접기");
+  assert.equal(await page.evaluate((d) => JSON.parse(localStorage.getItem("app.folds"))[d], alpha), false);
+
   await answer(0);
   await closeAll();
 });
