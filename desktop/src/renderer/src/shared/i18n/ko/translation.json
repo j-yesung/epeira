@@ -56,8 +56,6 @@
     "connecting": "연결 중…",
     "off": "수집기가 꺼져 있어요",
     "live": "LIVE",
-    "tools": "도구",
-    "tok": "· {{n}} tok",
     "agentOff": "{{name}} (연결 안 됨)",
     "refresh": "새로고침",
     "inbox": "알림 기록",

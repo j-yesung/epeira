@@ -485,10 +485,11 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   const tabId = await page.$eval("[data-pane]", (e) => e.dataset.pane);
   const footer = () => page.$eval("footer[role=status]", (e) => e.innerText.replace(/\s+/g, " "));
   await until(async () => (await footer()).includes("LIVE"), "수집기 연결");
-  assert.match(await footer(), /도구 12 · 6\.2k tok 5h 83%/, "오늘 사용량 · 한도 요약");
+  assert.match(await footer(), /Claude Code 5h 83%/, "사용 한도 요약만 (도구 · 토큰은 없음)");
+  assert.doesNotMatch(await footer(), /도구|tok/);
 
   // 에이전트를 누르면 한도 상세 (올리기만 해서는 열리지 않는다)
-  const agent = 'footer button:has-text("도구")';
+  const agent = 'footer button:has-text("Claude Code")';
   const detail = "[data-slot=popover-content]";
   await page.hover(agent);
   await page.waitForTimeout(300);

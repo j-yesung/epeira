@@ -1,10 +1,9 @@
-// 상태바의 에이전트 한 칸: 오늘 도구 횟수 · 토큰 · 사용 한도 요약. 누르면 상세: 연결 · 한도 막대 · 초기화까지 남은 시간
+// 상태바의 에이전트 한 칸: 사용 한도 요약(5h · 주). 누르면 상세: 연결 · 한도 막대 · 초기화까지 남은 시간
 import type { AgentUsage } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
 
 import { type AgentLimits, limitLevel, limitWindows, span } from "@/entities/usage/model/limits";
 import { useUsage } from "@/entities/usage/model/store";
-import { fmtK } from "@/shared/lib/format";
 import { cn } from "@/shared/lib/utils";
 import { ClaudeLogo, OpenAILogo } from "@/shared/ui/icons/agent-logos";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
@@ -114,9 +113,6 @@ export function AgentUsageItem({ agent }: { agent: string }) {
         >
           <Logo agent={agent} className="size-3" />
           <span className="sr-only">{a.connected ? a.name : t("statusbar.agentOff", { name: a.name })}</span>
-          <span className="text-faint-foreground">{t("statusbar.tools")}</span>
-          <b className="font-semibold text-foreground">{a.calls.toLocaleString()}</b>
-          <span className="text-faint-foreground">{t("statusbar.tok", { n: fmtK(a.tin + a.tout) })}</span>
           {wins.length > 0 && (
             <span>
               {wins.map((w, i) => (
