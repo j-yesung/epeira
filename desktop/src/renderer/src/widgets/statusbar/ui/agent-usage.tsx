@@ -1,16 +1,19 @@
-// 상태바의 에이전트 한 칸: 오늘 도구 횟수 · 토큰 · 사용 한도 요약. 마우스를 올리면(또는 Tab 으로 가면) 상세: 연결 · 한도 막대 · 초기화 · 오늘 사용량
+// 상태바의 에이전트 한 칸: 5시간 한도 작은 막대 + 사용 한도 요약(5h · 7d). 누르면 상세: 연결 · 한도 막대 · 초기화까지 남은 시간
 import type { AgentUsage } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
 
-import { type AgentLimits, limitLevel, limitWindows, span } from "@/entities/usage/model/limits";
+import { type AgentLimits, limitLevel, limitSummary, limitWindows, span } from "@/entities/usage/model/limits";
 import { useUsage } from "@/entities/usage/model/store";
-import { fmtK } from "@/shared/lib/format";
 import { cn } from "@/shared/lib/utils";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/ui/hover-card";
 import { ClaudeLogo, OpenAILogo } from "@/shared/ui/icons/agent-logos";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { Progress } from "@/shared/ui/progress";
 
 const levelText = (used: number) =>
   ({ warn: "text-warning", err: "text-destructive", ok: "" })[limitLevel(used) ?? "ok"];
+/** 작은 막대(Progress)의 채움 색 */
+const levelFill = (used: number) =>
+  ({ warn: "*:bg-warning", err: "*:bg-destructive", ok: "" })[limitLevel(used) ?? "ok"];
 const levelBar = (used: number) =>
   ({ warn: "bg-warning", err: "bg-destructive", ok: "bg-primary" })[limitLevel(used) ?? "ok"];
 
@@ -87,13 +90,8 @@ function Detail({ agent, a, L }: { agent: string; a: AgentUsage; L: AgentLimits 
       ) : (
         <p className="text-faint-foreground text-xs">{note}</p>
       )}
-      <p className="mt-2.5 border-t pt-2 font-mono text-muted-foreground text-xs">
-        {t("limits.todayTools", { calls: a.calls.toLocaleString() })}
-        <br />
-        {t("limits.todayTokens", { tin: fmtK(a.tin), tout: fmtK(a.tout), tcache: fmtK(a.tcache) })}
-      </p>
       {L?.at && (
-        <p className="mt-0.5 font-mono text-faint-foreground text-xs">
+        <p className="mt-2.5 border-t pt-2 font-mono text-faint-foreground text-xs">
           {t("limits.recorded", { span: span(Date.now() - L.at * 1000) })}
         </p>
       )}
@@ -106,37 +104,37 @@ export function AgentUsageItem({ agent }: { agent: string }) {
   const a = useUsage((s) => s.usage?.by?.[agent]);
   const L = useUsage((s) => s.usage?.limits?.[agent]) as AgentLimits | undefined;
   if (!a) return null;
-  const wins = limitWindows(L);
+  const summary = limitSummary(limitWindows(L));
   return (
-    <HoverCard openDelay={0} closeDelay={0}>
-      <HoverCardTrigger asChild>
-        <span
-          tabIndex={0} // 키보드로도 상세를 열 수 있게
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
           className={cn(
-            "-mx-1 inline-flex h-5 cursor-default items-center gap-1.5 rounded-sm px-1 outline-none hover:bg-secondary focus-visible:bg-secondary",
+            "-mx-1 inline-flex h-5 cursor-pointer items-center gap-1.5 rounded-sm px-1 outline-none hover:bg-secondary focus-visible:bg-secondary data-[state=open]:bg-secondary",
             !a.connected && "opacity-55",
           )}
         >
           <Logo agent={agent} className="size-3" />
           <span className="sr-only">{a.connected ? a.name : t("statusbar.agentOff", { name: a.name })}</span>
-          <span className="text-faint-foreground">{t("statusbar.tools")}</span>
-          <b className="font-semibold text-foreground">{a.calls.toLocaleString()}</b>
-          <span className="text-faint-foreground">{t("statusbar.tok", { n: fmtK(a.tin + a.tout) })}</span>
-          {wins.length > 0 && (
-            <span>
-              {wins.map((w, i) => (
-                <span key={w.name} className={levelText(w.used)}>
-                  {i ? " · " : ""}
-                  {w.short} {w.used}%
-                </span>
-              ))}
-            </span>
-          )}
-        </span>
-      </HoverCardTrigger>
-      <HoverCardContent side="top" align="start" sideOffset={8}>
+          <Progress
+            value={summary[0].used}
+            aria-label={t("statusbar.fiveHour", { name: a.name })}
+            className={cn("h-1 w-8 bg-input", levelFill(summary[0].used))}
+          />
+          <span>
+            {summary.map((w, i) => (
+              <span key={w.short} className={levelText(w.used)}>
+                {i ? " · " : ""}
+                {w.short} {w.used}%
+              </span>
+            ))}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" sideOffset={8}>
         <Detail agent={agent} a={a} L={L} />
-      </HoverCardContent>
-    </HoverCard>
+      </PopoverContent>
+    </Popover>
   );
 }

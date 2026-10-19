@@ -21,6 +21,8 @@ export interface AgentLimits {
 export interface LimitView {
   name: string;
   short: string;
+  /** 7일 창 */
+  weekly: boolean;
   used: number;
   resets: number | null;
 }
@@ -38,10 +40,17 @@ export const limitWindows = (L: AgentLimits | undefined): LimitView[] =>
           return {
             name: weekly ? i18n.t("limits.weekly") : i18n.t("limits.hours", { n: hours }),
             short: weekly ? i18n.t("limits.weeklyShort") : i18n.t("limits.hoursShort", { n: hours }),
+            weekly,
             used: reset ? 0 : Math.round(w.used ?? 0),
             resets: reset ? null : (w.resets ?? null),
           };
         });
+
+/** 상태바 요약: 5시간 · 7일 둘 다 늘 (기록이 아직 없으면 0%) */
+export const limitSummary = (wins: LimitView[]) => [
+  wins.find((w) => !w.weekly) ?? { short: i18n.t("limits.hoursShort", { n: 5 }), used: 0 },
+  wins.find((w) => w.weekly) ?? { short: i18n.t("limits.weeklyShort"), used: 0 },
+];
 
 /** 80% 넘으면 주의, 95% 넘으면 위험 */
 export const limitLevel = (used: number) => (used >= 95 ? "err" : used >= 80 ? "warn" : null);
