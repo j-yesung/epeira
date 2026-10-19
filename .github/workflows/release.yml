@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0  # 태그가 main 에 들어갔는지 보려고
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413  # v6.1.0
         with:
           package_json_file: desktop/package.json
@@ -58,4 +59,7 @@ jobs:
         working-directory: desktop
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/Epeira-*.dmg dist/Epeira-*.dmg.sig --verify-tag --title "Epeira ${GITHUB_REF_NAME#v}" --generate-notes
+        # main 에 아직 없는 태그(합치기 전 시험)는 초안으로 → 공개 · 최신 릴리스가 되지 않는다. 합친 뒤 gh release edit 로 공개
+        run: |
+          draft=$(git merge-base --is-ancestor "$GITHUB_SHA" origin/main || echo --draft)
+          gh release create "$GITHUB_REF_NAME" dist/Epeira-*.dmg dist/Epeira-*.dmg.sig --verify-tag --title "Epeira ${GITHUB_REF_NAME#v}" --generate-notes $draft
