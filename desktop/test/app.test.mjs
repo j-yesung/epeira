@@ -628,6 +628,75 @@ test("보기 › 확대 · 축소 · 실제 크기는 앱 화면만, 궤도 패�
   assert.deepEqual(await zoom(), { window: 0, webview: 0 });
 });
 
+test("단축키: ⌘R 탭 이름 · ⇧⌘[ ⇧⌘] 탭 이동 · ⌘G 다음 찾기 · ⌘K 화면 지우기 · ⇧↩ 줄바꿈, 다시 불러오기는 메뉴에 없음", async () => {
+  // 다시 불러오기(⌘R)를 누르면 터미널 화면이 사라진다 → 메뉴에 두지 않는다 (개발 모드에서도)
+  const reload = await app.evaluate(({ Menu }) => {
+    const all = (items) => items.flatMap((i) => [i, ...(i.submenu ? all(i.submenu.items) : [])]);
+    return all(Menu.getApplicationMenu().items).some((i) => /reload/i.test(i.role ?? ""));
+  });
+  assert.equal(reload, false, "다시 불러오기 없음");
+
+  const labels = () =>
+    page.$$eval('[role="tab"]', (els) =>
+      els.map(
+        (e) => e.querySelector(".truncate").textContent + (e.getAttribute("aria-selected") === "true" ? "*" : ""),
+      ),
+    );
+  const out = () => app.evaluate(() => globalThis.ptyOut);
+  for (let i = 0; i < 2; i++) await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await labels()).join() === "터미널,터미널 2*", "탭 둘");
+
+  // ⇧⌘[ · ⇧⌘]: 이전 · 다음 탭
+  await page.keyboard.press("Meta+Shift+BracketLeft");
+  await until(async () => (await labels()).join() === "터미널*,터미널 2", "⇧⌘[");
+  await page.keyboard.press("Meta+Shift+BracketRight");
+  await until(async () => (await labels()).join() === "터미널,터미널 2*", "⇧⌘]");
+
+  // ⌘R: 지금 탭 이름 바꾸기
+  await menu("rename-tab");
+  await page.waitForFunction(() => document.activeElement?.matches('input[aria-label="탭 이름"]'));
+  await page.keyboard.type("빌드");
+  await page.keyboard.press("Enter");
+  await until(async () => (await labels()).join() === "터미널,빌드*", "⌘R 이름 바꾸기");
+
+  // ⌘G · ⇧⌘G: 다음 · 이전 찾기
+  const start = (await out()).length;
+  await page.waitForFunction(() => !!document.activeElement?.closest("[data-pane]"));
+  await page.keyboard.type("echo kw-1; echo kw-2");
+  await page.keyboard.press("Enter");
+  await until(async () => (await out()).slice(start).includes("kw-2\r\n"), "명령 실행");
+  await menu("find");
+  await page.waitForFunction(() => document.activeElement?.matches('input[aria-label="터미널에서 찾기"]'));
+  await page.keyboard.type("kw-");
+  const count = () => page.$eval('[role="search"] span', (e) => e.textContent);
+  await until(async () => /^\d+\/\d+$/.test(await count()), "찾은 개수");
+  const first = await count();
+  await menu("find-next");
+  await until(async () => (await count()) !== first, "⌘G 다음");
+  await menu("find-prev");
+  await until(async () => (await count()) === first, "⇧⌘G 이전");
+
+  // ⌘K: 화면을 지우고 찾기도 닫는다 → 지난 출력은 더 찾을 수 없다
+  await menu("clear-terminal");
+  await until(async () => !(await page.$('[role="search"]')), "⌘K 는 찾기도 닫는다");
+  await page.keyboard.type(" "); // 커서가 움직여야 찾기가 화면을 새로 읽는다 (xterm 찾기의 줄 캐시)
+  await until(async () => (await out()).endsWith(" "), "입력");
+  await menu("find");
+  await page.waitForFunction(() => document.activeElement?.matches('input[aria-label="터미널에서 찾기"]'));
+  await page.keyboard.type("kw-");
+  await until(async () => (await count()) === "없음", "⌘K 화면 지우기");
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$('[role="search"]')), "찾기 닫기");
+
+  // ⇧↩: 줄바꿈(Ctrl+J)을 보낸다 → Claude Code · Codex 입력에서 보내지 않고 줄만 바꿈 (↩ 는 \r)
+  await holdResume();
+  await page.keyboard.type("echo nl");
+  await page.keyboard.press("Shift+Enter");
+  await until(async () => (await ptyIn()).includes("echo nl\n"), "⇧↩");
+  await releaseResume();
+  await closeAll();
+});
+
 test("설정 · 명령 팔레트 · 단축키 안내 · 탭 이름 바꾸기", async () => {
   // 설정: 에이전트 연결은 바뀌는 내용을 먼저 보여 주고 동의를 받는다
   status.agents.codex = { name: "Codex", installed: true, connected: false };
