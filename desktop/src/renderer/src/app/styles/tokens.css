@@ -1,0 +1,120 @@
+/* Epeira 디자인 토큰. 색 · 그림자 값을 직접 쓰는 곳은 이 파일뿐이다
+ * 1) 기본 토큰: 원래 값 (색 팔레트). 부품에서 쓰지 않는다
+ * 2) 의미 토큰: 쓰임새 이름 (shadcn 이름 + Epeira 추가분). 라이트 · 다크에서 바뀌는 건 이것뿐
+ * 부품은 의미 토큰을 Tailwind 유틸리티(bg-background · text-muted-foreground …)로만 쓴다 → index.css 의 @theme */
+
+/* ── 1) 기본 토큰 ── */
+:root {
+  --gray-0: #ffffff;
+  --gray-25: #fbfbfb;
+  --gray-50: #f4f4f4;
+  --gray-75: #f1f1f1;
+  --gray-100: #ededed;
+  --gray-125: #e8e8e8;
+  --gray-150: #e1e1e1;
+  --gray-200: #d4d4d4;
+  --gray-250: #cfcfcf;
+  --gray-400: #a3a3a3;
+  --gray-500: #858585;
+  --gray-550: #6b6b6b;
+  --gray-600: #4d4d4d;
+  --gray-700: #333333;
+  --gray-750: #303030;
+  --gray-800: #242424;
+  --gray-850: #1b1b1b;
+  --gray-875: #1a1a1a;
+  --gray-900: #171717;
+  --gray-910: #141414;
+  --gray-925: #111111;
+  --gray-950: #0d0d0d;
+  --gray-975: #0a0a0a;
+  --gray-1000: #000000;
+
+  --blue-50: #eaf2fb;
+  --blue-400: #5cc2ff;
+  --blue-500: #3b9eff;
+  --blue-600: #1c7ed6;
+  --blue-700: #1971c2;
+  --green-400: #34d399;
+  --green-700: #2b8a3e;
+  --amber-400: #fbbf24;
+  --amber-700: #a86b00;
+  --rose-400: #ff6b81;
+  --rose-600: #d6336c;
+
+  /* 에이전트 색 (테마와 상관없이 같음) */
+  --orange-claude: #d97757;
+  --violet-codex: #8b9cff;
+}
+
+/* ── 2) 의미 토큰: 다크 (기본) ── */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: var(--gray-975); /* 앱 바탕 */
+  --foreground: var(--gray-100); /* 본문 글자 */
+  --card: var(--gray-925); /* 한 단 올라온 면 (패널 · 줄) */
+  --popover: var(--gray-910); /* 메뉴 · 팝오버 */
+  --primary: var(--blue-500); /* 강조 (선택 · 링크 · 주요 버튼) */
+  --primary-foreground: var(--gray-975);
+  --primary-strong: var(--blue-400); /* 강조 글자 · 숫자 */
+  --secondary: var(--gray-875); /* 두 단 올라온 면 */
+  --muted: var(--gray-875);
+  --muted-foreground: var(--gray-400); /* 흐린 글자 */
+  --faint-foreground: var(--gray-500); /* 더 흐린 글자 (보조 정보) */
+  --accent: var(--gray-875); /* 마우스를 올렸을 때 바탕 (shadcn 의 accent) */
+  --destructive: var(--rose-400); /* 오류 · 지우기 */
+  --destructive-foreground: var(--gray-0);
+  --success: var(--green-400);
+  --warning: var(--amber-400);
+  --border: var(--gray-800); /* 선 */
+  --input: var(--gray-750); /* 진한 선 · 입력칸 테두리 */
+  --ring: var(--blue-500); /* 키보드 포커스 */
+  --chrome: var(--gray-950); /* 창 위 · 아래 막대 */
+  --tile: var(--gray-875); /* 작은 아이콘 칸 */
+  --tile-foreground: var(--gray-200);
+  --code: var(--gray-1000); /* 코드 · 터미널 바탕 */
+  --glow: var(--gray-900); /* 빈 화면의 은은한 빛 */
+  --overlay: rgb(0 0 0 / 45%); /* 창 뒤를 덮는 막 */
+  --shadow-color: rgb(0 0 0 / 55%);
+}
+
+/* ── 2) 의미 토큰: 라이트 ── */
+[data-theme="light"] {
+  color-scheme: light;
+  --background: var(--gray-25);
+  --foreground: var(--gray-850);
+  --card: var(--gray-75);
+  --popover: var(--gray-0);
+  --primary: var(--blue-600);
+  --primary-foreground: var(--gray-0);
+  --primary-strong: var(--blue-700);
+  --secondary: var(--gray-125);
+  --muted: var(--gray-125);
+  --muted-foreground: var(--gray-600);
+  --faint-foreground: var(--gray-550);
+  --accent: var(--gray-125);
+  --destructive: var(--rose-600);
+  --success: var(--green-700);
+  --warning: var(--amber-700);
+  --border: var(--gray-150);
+  --input: var(--gray-250);
+  --ring: var(--blue-600);
+  --chrome: var(--gray-50);
+  --tile: var(--gray-0);
+  --tile-foreground: var(--gray-700);
+  --code: var(--gray-75);
+  --glow: var(--blue-50);
+  --shadow-color: rgb(0 0 0 / 18%);
+}
+
+/* 다른 의미 토큰을 가리키는 것들: 테마를 거는 요소마다 다시 계산해야 그 테마 값을 따라간다 */
+:root,
+[data-theme] {
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --agent-claude: var(--orange-claude);
+  --agent-codex: var(--violet-codex);
+}
