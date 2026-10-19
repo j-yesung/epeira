@@ -169,7 +169,7 @@ const closeAll = async () => {
     await menu("close-tab");
     await until(async () => (await count()) === n - 1, "탭 닫기");
   }
-  await until(() => page.$("text=터미널만 열기"), "시작 화면");
+  await until(() => page.$("text=왼쪽에서 프로젝트를 고르거나"), "시작 화면");
 };
 
 before(async () => {
@@ -251,7 +251,10 @@ test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘�
     );
 
   await page.click('button[aria-label="폴더 열기"]');
-  await until(() => page.$("text=터미널만 열기"), "프로젝트를 고르면 시작 화면에 새 세션 버튼");
+  await until(() => page.$(`aside li[title="${alpha}"]`), "폴더를 열면 사이드바에 프로젝트");
+  // 시작 화면은 안내 문장과 단축키만 (새 세션 · 터미널은 위 탭 줄에서)
+  assert.ok(await page.$("[data-pane-area] >> text=왼쪽에서 프로젝트를 고르거나"));
+  assert.equal(await page.$("[data-pane-area] button"), null, "시작 화면에 버튼 없음");
   await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
   await until(async () => (await tabs()).length === 1, "새 탭");
   assert.deepEqual(await tabs(), [["터미널", "true"]]);
@@ -285,7 +288,7 @@ test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘�
   // 앞 탭을 먼저 닫으면 뒤 탭 이름이 "터미널"로 당겨지므로 뒤에서부터
   for (const label of ["터미널 2 탭 닫기", "터미널 탭 닫기"]) await page.click(`button[aria-label="${label}"]`);
   await until(async () => (await tabs()).length === 0, "모두 닫기");
-  assert.ok(await page.$("text=터미널만 열기"), "시작 화면");
+  assert.ok(await page.$("text=왼쪽에서 프로젝트를 고르거나"), "시작 화면");
 });
 
 test("칸: ⌘D · ⇧⌘D 로 나누고, 옆 칸으로 · 크게 보기 · 탭을 칸에 끌어 놓기 · 칸 닫기 · 나누기 풀기", async () => {
@@ -518,8 +521,25 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   await page.waitForSelector("[data-pane]");
   const tabId = await page.$eval("[data-pane]", (e) => e.dataset.pane);
   const footer = () => page.$eval("footer[role=status]", (e) => e.innerText.replace(/\s+/g, " "));
-  await until(async () => (await footer()).includes("LIVE"), "수집기 연결");
-  assert.match(await footer(), /도구 12 · 6\.2k tok 5h 83%/, "오늘 사용량 · 한도 요약");
+  await until(() => page.$('footer [role=img][aria-label="수집기에 연결됨"]'), "수집기 연결");
+  assert.match(await footer(), /Claude Code 5h 83% · 7d 0%/, "사용 한도 요약만, 기록이 없는 창도 0%");
+  assert.doesNotMatch(await footer(), /LIVE|도구|tok/);
+  assert.ok(
+    await page.$('footer [role=progressbar][aria-label="Claude Code 5시간 한도"][aria-valuenow="83"]'),
+    "5시간 한도 작은 막대",
+  );
+
+  // 에이전트를 누르면 한도 상세 (올리기만 해서는 열리지 않는다)
+  const agent = 'footer button:has-text("Claude Code")';
+  const detail = "[data-slot=popover-content]";
+  await page.hover(agent);
+  await page.waitForTimeout(300);
+  assert.equal(await page.$(detail), null, "올리기만 해서는 열리지 않는다");
+  await page.click(agent);
+  await page.waitForSelector(`${detail}:has-text("5시간")`);
+  assert.equal(await page.$(`${detail}:has-text("오늘 도구")`), null, "오늘 사용량 줄은 없다");
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$(detail)), "상세 닫기");
 
   // 궤도 패널: 지금 프로젝트 · 탭을 대시보드에 알린다
   await until(() => dashboardCalls.includes(`focus:alpha:${tabId}`), "대시보드에 지금 탭");
@@ -686,7 +706,7 @@ test("프로젝트마다 따로: 바꿔도 터미널이 새로 열리지 않고 
   await page.waitForSelector(projectRow(beta));
   assert.equal((await savedTabs()).current, alpha);
   assert.deepEqual(await tabLabels(), [], "프로젝트를 골라도 터미널을 멋대로 열지 않는다");
-  assert.ok(await page.$("text=터미널만 열기"));
+  assert.ok(await page.$("text=왼쪽에서 프로젝트를 고르거나"));
 
   for (let i = 0; i < 2; i++) await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
   await until(async () => (await tabLabels()).length === 2, "alpha 에 탭 둘");

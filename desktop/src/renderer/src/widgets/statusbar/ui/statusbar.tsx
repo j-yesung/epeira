@@ -49,12 +49,15 @@ export function Statusbar() {
     >
       <span className="flex items-center gap-1.5">
         <i
+          role={usage?.ok ? "img" : undefined} // 연결됐을 때만 뜻이 있는 점 (아니면 옆 글자가 설명)
+          aria-label={usage?.ok ? t("statusbar.live") : undefined}
+          title={usage?.ok ? t("statusbar.live") : undefined}
           className={cn(
             "size-[7px] rounded-full bg-faint-foreground",
             usage?.ok && "bg-success shadow-[0_0_6px_var(--success)]",
           )}
         />
-        {!usage ? t("statusbar.connecting") : usage.ok ? t("statusbar.live") : t("statusbar.off")}
+        {!usage ? t("statusbar.connecting") : !usage.ok && t("statusbar.off")}
       </span>
       {usage?.ok && agents.sort().map((a) => <AgentUsageItem key={a} agent={a} />)}
       {usage && <RefreshButton />}

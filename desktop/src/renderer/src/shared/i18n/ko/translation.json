@@ -31,12 +31,8 @@
   },
   "welcome": {
     "title": "Epeira",
-    "body": "왼쪽에서 프로젝트를 고르거나 폴더를 추가하세요. 터미널에서 Claude Code · Codex와 대화하면 오른쪽 궤도에 실시간으로 나타나요.",
-    "keys": "<kbd>⌘O</kbd> 폴더 열기 · <kbd>⌘T</kbd> 새 탭 · <kbd>⇧⌘C</kbd> Claude · <kbd>⇧⌘X</kbd> Codex · <kbd>⌘J</kbd> 궤도 패널",
-    "openFolder": "폴더 열기",
-    "newClaude": "{{name}} · Claude 새 세션",
-    "newCodex": "Codex 새 세션",
-    "newShell": "터미널만 열기"
+    "body": "왼쪽에서 프로젝트를 고르거나 폴더를 추가하세요.\n터미널에서 Claude Code · Codex와 대화하면 오른쪽 궤도에 실시간으로 나타나요.",
+    "keys": "<kbd>⌘O</kbd> 폴더 열기 · <kbd>⌘T</kbd> 새 탭 · <kbd>⇧⌘C</kbd> Claude · <kbd>⇧⌘X</kbd> Codex · <kbd>⌘J</kbd> 궤도 패널"
   },
   "orbit": {
     "label": "에이전트 궤도",
@@ -55,9 +51,7 @@
     "label": "연결 상태와 오늘 사용량",
     "connecting": "연결 중…",
     "off": "수집기가 꺼져 있어요",
-    "live": "LIVE",
-    "tools": "도구",
-    "tok": "· {{n}} tok",
+    "live": "수집기에 연결됨",
     "agentOff": "{{name}} (연결 안 됨)",
     "refresh": "새로고침",
     "inbox": "알림 기록",
@@ -65,7 +59,8 @@
     "inboxEmpty": "아직 알림이 없어요",
     "inboxClear": "모두 지우기",
     "settings": "설정 (⌘,)",
-    "connectAgents": "에이전트 연결하기 →"
+    "connectAgents": "에이전트 연결하기 →",
+    "fiveHour": "{{name}} 5시간 한도"
   },
   "tab": {
     "kind": {
@@ -136,15 +131,13 @@
   "limits": {
     "weekly": "주간",
     "hours": "{{n}}시간",
-    "weeklyShort": "주",
+    "weeklyShort": "7d",
     "hoursShort": "{{n}}h",
     "spanDays": "{{d}}일 {{h}}시간",
     "spanHours": "{{h}}시간 {{m}}분",
     "spanMinutes": "{{m}}분",
     "resetIn": "{{span}} 후 초기화 · {{at}}",
     "resetDone": "초기화됨 · 다음 사용 때 새로 기록돼요",
-    "todayTools": "오늘 도구 {{calls}}회",
-    "todayTokens": "입력 {{tin}} · 출력 {{tout}} · 캐시 읽기 {{tcache}}",
     "recorded": "한도는 {{span}} 전 기록 기준",
     "codexNone": "아직 기록된 사용 한도가 없어요 · Codex 를 한 번 사용하면 나타나요",
     "claudeOff": "설정(⌘,)에서 \"Claude 사용 한도 보기\"를 켜면 5시간 · 주간 한도가 보여요",
