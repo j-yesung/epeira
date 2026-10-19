@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { constants, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -20,6 +20,7 @@ const VERSION = JSON.parse(readFileSync(path.join(APP_DIR, "package.json"), "utf
 const tmp = mkdtempSync(path.join(tmpdir(), "epeira-test-"));
 const data = path.join(tmp, "data");
 const alpha = path.join(tmp, "alpha");
+const CLAUDE_SID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 for (const d of [data, alpha]) mkdirSync(d);
 
 // 수집기 흉내: 상태 · 지난 세션 · 이벤트(SSE) · 궤도 대시보드. 주소를 넘기면(AGENT_ORBIT_URL) 앱은 실제 수집기 설치를 건드리지 않는다
@@ -144,7 +145,7 @@ const until = async (fn, what) => {
   assert.fail(what);
 };
 
-/** 화면이 셸에 보내는 입력을 모은다. 이어 열기 명령은 실제 claude 를 띄우지 않게 셸에 보내지 않는다 → 끝나면 release */
+/** 화면이 셸에 보내는 입력을 모은다. 이어 열기 명령은 실제 claude · codex 를 띄우지 않게 셸에 보내지 않는다 → 끝나면 release */
 const holdResume = () =>
   app.evaluate(({ ipcMain }) => {
     globalThis.ptyWrite = ipcMain.listeners("pty:write");
@@ -152,7 +153,7 @@ const holdResume = () =>
     ipcMain.removeAllListeners("pty:write");
     ipcMain.on("pty:write", (e, id, data) => {
       globalThis.ptyIn.push(data);
-      if (!data.includes("--resume")) for (const f of globalThis.ptyWrite) f(e, id, data);
+      if (!/^(claude|codex)\b/.test(data)) for (const f of globalThis.ptyWrite) f(e, id, data);
     });
   });
 const releaseResume = () =>
@@ -402,7 +403,8 @@ test("다시 켜면: 예전 형식(app.tabs)의 탭 · 칸 배치를 되살리�
       { dir: alpha, kind: "shell", title: null, sid: null, last: false },
       { dir: alpha, kind: "claude", title: "API 서버", sid: "abc-123", last: false },
       { dir: path.join(tmp, "gone"), kind: "shell", title: null, sid: null, last: false }, // 없어진 폴더
-      { dir: alpha, kind: "codex", title: null, sid: "bad id; rm", last: true }, // 이어 열 수 없는 세션 → 셸
+      { dir: alpha, kind: "codex", title: null, sid: "bad id; rm", last: true }, // 이어 열 수 없는 세션 → Codex 를 새로
+      { dir: alpha, kind: "shell", title: null, sid: CLAUDE_SID, last: false }, // 셸 탭에서 직접 켠 Claude → 그 대화를 잇는다
     ],
     layouts: { [alpha]: { dir: "cols", ratio: 0.3, a: { t: 0 }, b: { t: 3 } } },
   };
@@ -415,11 +417,12 @@ test("다시 켜면: 예전 형식(app.tabs)의 탭 · 칸 배치를 되살리�
         (e) => e.querySelector(".truncate").textContent + (e.getAttribute("aria-selected") === "true" ? "*" : ""),
       ),
     );
-  await until(async () => (await tabs()).length === 3, "탭 되살리기");
-  assert.deepEqual(await tabs(), ["터미널", "API 서버", "터미널 2*"], "순서 · 이름 · 마지막에 보던 탭");
+  await until(async () => (await tabs()).length === 4, "탭 되살리기");
+  assert.deepEqual(await tabs(), ["터미널", "API 서버", "Codex*", "Claude 2"], "순서 · 이름 · 마지막에 보던 탭");
   const panes = await page.$$eval("[data-pane]", (els) => els.map((e) => e.getBoundingClientRect().width));
   assert.equal(panes.length, 2, "칸 배치");
   assert.ok(Math.abs(panes[0] / (panes[0] + panes[1]) - 0.3) < 0.02, `저장된 비율: ${panes}`);
+  await until(async () => (await ptyIn()).includes("codex\r"), "세션을 모르는 Codex 탭은 Codex 를 새로");
   assert.ok(!(await ptyIn()).includes("claude --resume"), "보기 전엔 대화를 열지 않는다");
 
   await page.click('[role="tab"]:has-text("API 서버")');
@@ -430,11 +433,17 @@ test("다시 켜면: 예전 형식(app.tabs)의 탭 · 칸 배치를 되살리�
     [
       ["shell", null, null, false],
       ["claude", "API 서버", "abc-123", true],
-      ["shell", null, "bad id; rm", false],
+      ["codex", null, "bad id; rm", false],
+      ["claude", null, CLAUDE_SID, false],
     ],
     "같은 형식으로 다시 저장 (없어진 폴더의 탭은 빠짐)",
   );
   assert.deepEqual(stored.layouts[alpha], { dir: "cols", ratio: 0.3, a: { t: 0 }, b: { t: 1 } }, "고른 탭이 그 칸에");
+  await page.click('[role="tab"]:has-text("Claude 2")');
+  await until(
+    async () => (await ptyIn()).includes(`claude --resume ${CLAUDE_SID}\r`),
+    "셸 탭에서 켰던 Claude 대화도 이어 연다",
+  );
 
   await releaseResume();
   await answer(0);
@@ -1018,6 +1027,28 @@ test("업데이트: 우리 서명이 맞고 안의 버전도 맞는 DMG 만 받�
     { ok: false },
     "예전 버전으로는 바꾸지 않는다",
   );
+});
+
+test("⌘Q: Claude · Codex 가 켜져 있으면 끄지 않고 안내 (Orca 처럼)", async () => {
+  const fake = path.join(tmp, "bin", "claude"); // 이름만 claude 인 node (시스템 명령은 복사하면 macOS 가 실행을 막는다)
+  mkdirSync(path.dirname(fake), { recursive: true });
+  copyFileSync(process.execPath, fake, constants.COPYFILE_FICLONE);
+  await page.evaluate((d) => window.epeira.addProjectPath(d), alpha);
+  await page.reload();
+  await page.click(`aside li[title="${alpha}"]`);
+  await menu("new-shell");
+  await page.waitForTimeout(800);
+  await page.keyboard.type(`${fake} -e "setTimeout(() => {}, 30000)"`);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(1000);
+  await app.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu().getMenuItemById("quit").click({ triggeredByAccelerator: true }),
+  );
+  await until(() => page.$("text=⌘Q 로는 끄지 않아요"), "끄지 않고 안내");
+  assert.equal(app.process().exitCode, null, "앱은 그대로");
+  await page.keyboard.press("Control+C");
+  await page.waitForTimeout(500);
+  await closeAll();
 });
 
 test("앱을 끄고(업데이트 · ⌘Q) 다시 켜도 탭이 그대로", async () => {

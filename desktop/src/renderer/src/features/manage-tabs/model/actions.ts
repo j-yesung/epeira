@@ -3,7 +3,7 @@ import type { TabKind } from "@ipc/contract";
 
 import { useProjects } from "@/entities/project/model/store";
 import { isLeaf, leaves, removeLeaf, replaceLeaf } from "@/entities/tab/model/panes";
-import { resumeCmd } from "@/entities/tab/model/resume";
+import { agentOf, resumeCmd } from "@/entities/tab/model/resume";
 import { projectTabs, useTabs } from "@/entities/tab/model/store";
 import { disposeTerminal, getTerminal, openTerminal } from "@/entities/terminal/model/registry";
 import { epeira } from "@/shared/api/epeira";
@@ -48,7 +48,7 @@ interface OpenTabOptions {
   size?: { width: number; height: number };
   title?: string | null;
   sid?: string | null;
-  /** 지난 대화를 이어 연다: 바로 실행하지 않고 그 탭을 처음 볼 때 (이어 열 수 없으면 셸만) */
+  /** 지난 대화를 이어 연다: 바로 실행하지 않고 그 탭을 처음 볼 때 (세션을 모르면 Claude · Codex 를 새로) */
   resume?: boolean;
 }
 
@@ -64,9 +64,10 @@ export const openTab = async (
     dir = added;
   }
   const sid = opts.sid ?? null;
-  const pending = opts.resume ? resumeCmd(kind, sid) : null;
-  // 셸에 그대로 입력되는 값이라 정해진 것만. 이어 열 수 없는 대화는 셸로
-  const safeKind = KINDS.includes(kind) && !(opts.resume && !pending) ? kind : "shell";
+  // 셸에 그대로 입력되는 값이라 정해진 것만. 되살릴 때는 셸 탭에서 직접 켠 Claude · Codex 도 세션으로 알아보고 그 대화를 잇는다
+  const asked = KINDS.includes(kind) ? kind : "shell";
+  const safeKind = opts.resume && asked === "shell" ? agentOf(sid) : asked;
+  const pending = opts.resume && safeKind !== "shell" ? (resumeCmd(safeKind, sid) ?? safeKind) : null;
   const run = safeKind === "shell" || opts.resume ? null : safeKind;
   const size = opts.size ?? document.querySelector("[data-pane-area]")?.getBoundingClientRect();
   const id = await openTerminal({ cwd: dir, run, pending, size });

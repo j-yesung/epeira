@@ -3,6 +3,7 @@ import { app, BrowserWindow, Menu, type MenuItemConstructorOptions, shell, webCo
 
 import type { MenuAction } from "../ipc/contract";
 import { liveWin, ORBIT, sendToWin } from "./context";
+import { agentRunning } from "./terminals";
 
 const send = (action: MenuAction) => () => sendToWin("menu", action);
 
@@ -46,7 +47,14 @@ export const buildMenu = () => {
               { role: "hideOthers" },
               { role: "unhide" },
               { type: "separator" },
-              { role: "quit" },
+              {
+                id: "quit",
+                label: `${app.name} 종료`,
+                accelerator: "CmdOrCtrl+Q",
+                // Orca 처럼: Claude · Codex 가 켜져 있으면 ⌘Q 로는 끄지 않는다 (실수로 대화를 끊지 않게). 메뉴에서 고르면 끈다
+                click: (_item, _win, e) =>
+                  e.triggeredByAccelerator && agentRunning() ? sendToWin("menu", "quit-blocked") : app.quit(),
+              },
             ],
           } satisfies MenuItemConstructorOptions,
         ]

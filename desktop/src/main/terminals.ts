@@ -45,6 +45,9 @@ export const busy = (id: string) => {
   }
 };
 
+/** Claude · Codex 가 켜져 있는 탭이 있는가 (⌘Q 막기) */
+export const agentRunning = () => [...terms.keys()].some((id) => /^(claude|codex)$/i.test(busy(id) ?? ""));
+
 /** 실행 중인 작업이 있으면 한 번 묻는다 (앱 종료 · 창 닫기 · 업데이트) */
 export const confirmQuit = () => {
   const names = [...new Set([...terms.keys()].map(busy).filter(Boolean))];
