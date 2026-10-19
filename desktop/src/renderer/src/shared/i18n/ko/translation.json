@@ -31,12 +31,8 @@
   },
   "welcome": {
     "title": "Epeira",
-    "body": "왼쪽에서 프로젝트를 고르거나 폴더를 추가하세요. 터미널에서 Claude Code · Codex와 대화하면 오른쪽 궤도에 실시간으로 나타나요.",
-    "keys": "<kbd>⌘O</kbd> 폴더 열기 · <kbd>⌘T</kbd> 새 탭 · <kbd>⇧⌘C</kbd> Claude · <kbd>⇧⌘X</kbd> Codex · <kbd>⌘J</kbd> 궤도 패널",
-    "openFolder": "폴더 열기",
-    "newClaude": "{{name}} · Claude 새 세션",
-    "newCodex": "Codex 새 세션",
-    "newShell": "터미널만 열기"
+    "body": "왼쪽에서 프로젝트를 고르거나 폴더를 추가하세요.\n터미널에서 Claude Code · Codex와 대화하면 오른쪽 궤도에 실시간으로 나타나요.",
+    "keys": "<kbd>⌘O</kbd> 폴더 열기 · <kbd>⌘T</kbd> 새 탭 · <kbd>⇧⌘C</kbd> Claude · <kbd>⇧⌘X</kbd> Codex · <kbd>⌘J</kbd> 궤도 패널"
   },
   "orbit": {
     "label": "에이전트 궤도",

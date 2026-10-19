@@ -169,7 +169,7 @@ const closeAll = async () => {
     await menu("close-tab");
     await until(async () => (await count()) === n - 1, "탭 닫기");
   }
-  await until(() => page.$("text=터미널만 열기"), "시작 화면");
+  await until(() => page.$("text=왼쪽에서 프로젝트를 고르거나"), "시작 화면");
 };
 
 before(async () => {
@@ -251,7 +251,10 @@ test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘�
     );
 
   await page.click('button[aria-label="폴더 열기"]');
-  await until(() => page.$("text=터미널만 열기"), "프로젝트를 고르면 시작 화면에 새 세션 버튼");
+  await until(() => page.$(`aside li[title="${alpha}"]`), "폴더를 열면 사이드바에 프로젝트");
+  // 시작 화면은 안내 문장과 단축키만 (새 세션 · 터미널은 위 탭 줄에서)
+  assert.ok(await page.$("[data-pane-area] >> text=왼쪽에서 프로젝트를 고르거나"));
+  assert.equal(await page.$("[data-pane-area] button"), null, "시작 화면에 버튼 없음");
   await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
   await until(async () => (await tabs()).length === 1, "새 탭");
   assert.deepEqual(await tabs(), [["터미널", "true"]]);
@@ -285,7 +288,7 @@ test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘�
   // 앞 탭을 먼저 닫으면 뒤 탭 이름이 "터미널"로 당겨지므로 뒤에서부터
   for (const label of ["터미널 2 탭 닫기", "터미널 탭 닫기"]) await page.click(`button[aria-label="${label}"]`);
   await until(async () => (await tabs()).length === 0, "모두 닫기");
-  assert.ok(await page.$("text=터미널만 열기"), "시작 화면");
+  assert.ok(await page.$("text=왼쪽에서 프로젝트를 고르거나"), "시작 화면");
 });
 
 test("칸: ⌘D · ⇧⌘D 로 나누고, 옆 칸으로 · 크게 보기 · 탭을 칸에 끌어 놓기 · 칸 닫기 · 나누기 풀기", async () => {
@@ -652,7 +655,7 @@ test("프로젝트마다 따로: 바꿔도 터미널이 새로 열리지 않고 
   await page.waitForSelector(projectRow(beta));
   assert.equal((await savedTabs()).current, alpha);
   assert.deepEqual(await tabLabels(), [], "프로젝트를 골라도 터미널을 멋대로 열지 않는다");
-  assert.ok(await page.$("text=터미널만 열기"));
+  assert.ok(await page.$("text=왼쪽에서 프로젝트를 고르거나"));
 
   for (let i = 0; i < 2; i++) await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
   await until(async () => (await tabLabels()).length === 2, "alpha 에 탭 둘");
