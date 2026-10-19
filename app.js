@@ -324,7 +324,7 @@ function station(root, key) {
   let n = root.stations.get(key);
   if (!n) {
     root.stations.set(key, n = {key, label: key.startsWith('mcp:') ? key.slice(4) : key, mcp: key.startsWith('mcp:'),
-      count: 0, sub: '', last: 0, kind: null, flash: -9, fail: -9, off: null, order: root.stations.size, live: false, since: 0});
+      count: 0, sub: '', last: 0, kind: null, flash: -9, fail: -9, hold: 0, off: null, order: root.stations.size, live: false, since: 0});
   }
   return n;
 }
@@ -349,9 +349,11 @@ function phaseOf(root) {
   return root.kind && !ended && epoch() - activity(root) < WORK_WINDOW ? 'work' : 'idle';
 }
 
-function flow(e) {  // 쓴 토큰(출력 + 입력의 1/4)만큼 HUB 에서 입자를 내보낸다. 많이 써도 한 번에 12개까지
+function flow(e, root) {  // 쓴 토큰(출력 + 입력의 1/4)만큼 HUB 에서 입자를 내보낸다 → 방금 쓴 도구 노드로 (도구를 안 썼으면 바깥 궤도로). 한 번에 12개까지
   const n = Math.min(12, Math.round(((e.dtok || 0) + (e.din || 0) / 4) / 80));
-  for (let i = 0; i < n; i++) S.flows.push({t: now() + i * .06, a: Math.random() * 6.283, sp: (Math.random() - .5) * .8, c: pick(PAL)});
+  let to = null;
+  for (const x of root.stations.values()) if (!to || x.last > to.last) to = x;
+  for (let i = 0; i < n; i++) S.flows.push({t: now() + i * .06, to: to && to.key, a: Math.random() * 6.283, sp: (Math.random() - .5) * .8, c: pick(PAL)});
 }
 
 function follow(root) {  // 자동 따라가기: 보던 세션이 잠잠할 때만 새로 움직인 세션으로 HUB 를 옮긴다 (번갈아 튀지 않게)
@@ -384,7 +386,7 @@ function onHook(e) {  // 훅: 도구 실행 시작/끝 → 선을 붙잡아 두�
     s.running.set(e.tool, {text: e.text, t: e.ts, key: k});
     if (k) { const n = station(root, k); n.sub = argOf(e.text, k); n.last = Math.max(n.last, e.ts); }
     if (!e.replay) {
-      if (k) { const n = station(root, k); n.flash = now(); burst(n); }
+      if (k) { const n = station(root, k); n.flash = now(); n.hold = now() + 2.5; burst(n); }
       s.flash = now();
       if (root.id === S.focus) S.hubFlash = now();
       follow(root);
@@ -412,11 +414,11 @@ function onEvent(e) {
       n.last = Math.max(n.last, e.ts); n.sub = argOf(e.text, key); n.kind = e.kind;
       if (live) n.count++;
       if (e.kind === 'error') n.fail = now();
-      else if (live) { n.flash = now(); burst(n); S.links.push({root: root.id, from: s.id, to: key, t: now()}); }
+      else if (live) { n.flash = now(); n.hold = now() + 2.5; burst(n); S.links.push({root: root.id, from: s.id, to: key, t: now()}); }
     }
     if (live) {
       s.flash = now();
-      if (root.id === S.focus) { S.hubFlash = now(); if (!CALM) flow(e); }
+      if (root.id === S.focus) { S.hubFlash = now(); if (!CALM) flow(e, root); }
       follow(root);
     }
     e.root = root.id;  // 피드도 프로젝트별로 거른다
@@ -1161,7 +1163,10 @@ function frame() {
     return {x: g.cx + Math.cos(RAYS[best]) * hub.rx, y: g.cy + Math.sin(RAYS[best]) * hub.ry};
   };
   const from = (x, to) => (x && subSet.has(x) ? x : edge(to));
-  for (const n of stations) n.reach = (n.reach || 0) + ((n.live ? 1 : 0) - (n.reach || 0)) * Math.min(1, dt * (n.live ? 5 : 3));  // 뻗을 땐 빠르게, 거둘 땐 천천히
+  for (const n of stations) {  // 뻗을 땐 빠르게, 거둘 땐 천천히. 1초 안에 끝난 도구도 2.5초는 노드에 닿아 있다
+    const on = n.live || t < n.hold;
+    n.reach = (n.reach || 0) + ((on ? 1 : 0) - (n.reach || 0)) * Math.min(1, dt * (on ? 5 : 1.5));
+  }
 
   ctx.clearRect(0, 0, W, H);
   const glow = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, g.rx);
@@ -1175,14 +1180,33 @@ function frame() {
   S.bursts = S.bursts.filter(b => t - b.t < 1.6);
   for (const b of S.bursts) { b.a += b.sp * dt; dotOn(g, b.a, b.j, 2.2, b.c, 1 - (t - b.t) / 1.6, b.k); }
   S.flows = S.flows.filter(f => t - f.t < 1.6);
-  for (const f of S.flows) {  // HUB 가장자리에서 바깥 궤도까지 살짝 휘며 나가고, 나타났다 사라진다
+  for (const f of S.flows) {  // HUB 가장자리에서 도구 노드(없으면 바깥 궤도)까지 살짝 휘며 가고, 나타났다 사라진다
     const p = (t - f.t) / 1.6;
     if (p < 0) continue;
-    const e = 1 - (1 - p) ** 2, a = f.a + f.sp * p, hr = S.hubR || {rx: 64, ry: 58};
+    const e = 1 - (1 - p) ** 2, to = f.to && byKey.get(f.to);
+    let x, y;
+    if (to) {
+      const a = edge(to), dx = to.x - a.x, dy = to.y - a.y, bend = Math.sin(p * Math.PI) * f.sp * 30 / (Math.hypot(dx, dy) || 1);
+      x = a.x + dx * e - dy * bend; y = a.y + dy * e + dx * bend;
+    } else {
+      const a = f.a + f.sp * p, hr = S.hubR || {rx: 64, ry: 58};
+      x = g.cx + (hr.rx + (g.rx - hr.rx) * e) * Math.cos(a); y = g.cy + (hr.ry + (g.ry - hr.ry) * e) * Math.sin(a);
+    }
     ctx.globalAlpha = Math.sin(p * Math.PI) * .9;
-    circle(g.cx + (hr.rx + (g.rx - hr.rx) * e) * Math.cos(a), g.cy + (hr.ry + (g.ry - hr.ry) * e) * Math.sin(a), 1.8, f.c);
+    circle(x, y, 1.8, f.c);
   }
   ctx.globalAlpha = 1;
+
+  // 거미줄: 응답하는 동안 쓴 도구마다 옅은 선이 남아 1분에 걸쳐 흐려진다 (쉬면 궤도가 느려지는 만큼 같이 걷힌다)
+  const web = Math.min(1, Math.max(0, (spin - .03) / .09));
+  ctx.lineWidth = 1;
+  for (const n of stations) {
+    const o = .3 * (1 - (nowS - n.last) / 60) * web;
+    if (o < .04) continue;
+    ctx.strokeStyle = `rgba(59,158,255,${o})`;
+    const a = edge(n);
+    line(a.x, a.y, n.x, n.y);
+  }
 
   // 선: HUB(또는 서브에이전트) → 도구 노드. 방금 끝난 실행은 빛나다 사라지고, 실행 중이면 선이 남아 점이 흐른다
   S.links = S.links.filter(l => t - l.t < 2.5);
