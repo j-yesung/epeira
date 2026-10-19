@@ -1,6 +1,6 @@
 // 앱 자동 테스트: pnpm test (먼저 빌드한다)
-// React 로 옮기는 동안은 메인 프로세스 · preload 가 그대로 동작하는지를 본다. 화면 시나리오는 옮기면서 test/legacy 에서 하나씩 가져온다
-// 임시 앱 데이터 폴더 + 없는 수집기 주소로 띄워서 실제 프로젝트 목록 · 수집기 설치는 건드리지 않는다
+// 화면은 사람이 보는 요소(역할 · 이름 · 글자)로 다룬다. 화면 안의 함수 · 상태를 직접 부르지 않는다
+// 임시 앱 데이터 폴더 + 수집기 흉내로 띄워서 실제 프로젝트 목록 · 수집기 설치는 건드리지 않는다
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
@@ -519,6 +519,17 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   );
   await page.keyboard.press("Escape");
   await until(async () => !!(await page.$('footer button[aria-label="알림 기록"]')), "열어 보면 읽은 것으로");
+
+  // 궤도 대시보드의 "이 탭으로 가기": 그 세션의 탭으로
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await page.$$('[role="tab"]')).length === 2, "두 번째 탭");
+  await page.evaluate(() =>
+    document.querySelector("webview").executeJavaScript(`console.log('epeira:focus {"id":"abc-1"}')`),
+  );
+  await until(
+    async () => (await page.$eval('[role="tab"][aria-selected="true"] .truncate', (e) => e.textContent)) === "API 서버",
+    "대시보드에서 고른 탭으로",
+  );
   await closeAll();
 });
 
@@ -589,6 +600,182 @@ test("설정 · 명령 팔레트 · 단축키 안내 · 탭 이름 바꾸기", a
   );
   assert.ok(posts.some(([p, d]) => p === "/api/rename" && d.id === "abc-1" && d.name === "배포 준비"));
   await closeAll();
+});
+
+/** 탭 줄의 이름들 (지금 탭은 *) */
+const tabLabels = () =>
+  page.$$eval('[role="tab"]', (els) =>
+    els.map((e) => e.querySelector(".truncate").textContent + (e.getAttribute("aria-selected") === "true" ? "*" : "")),
+  );
+const projectRow = (dir) => `aside li[title="${dir}"]`;
+const projectMain = (dir) => `${projectRow(dir)} > button[aria-expanded]:not([aria-label])`;
+const savedTabs = () => page.evaluate(() => JSON.parse(localStorage.getItem("app.tabs")));
+
+test("프로젝트마다 따로: 바꿔도 터미널이 새로 열리지 않고 그 프로젝트 탭만, 다시 켜면 프로젝트별로 돌아온다", async () => {
+  const beta = path.join(tmp, "beta");
+  await page.evaluate((d) => window.epeira.addProjectPath(d), beta);
+  await page.reload();
+  await page.waitForSelector(projectRow(beta));
+  assert.equal((await savedTabs()).current, alpha);
+  assert.deepEqual(await tabLabels(), [], "프로젝트를 골라도 터미널을 멋대로 열지 않는다");
+  assert.ok(await page.$("text=터미널만 열기"));
+
+  for (let i = 0; i < 2; i++) await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await tabLabels()).length === 2, "alpha 에 탭 둘");
+  assert.deepEqual(await tabLabels(), ["터미널", "터미널 2*"]);
+
+  // 명령 팔레트로 beta 로 → 아직 터미널이 없다
+  await menu("palette");
+  await page.waitForFunction(() => document.activeElement?.matches("[cmdk-input]"));
+  await page.keyboard.type("beta");
+  await page.waitForSelector('[cmdk-group]:has-text("프로젝트") [cmdk-item]:has-text("beta")');
+  await page.keyboard.press("Enter");
+  await until(async () => (await savedTabs()).current === beta, "팔레트로 프로젝트 이동");
+  assert.deepEqual(await tabLabels(), []);
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await tabLabels()).length === 1, "beta 에 탭");
+
+  // 사이드바로 alpha 로 → alpha 의 탭 둘, 마지막에 보던 탭
+  await page.click(projectMain(alpha));
+  await until(async () => (await tabLabels()).join() === "터미널,터미널 2*", "alpha 로 돌아오면 alpha 의 탭");
+  assert.equal((await savedTabs()).list.length, 3, "오가도 터미널이 늘지 않는다");
+
+  // 사이드바를 접어도 터미널은 왼쪽 끝부터, 궤도 패널은 제자리
+  const box = () =>
+    page.evaluate(() => ({
+      pane: Math.round(document.querySelector("[data-pane]").getBoundingClientRect().left),
+      orbit: Math.round(document.querySelector('[aria-label="에이전트 궤도"]').getBoundingClientRect().width),
+    }));
+  const before = await box();
+  await menu("toggle-side");
+  await until(async () => (await box()).pane === 0, "사이드바 접기");
+  assert.equal((await box()).orbit, before.orbit);
+  await menu("toggle-side");
+  await until(async () => (await box()).pane === before.pane, "다시 펴기");
+
+  // 다시 켜면 프로젝트별 탭과 마지막 프로젝트
+  await page.reload();
+  await page.waitForSelector('[role="tab"]');
+  await until(async () => (await tabLabels()).join() === "터미널,터미널 2*", "다시 켜도 alpha");
+  await page.click(projectMain(beta));
+  await until(async () => (await tabLabels()).join() === "터미널*", "beta 의 탭도");
+  await answer(0);
+  await closeAll();
+  await page.click(projectMain(alpha));
+  await until(async () => (await tabLabels()).length === 2, "alpha");
+  await closeAll();
+});
+
+test("터미널: 실행 중이면 닫기 전에 묻기 · 찾기(⌘F) · 테마를 따라 색 · 글꼴은 터미널에만 · 넘치면 탭 목록", async () => {
+  const out = () => app.evaluate(() => globalThis.ptyOut);
+  const start = (await out()).length;
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await out()).length > start, "셸 프롬프트");
+  await page.waitForTimeout(500);
+  await page.keyboard.type("echo find-me-$((2+3))");
+  await page.keyboard.press("Enter");
+  await until(async () => (await out()).includes("find-me-5"), "명령 실행");
+
+  // 찾기: 몇 번째 / 전체, esc 로 닫기
+  await menu("find");
+  await page.waitForFunction(() => document.activeElement?.matches('input[aria-label="터미널에서 찾기"]'));
+  await page.keyboard.type("find-me");
+  await until(
+    async () => /^\d+\/\d+$/.test(await page.$eval('[role="search"] span', (e) => e.textContent)),
+    "찾은 개수",
+  );
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$('[role="search"]')), "찾기 닫기");
+
+  // 실행 중이면 닫기 전에 묻는다: 취소하면 그대로, 닫기면 닫힌다
+  await page.keyboard.type("sleep 30");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(1000);
+  await answer(1);
+  await menu("close-tab");
+  await page.waitForTimeout(500);
+  assert.equal((await tabLabels()).length, 1, "취소하면 그대로");
+  await answer(0);
+  await menu("close-tab");
+  await until(async () => (await tabLabels()).length === 0, "닫기");
+
+  // 테마: 라이트 · 다크로 바꾸면 터미널 색도 함께
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  // xterm 6 은 테마 바탕색을 스크롤 영역에 칠한다
+  await page.waitForSelector("[data-pane] .xterm-scrollable-element");
+  const termBg = () => page.$eval("[data-pane] .xterm-scrollable-element", (e) => getComputedStyle(e).backgroundColor);
+  await menu("settings");
+  await page.click('nav[aria-label="설정 목차"] button:has-text("화면")');
+  await page.click('[role=dialog] button:text-is("라이트")');
+  await until(async () => (await page.evaluate(() => document.documentElement.dataset.theme)) === "light", "라이트");
+  const light = await termBg();
+  await page.click('[role=dialog] button:text-is("다크")');
+  await until(async () => (await termBg()) !== light, "다크면 터미널도 어둡게");
+  await page.click('[role=dialog] button:text-is("시스템")');
+
+  // 글꼴: 터미널에만 쓰고, 기본으로 되돌리면 원래대로
+  const termFont = () => page.evaluate(() => JSON.parse(localStorage.getItem("app.prefs") || "{}").fontTerm ?? "");
+  const bodyFont = () => page.evaluate(() => getComputedStyle(document.body).fontFamily);
+  const ui = await bodyFont();
+  await page.click('nav[aria-label="설정 목차"] button:has-text("터미널")');
+  await page.click('[role=dialog] [role=combobox][aria-label="글꼴"]');
+  await until(() => page.evaluate(() => document.querySelectorAll("[role=option]").length > 1), "글꼴 목록");
+  await page.getByRole("option", { name: "Menlo", exact: true }).click();
+  await until(async () => (await termFont()) === "Menlo", "Menlo");
+  assert.equal(await bodyFont(), ui, "앱의 다른 글자는 그대로");
+  await page.click('[role=dialog] [role=combobox][aria-label="글꼴"]');
+  await page.getByRole("option", { name: "기본 (SF Mono)", exact: true }).click();
+  await until(async () => (await termFont()) === "", "기본 글꼴");
+  await until(async () => !(await page.$("[role=listbox]")), "글꼴 목록 닫힘");
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$("[role=dialog]")), "설정 닫기");
+
+  // 탭이 넘치면 탭 목록 버튼 → 고르면 그 탭으로
+  for (let i = 0; i < 9; i++) await menu("new-shell");
+  await until(async () => (await tabLabels()).length === 10, "탭 열 개");
+  await page.waitForSelector('button[aria-label="탭 목록"]');
+  await page.click('button[aria-label="탭 목록"]');
+  await page.click("[role=menuitem] >> nth=0");
+  await until(async () => (await tabLabels())[0] === "터미널*", "목록에서 고른 탭");
+  await closeAll();
+});
+
+test("사이드바: git 브랜치 · 지금 프로젝트가 아니어도 펼치기 · 터미널이 열린 프로젝트는 묻고 닫은 뒤 뺀다", async () => {
+  const gamma = path.join(tmp, "gamma");
+  mkdirSync(gamma, { recursive: true });
+  execFileSync("git", ["init", "-q", "-b", "main", gamma]);
+  await page.evaluate((d) => window.epeira.addProjectPath(d), gamma);
+  await page.reload();
+  await page.waitForSelector(`${projectRow(gamma)} small:has-text("⎇ main")`);
+
+  // 지금 프로젝트(alpha)를 그대로 두고 gamma 만 펼치기
+  await page.click('button[aria-label="gamma 세션 펼치기"]');
+  await page.waitForSelector(`${projectRow(gamma)} p:has-text("오늘")`);
+  assert.equal((await savedTabs()).current, alpha, "펼쳐도 지금 프로젝트는 그대로");
+  await page.click('button[aria-label="gamma 세션 접기"]');
+
+  // 터미널이 열린 프로젝트를 빼면 먼저 묻고, 터미널을 닫은 뒤 뺀다
+  await page.click(projectMain(gamma));
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await tabLabels()).length === 1, "gamma 에 탭");
+  await answer(0);
+  await page.click(projectRow(gamma), { button: "right", position: { x: 120, y: 20 } });
+  await page.click('[role="menuitem"]:has-text("목록에서 빼기")');
+  await until(async () => !(await page.$(projectRow(gamma))), "목록에서 빼기");
+  await until(async () => !(await savedTabs()).list.some((t) => t.dir === gamma), "그 터미널도 닫힘");
+  assert.notEqual((await savedTabs()).current, gamma, "남은 프로젝트로");
+});
+
+test("설정의 업데이트 확인: 바로 묻고, 새 버전이 있으면 업데이트 버튼 · 상태바 링크", async () => {
+  releases.set("/app-version.json", JSON.stringify({ version: "9.9.9", url: "https://example.com/r" }));
+  await menu("settings");
+  await page.click('nav[aria-label="설정 목차"] button:has-text("문제 해결")');
+  assert.ok(await page.$(`[role=dialog]:has-text("Epeira v${VERSION}")`));
+  await page.click('[role=dialog] button:text-is("업데이트 확인")');
+  await page.waitForSelector('[role=dialog] button:text-is("업데이트")');
+  await page.waitForSelector('footer button:has-text("새 버전 9.9.9")');
+  await page.keyboard.press("Escape");
+  releases.delete("/app-version.json");
 });
 
 test("프로젝트 목록: 폴더만 넣고, 뺄 수 있다", async () => {
