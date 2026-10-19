@@ -3,6 +3,7 @@ import type { TabKind } from "@ipc/contract";
 
 import { useProjects } from "@/entities/project/model/store";
 import { isLeaf, leaves, removeLeaf, replaceLeaf } from "@/entities/tab/model/panes";
+import { resumeCmd } from "@/entities/tab/model/resume";
 import { projectTabs, useTabs } from "@/entities/tab/model/store";
 import { disposeTerminal, getTerminal, openTerminal } from "@/entities/terminal/model/registry";
 import { epeira } from "@/shared/api/epeira";
@@ -39,27 +40,41 @@ export const refocusAfterResize = () =>
     if (document.activeElement === document.body) focusActive();
   });
 
-/** 새 탭: 지금 프로젝트(없으면 폴더 열기)에서 셸을 열고, claude · codex 면 셸이 준비되면 실행
- * quiet: 고르지 않고 열기만 (칸 나누기가 자리를 먼저 잡는다), size: 처음 터미널 크기 (없으면 칸 전체) */
+interface OpenTabOptions {
+  /** 고르지 않고 열기만 (칸 나누기 · 되살리기가 자리를 먼저 잡는다) */
+  quiet?: boolean;
+  /** 처음 터미널 크기 (없으면 칸 전체) */
+  size?: { width: number; height: number };
+  title?: string | null;
+  sid?: string | null;
+  /** 지난 대화를 이어 연다: 바로 실행하지 않고 그 탭을 처음 볼 때 (이어 열 수 없으면 셸만) */
+  resume?: boolean;
+}
+
+/** 새 탭: 지금 프로젝트(없으면 폴더 열기)에서 셸을 열고, claude · codex 면 셸이 준비되면 실행 */
 export const openTab = async (
   kind: TabKind = "shell",
   dir = useProjects.getState().current,
-  opts: { quiet?: boolean; size?: { width: number; height: number } } = {},
+  opts: OpenTabOptions = {},
 ) => {
   if (!dir) {
     const added = await useProjects.getState().add();
     if (!added) return null;
     dir = added;
   }
-  const safeKind = KINDS.includes(kind) ? kind : "shell"; // 셸에 그대로 입력되는 값이라 정해진 것만
+  const sid = opts.sid ?? null;
+  const pending = opts.resume ? resumeCmd(kind, sid) : null;
+  // 셸에 그대로 입력되는 값이라 정해진 것만. 이어 열 수 없는 대화는 셸로
+  const safeKind = KINDS.includes(kind) && !(opts.resume && !pending) ? kind : "shell";
+  const run = safeKind === "shell" || opts.resume ? null : safeKind;
   const size = opts.size ?? document.querySelector("[data-pane-area]")?.getBoundingClientRect();
-  const id = await openTerminal({ cwd: dir, run: safeKind === "shell" ? null : safeKind, size });
+  const id = await openTerminal({ cwd: dir, run, pending, size });
   useTabs.getState().add({
     id,
     dir,
     kind: safeKind,
-    title: null,
-    sid: null,
+    title: opts.title ?? null,
+    sid,
     exited: false,
     busy: false,
     waiting: false,

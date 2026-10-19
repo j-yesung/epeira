@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { cn } from "@/shared/lib/utils";
 
-import { fitTerminal, getTerminal, parkTerminal } from "../model/registry";
+import { fitTerminal, getTerminal, parkTerminal, runPending } from "../model/registry";
 
 interface TerminalViewProps {
   id: string;
@@ -22,6 +22,7 @@ export function TerminalView({ id, focused, className }: TerminalViewProps) {
     if (!el || !host) return;
     el.append(host);
     fitTerminal(id);
+    runPending(id);
     const ro = new ResizeObserver(() => fitTerminal(id));
     ro.observe(el);
     return () => {

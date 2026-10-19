@@ -8,6 +8,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { type ITheme, Terminal } from "@xterm/xterm";
 
 import { epeira } from "@/shared/api/epeira";
+import { i18n } from "@/shared/i18n";
 import { usePrefs } from "@/shared/lib/prefs";
 import { terminalTheme } from "@/shared/lib/tokens";
 
@@ -17,6 +18,8 @@ export interface TermHandle {
   search: SearchAddon;
   /** 터미널을 담는 DOM. 탭을 처음 열 때 만들어 두고 화면에서 옮겨 붙인다 */
   host: HTMLDivElement;
+  /** 처음 보일 때 입력할 명령 (다시 켠 뒤 지난 대화 이어 열기 → 한꺼번에 여러 대화를 띄우지 않게) */
+  pending: string | null;
 }
 
 const handles = new Map<string, TermHandle>();
@@ -59,10 +62,11 @@ export const parkTerminal = (id: string) => {
   lot.append(host);
 };
 
-/** 새 터미널: 칸 크기를 재고 PTY 를 연다 → 탭 id. run: 셸이 준비되면 입력할 명령 (claude · codex) */
+/** 새 터미널: 칸 크기를 재고 PTY 를 연다 → 탭 id. run: 셸이 준비되면 입력할 명령 (claude · codex), pending: 처음 보일 때 입력할 명령 */
 export const openTerminal = async (opts: {
   cwd: string;
   run: string | null;
+  pending?: string | null;
   size?: { width: number; height: number };
 }) => {
   const prefs = usePrefs.getState();
@@ -120,9 +124,18 @@ export const openTerminal = async (opts: {
     epeira.termMenu(term.getSelection());
   });
   host.dataset.terminal = id;
-  handles.set(id, { term, fit, search, host });
+  handles.set(id, { term, fit, search, host, pending: opts.pending ?? null });
+  if (opts.pending) term.write(`\x1b[90m${i18n.t("tab.resumeHint")}\x1b[0m\r\n`);
   parkTerminal(id);
   return id;
+};
+
+/** 처음 보일 때 한 번: 미뤄 둔 명령을 입력한다 */
+export const runPending = (id: string) => {
+  const h = handles.get(id);
+  if (!h?.pending) return;
+  epeira.write(id, `${h.pending}\r`);
+  h.pending = null;
 };
 
 export const disposeTerminal = (id: string) => {

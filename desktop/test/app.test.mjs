@@ -50,6 +50,16 @@ const until = async (fn, what) => {
   assert.fail(what);
 };
 
+/** ⌘W 로 지금 프로젝트의 탭을 하나씩 모두 닫고 시작 화면으로 (닫기가 끝나야 다음 탭이 지금 탭이 된다) */
+const closeAll = async () => {
+  const count = () => page.$$eval('[role="tab"]', (t) => t.length);
+  for (let n = await count(); n > 0; n--) {
+    await menu("close-tab");
+    await until(async () => (await count()) === n - 1, "탭 닫기");
+  }
+  await until(() => page.$("text=터미널만 열기"), "시작 화면");
+};
+
 before(async () => {
   app = await electron.launch({
     executablePath: require("electron"),
@@ -253,9 +263,67 @@ test("칸: ⌘D · ⇧⌘D 로 나누고, 옆 칸으로 · 크게 보기 · 탭�
   await page.mouse.move(dst.x + dst.width / 2, dst.y + 10, { steps: 8 });
   await page.mouse.up();
   await until(async () => (await selected()) === 1 - was, "끌어 놓은 자리로 순서가 바뀐다");
-  await menu("close-tab");
-  await menu("close-tab");
-  await until(() => page.$("text=터미널만 열기"), "시작 화면");
+  await closeAll();
+});
+
+test("다시 켜면: 예전 형식(app.tabs)의 탭 · 칸 배치를 되살리고, 대화는 그 탭을 처음 볼 때 이어 연다", async () => {
+  // 화면이 셸에 보내는 입력을 모은다. 이어 열기 명령은 실제 claude 를 띄우지 않게 셸에 보내지 않는다
+  await app.evaluate(({ ipcMain }) => {
+    globalThis.ptyWrite = ipcMain.listeners("pty:write");
+    globalThis.ptyIn = [];
+    ipcMain.removeAllListeners("pty:write");
+    ipcMain.on("pty:write", (e, id, data) => {
+      globalThis.ptyIn.push(data);
+      if (!data.includes("--resume")) for (const f of globalThis.ptyWrite) f(e, id, data);
+    });
+  });
+  const ptyIn = () => app.evaluate(() => globalThis.ptyIn.join(""));
+  const saved = {
+    current: alpha,
+    list: [
+      { dir: alpha, kind: "shell", title: null, sid: null, last: false },
+      { dir: alpha, kind: "claude", title: "API 서버", sid: "abc-123", last: false },
+      { dir: path.join(tmp, "gone"), kind: "shell", title: null, sid: null, last: false }, // 없어진 폴더
+      { dir: alpha, kind: "codex", title: null, sid: "bad id; rm", last: true }, // 이어 열 수 없는 세션 → 셸
+    ],
+    layouts: { [alpha]: { dir: "cols", ratio: 0.3, a: { t: 0 }, b: { t: 3 } } },
+  };
+  await page.evaluate((v) => localStorage.setItem("app.tabs", v), JSON.stringify(saved));
+  await page.reload();
+  await page.waitForSelector('[role="tablist"]', { state: "attached" });
+  const tabs = () =>
+    page.$$eval('[role="tab"]', (els) =>
+      els.map(
+        (e) => e.querySelector(".truncate").textContent + (e.getAttribute("aria-selected") === "true" ? "*" : ""),
+      ),
+    );
+  await until(async () => (await tabs()).length === 3, "탭 되살리기");
+  assert.deepEqual(await tabs(), ["터미널", "API 서버", "터미널 2*"], "순서 · 이름 · 마지막에 보던 탭");
+  const panes = await page.$$eval("[data-pane]", (els) => els.map((e) => e.getBoundingClientRect().width));
+  assert.equal(panes.length, 2, "칸 배치");
+  assert.ok(Math.abs(panes[0] / (panes[0] + panes[1]) - 0.3) < 0.02, `저장된 비율: ${panes}`);
+  assert.ok(!(await ptyIn()).includes("claude --resume"), "보기 전엔 대화를 열지 않는다");
+
+  await page.click('[role="tab"]:has-text("API 서버")');
+  await until(async () => (await ptyIn()).includes("claude --resume abc-123\r"), "처음 볼 때 이어 연다");
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("app.tabs")));
+  assert.deepEqual(
+    stored.list.map((t) => [t.kind, t.title, t.sid, t.last]),
+    [
+      ["shell", null, null, false],
+      ["claude", "API 서버", "abc-123", true],
+      ["shell", null, "bad id; rm", false],
+    ],
+    "같은 형식으로 다시 저장 (없어진 폴더의 탭은 빠짐)",
+  );
+  assert.deepEqual(stored.layouts[alpha], { dir: "cols", ratio: 0.3, a: { t: 0 }, b: { t: 1 } }, "고른 탭이 그 칸에");
+
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeAllListeners("pty:write");
+    for (const f of globalThis.ptyWrite) ipcMain.on("pty:write", f);
+  });
+  await answer(0);
+  await closeAll();
 });
 
 test("프로젝트 목록: 폴더만 넣고, 뺄 수 있다", async () => {
