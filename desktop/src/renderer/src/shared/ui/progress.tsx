@@ -10,6 +10,7 @@ function Progress({ className, value, ...props }: React.ComponentProps<typeof Pr
   return (
     <ProgressPrimitive.Root
       data-slot="progress"
+      value={value} // 화면 읽기 프로그램에 지금 값 (aria-valuenow)
       className={cn("relative h-2 w-full overflow-hidden rounded-full bg-primary/20", className)}
       {...props}
     >

@@ -1,4 +1,4 @@
-// 상태바의 에이전트 한 칸: 사용 한도 요약(5h · 주). 누르면 상세: 연결 · 한도 막대 · 초기화까지 남은 시간
+// 상태바의 에이전트 한 칸: 5시간 한도 작은 막대 + 사용 한도 요약(5h · 7d). 누르면 상세: 연결 · 한도 막대 · 초기화까지 남은 시간
 import type { AgentUsage } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
 
@@ -7,9 +7,13 @@ import { useUsage } from "@/entities/usage/model/store";
 import { cn } from "@/shared/lib/utils";
 import { ClaudeLogo, OpenAILogo } from "@/shared/ui/icons/agent-logos";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { Progress } from "@/shared/ui/progress";
 
 const levelText = (used: number) =>
   ({ warn: "text-warning", err: "text-destructive", ok: "" })[limitLevel(used) ?? "ok"];
+/** 작은 막대(Progress)의 채움 색 */
+const levelFill = (used: number) =>
+  ({ warn: "*:bg-warning", err: "*:bg-destructive", ok: "" })[limitLevel(used) ?? "ok"];
 const levelBar = (used: number) =>
   ({ warn: "bg-warning", err: "bg-destructive", ok: "bg-primary" })[limitLevel(used) ?? "ok"];
 
@@ -113,6 +117,11 @@ export function AgentUsageItem({ agent }: { agent: string }) {
         >
           <Logo agent={agent} className="size-3" />
           <span className="sr-only">{a.connected ? a.name : t("statusbar.agentOff", { name: a.name })}</span>
+          <Progress
+            value={summary[0].used}
+            aria-label={t("statusbar.fiveHour", { name: a.name })}
+            className={cn("h-1 w-8 bg-input", levelFill(summary[0].used))}
+          />
           <span>
             {summary.map((w, i) => (
               <span key={w.short} className={levelText(w.used)}>

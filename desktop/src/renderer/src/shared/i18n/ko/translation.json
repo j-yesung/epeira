@@ -63,7 +63,8 @@
     "inboxEmpty": "아직 알림이 없어요",
     "inboxClear": "모두 지우기",
     "settings": "설정 (⌘,)",
-    "connectAgents": "에이전트 연결하기 →"
+    "connectAgents": "에이전트 연결하기 →",
+    "fiveHour": "{{name}} 5시간 한도"
   },
   "tab": {
     "kind": {
