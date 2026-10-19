@@ -6,6 +6,7 @@ import { cn } from "@/shared/lib/utils";
 export function IconTile({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <span
+      aria-hidden="true"
       className={cn(
         "inline-grid size-[18px] shrink-0 place-items-center rounded-sm border border-input bg-tile text-tile-foreground [&_svg]:size-3",
         className,

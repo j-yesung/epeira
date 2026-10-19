@@ -1,6 +1,14 @@
 @import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
 @import "tw-animate-css";
 @import "./tokens.css";
+
+/* 터미널 단축키 기호(⌘ ⌥ ⇧ ⏎ ↑ …)는 Menlo 로 → 글꼴마다 기호 모양이 달라 줄이 어긋나지 않게 */
+@font-face {
+  font-family: "Epeira Keys";
+  src: local("Menlo-Regular"), local("Menlo");
+  unicode-range: U+2190-21FF, U+2303-2326, U+232B, U+238B, U+23CE-23CF;
+}
 
 /* 다크 모드 변형(dark:)은 <html data-theme="dark"> 를 따른다. 색 차이는 dark: 대신 의미 토큰으로 푸는 게 먼저 */
 @custom-variant dark (&:is([data-theme="dark"] *));

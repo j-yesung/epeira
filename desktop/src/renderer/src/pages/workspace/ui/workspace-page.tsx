@@ -1,15 +1,14 @@
 // 메인 창: 사이드바 | 터미널(탭 줄 · 칸) | 궤도 패널, 아래 상태바. 사이드바 · 궤도 패널은 끌어서 너비를 바꾸고 ⌘B · ⌘J 로 접는다
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useTranslation } from "react-i18next";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
-import { epeira } from "@/shared/api/epeira";
-import { OrbitPanel } from "@/widgets/orbit-panel/orbit-panel";
-import { PaneLayout } from "@/widgets/pane-layout/pane-layout";
-import { Sidebar } from "@/widgets/sidebar/sidebar";
-import { Statusbar } from "@/widgets/statusbar/statusbar";
-import { TabBar } from "@/widgets/tab-bar/tab-bar";
+import { OrbitPanel } from "@/widgets/orbit-panel/ui/orbit-panel";
+import { PaneLayout } from "@/widgets/pane-layout/ui/pane-layout";
+import { Sidebar } from "@/widgets/sidebar/ui/sidebar";
+import { Statusbar } from "@/widgets/statusbar/ui/statusbar";
+import { TabBar } from "@/widgets/tab-bar/ui/tab-bar";
 
 import {
   CENTER_MIN,
@@ -20,21 +19,14 @@ import {
   saveSideWidth,
   useLayout,
 } from "../model/layout";
+import { useWorkspaceEvents } from "../model/use-workspace-events";
 
 export function WorkspacePage() {
   const { t } = useTranslation();
-  const { sideOpen, orbitOpen, toggleSide, toggleOrbit } = useLayout();
+  const { sideOpen, orbitOpen, toggleOrbit } = useLayout();
   const [widths] = useState(initialWidths);
 
-  // 메뉴 · 단축키(⌘B · ⌘J)는 메인 프로세스가 받아 동작 이름만 보낸다
-  useEffect(
-    () =>
-      epeira.onMenu((action) => {
-        if (action === "toggle-side") toggleSide();
-        else if (action === "toggle-orbit") toggleOrbit();
-      }),
-    [toggleSide, toggleOrbit],
-  );
+  useWorkspaceEvents();
 
   return (
     <div className="flex h-full flex-col">

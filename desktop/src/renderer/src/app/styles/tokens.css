@@ -42,6 +42,42 @@
   --rose-400: #ff6b81;
   --rose-600: #d6336c;
 
+  /* 터미널 (ANSI 16색): 다크 */
+  --ansi-dark-black: #1a1a1a;
+  --ansi-dark-red: #ff6b81;
+  --ansi-dark-green: #34d399;
+  --ansi-dark-yellow: #fbbf24;
+  --ansi-dark-blue: #3b9eff;
+  --ansi-dark-magenta: #a78bfa;
+  --ansi-dark-cyan: #22c3ee;
+  --ansi-dark-white: #e5e5e5;
+  --ansi-dark-bright-black: #6b6b6b;
+  --ansi-dark-bright-red: #ff8a9c;
+  --ansi-dark-bright-green: #6ee7b7;
+  --ansi-dark-bright-yellow: #fcd34d;
+  --ansi-dark-bright-blue: #5cc2ff;
+  --ansi-dark-bright-magenta: #c4b5fd;
+  --ansi-dark-bright-cyan: #67e8f9;
+  --ansi-dark-bright-white: #ffffff;
+  /* 터미널 (ANSI 16색): 라이트 → 흰 바탕에서도 "흰색"으로 강조한 글자가 보이게 white 계열은 진한 회색 */
+  --ansi-light-black: #1b1b1b;
+  --ansi-light-red: #c92a2a;
+  --ansi-light-green: #2b8a3e;
+  --ansi-light-yellow: #a86b00;
+  --ansi-light-blue: #1c7ed6;
+  --ansi-light-magenta: #7048e8;
+  --ansi-light-cyan: #0c8599;
+  --ansi-light-white: #5c5c5c;
+  --ansi-light-bright-black: #6b6b6b;
+  --ansi-light-bright-red: #e03131;
+  --ansi-light-bright-green: #37b24d;
+  --ansi-light-bright-yellow: #e67700;
+  --ansi-light-bright-blue: #339af0;
+  --ansi-light-bright-magenta: #845ef7;
+  --ansi-light-bright-cyan: #1098ad;
+  --ansi-light-bright-white: #2b2b2b;
+  --find-match: #1e4f80;
+
   /* 에이전트 색 (테마와 상관없이 같음) */
   --orange-claude: #d97757;
   --violet-codex: #8b9cff;
@@ -77,6 +113,29 @@
   --glow: var(--gray-900); /* 빈 화면의 은은한 빛 */
   --overlay: rgb(0 0 0 / 45%); /* 창 뒤를 덮는 막 */
   --shadow-color: rgb(0 0 0 / 55%);
+  /* 터미널 (xterm 이 shared/lib/tokens.ts 로 읽는다). 바탕은 --background */
+  --term-foreground: var(--ansi-dark-white);
+  --term-cursor: var(--blue-400);
+  --term-selection: rgb(59 158 255 / 32%);
+  --term-black: var(--ansi-dark-black);
+  --term-red: var(--ansi-dark-red);
+  --term-green: var(--ansi-dark-green);
+  --term-yellow: var(--ansi-dark-yellow);
+  --term-blue: var(--ansi-dark-blue);
+  --term-magenta: var(--ansi-dark-magenta);
+  --term-cyan: var(--ansi-dark-cyan);
+  --term-white: var(--ansi-dark-white);
+  --term-bright-black: var(--ansi-dark-bright-black);
+  --term-bright-red: var(--ansi-dark-bright-red);
+  --term-bright-green: var(--ansi-dark-bright-green);
+  --term-bright-yellow: var(--ansi-dark-bright-yellow);
+  --term-bright-blue: var(--ansi-dark-bright-blue);
+  --term-bright-magenta: var(--ansi-dark-bright-magenta);
+  --term-bright-cyan: var(--ansi-dark-bright-cyan);
+  --term-bright-white: var(--ansi-dark-bright-white);
+  --term-find-match: var(--find-match);
+  --term-find-match-active: var(--blue-500);
+  --term-find-ruler-active: var(--blue-400);
 }
 
 /* ── 2) 의미 토큰: 라이트 ── */
@@ -106,6 +165,25 @@
   --code: var(--gray-75);
   --glow: var(--blue-50);
   --shadow-color: rgb(0 0 0 / 18%);
+  --term-foreground: var(--gray-850);
+  --term-cursor: var(--blue-600);
+  --term-selection: rgb(28 126 214 / 22%);
+  --term-black: var(--ansi-light-black);
+  --term-red: var(--ansi-light-red);
+  --term-green: var(--ansi-light-green);
+  --term-yellow: var(--ansi-light-yellow);
+  --term-blue: var(--ansi-light-blue);
+  --term-magenta: var(--ansi-light-magenta);
+  --term-cyan: var(--ansi-light-cyan);
+  --term-white: var(--ansi-light-white);
+  --term-bright-black: var(--ansi-light-bright-black);
+  --term-bright-red: var(--ansi-light-bright-red);
+  --term-bright-green: var(--ansi-light-bright-green);
+  --term-bright-yellow: var(--ansi-light-bright-yellow);
+  --term-bright-blue: var(--ansi-light-bright-blue);
+  --term-bright-magenta: var(--ansi-light-bright-magenta);
+  --term-bright-cyan: var(--ansi-light-bright-cyan);
+  --term-bright-white: var(--ansi-light-bright-white);
 }
 
 /* 다른 의미 토큰을 가리키는 것들: 테마를 거는 요소마다 다시 계산해야 그 테마 값을 따라간다 */

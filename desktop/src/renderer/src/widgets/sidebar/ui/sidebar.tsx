@@ -1,7 +1,8 @@
-// 왼쪽 사이드바: 신호등 옆 이름 · 프로젝트 머리 · 프로젝트 목록 (목록은 4단계에서)
+// 왼쪽 사이드바: 신호등 옆 이름 · 프로젝트 머리(+ 폴더 열기) · 프로젝트 목록 (목록은 4단계에서)
 import { FolderIcon, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { useProjects } from "@/entities/project/model/store";
 import { Button } from "@/shared/ui/button";
 
 export function Sidebar() {
@@ -16,7 +17,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           size="icon"
-          disabled
+          onClick={() => useProjects.getState().add()}
           title={t("sidebar.addProjectHint")}
           aria-label={t("sidebar.addProject")}
         >

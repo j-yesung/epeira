@@ -1,4 +1,4 @@
-import type { EpeiraApi } from "../../../../ipc/contract";
+import type { EpeiraApi } from "@ipc/contract";
 
 declare global {
   interface Window {

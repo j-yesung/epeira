@@ -2,7 +2,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { DesignSystemPage } from "@/pages/design-system/design-system-page";
+import { DesignSystemPage } from "@/pages/design-system/ui/design-system-page";
 
 import "./styles/index.css";
 

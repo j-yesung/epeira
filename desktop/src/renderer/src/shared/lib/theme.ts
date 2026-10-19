@@ -1,7 +1,8 @@
 // 테마: 고른 값(시스템 · 라이트 · 다크)을 <html data-theme> 로 건다. 시스템이면 macOS 설정이 바뀔 때 따라간다
+
+import type { ThemeChoice } from "@ipc/contract";
 import { create } from "zustand";
 
-import type { ThemeChoice } from "../../../../ipc/contract";
 import { epeira } from "../api/epeira";
 
 const dark = matchMedia("(prefers-color-scheme: dark)");

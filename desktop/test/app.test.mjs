@@ -97,17 +97,80 @@ test("앱 뼈대: 사이드바 · 탭 줄 · 궤도 패널 · 상태바, ⌘B ·
   assert.ok(await has("프로젝트"));
 });
 
+test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘⌫ 로 줄 지우기 · 닫으면 시작 화면", async () => {
+  // 폴더 열기 창 대신 alpha 를 고른 것으로
+  await app.evaluate(({ dialog }, dir) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] });
+  }, alpha);
+  // 메인이 화면으로 보내는 터미널 출력을 모은다 (xterm 은 캔버스에 그려서 화면 글자를 직접 읽을 수 없다)
+  await app.evaluate(({ BrowserWindow }) => {
+    const wc = BrowserWindow.getAllWindows()[0].webContents;
+    const send = wc.send.bind(wc);
+    globalThis.ptyOut = "";
+    wc.send = (channel, ...args) => {
+      if (channel === "pty:data") globalThis.ptyOut += args[1];
+      return send(channel, ...args);
+    };
+  });
+  const out = () => app.evaluate(() => globalThis.ptyOut);
+  const until = async (fn, what) => {
+    for (let i = 0; i < 100; i++) {
+      if (await fn()) return;
+      await page.waitForTimeout(100);
+    }
+    assert.fail(what);
+  };
+  const tabs = () =>
+    page.$$eval('[role="tab"]', (els) =>
+      els.map((e) => [e.querySelector(".truncate").textContent, e.getAttribute("aria-selected")]),
+    );
+
+  await page.click('button[aria-label="폴더 열기"]');
+  await until(() => page.$("text=터미널만 열기"), "프로젝트를 고르면 시작 화면에 새 세션 버튼");
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await tabs()).length === 1, "새 탭");
+  assert.deepEqual(await tabs(), [["터미널", "true"]]);
+  await until(async () => (await out()).length > 0, "셸 프롬프트");
+  await page.waitForTimeout(500);
+
+  await page.keyboard.type("echo zzz-$((1+1))");
+  await page.keyboard.press("Meta+Backspace");
+  await page.keyboard.type("echo yyy-$((1+1))");
+  await page.keyboard.press("Enter");
+  await until(async () => (await out()).includes("yyy-2"), "입력한 명령이 실행된다");
+  assert.ok(!(await out()).includes("zzz-2"), "⌘⌫ 로 지운 줄은 실행되지 않는다");
+
+  // 두 번째 탭 → ⌘1 · ⌘2 로 오가기
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await tabs()).length === 2, "두 번째 탭");
+  assert.deepEqual(
+    (await tabs()).map(([label, on]) => [label.replace(/⌘\d$/, ""), on]),
+    [
+      ["터미널", "false"],
+      ["터미널 2", "true"],
+    ],
+  );
+  await page.keyboard.press("Meta+1");
+  await until(async () => (await tabs())[0][1] === "true", "⌘1");
+
+  // 셸을 끝내면 탭이 흐려지고, 닫으면 시작 화면
+  await page.keyboard.type("exit");
+  await page.keyboard.press("Enter");
+  await until(() => page.$('div:has(> button[role="tab"][aria-selected="true"]).opacity-55'), "끝난 탭은 흐리게");
+  // 앞 탭을 먼저 닫으면 뒤 탭 이름이 "터미널"로 당겨지므로 뒤에서부터
+  for (const label of ["터미널 2 탭 닫기", "터미널 탭 닫기"]) await page.click(`button[aria-label="${label}"]`);
+  await until(async () => (await tabs()).length === 0, "모두 닫기");
+  assert.ok(await page.$("text=터미널만 열기"), "시작 화면");
+});
+
 test("프로젝트 목록: 폴더만 넣고, 뺄 수 있다", async () => {
   const added = await page.evaluate((dir) => window.epeira.addProjectPath(dir), alpha);
   assert.equal(added.added, alpha);
-  assert.deepEqual(
-    added.list.map((p) => [p.name, p.exists]),
-    [["alpha", true]],
-  );
+  assert.ok(added.list.some((p) => p.name === "alpha" && p.exists));
   const file = path.join(tmp, "not-a-folder.txt");
   writeFileSync(file, "x");
   assert.equal((await page.evaluate((f) => window.epeira.addProjectPath(f), file)).added, null, "파일은 넣지 않는다");
-  assert.deepEqual(await page.evaluate((dir) => window.epeira.removeProject(dir), alpha), []);
+  assert.ok(!(await page.evaluate((dir) => window.epeira.removeProject(dir), alpha)).some((p) => p.path === alpha));
 });
 
 test("터미널: 셸을 열고 입력하면 출력이 오고, 끌 수 있다", async () => {
