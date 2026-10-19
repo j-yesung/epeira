@@ -29,7 +29,7 @@ export default defineConfig(({ command }) => ({
   main: {},
   preload: {},
   renderer: {
-    resolve: { alias: { "@": resolve("src/renderer/src") } },
+    resolve: { alias: { "@": resolve("src/renderer/src"), "@ipc": resolve("src/ipc") } },
     plugins: [react(), tailwindcss(), csp(command === "serve")],
   },
 }));

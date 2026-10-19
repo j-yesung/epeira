@@ -52,6 +52,7 @@ pnpm fsd                        # 화면 FSD 구조 (Steiger)
 ## 화면 코드 규칙
 
 - **FSD(Feature-Sliced Design)**: `src/renderer/src` 는 `app → pages → widgets → features → entities → shared` 레이어로 나누고, 위 레이어만 아래 레이어를 가져다 씁니다. 같은 레이어의 다른 slice 는 가져오지 않습니다. shadcn/ui 부품은 `shared/ui`, 공용 함수는 `shared/lib`.
+- slice 안의 파일은 늘 segment 폴더(`ui` · `model` · `api` · `lib`)에 둡니다 (예: `widgets/sidebar/ui/sidebar.tsx`). segment 없이 두면 구조 검사(Steiger)가 그 파일의 import 를 보지 못합니다.
 - 공개 API(`index.ts`)는 밖에서 여러 파일을 실제로 가져다 쓰는 slice 에만 두고, 나머지는 파일 경로로 직접 가져옵니다(`@/shared/ui/button`).
 - 이름: 파일 · 폴더는 kebab-case, 컴포넌트는 PascalCase 로 `export function`, 훅은 `use-*.ts`, `export default` 는 `React.lazy` 진입점에만.
 - 메인 · preload 는 화면 코드를 가져오지 않고, 같이 쓰는 타입은 `src/ipc/contract.ts` 에 둡니다. 메인은 화면에서 온 값을 늘 다시 검사합니다.
