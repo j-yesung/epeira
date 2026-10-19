@@ -1,4 +1,4 @@
-// 상태바의 에이전트 한 칸: 오늘 도구 횟수 · 토큰 · 사용 한도 요약. 마우스를 올리면(또는 Tab 으로 가면) 상세: 연결 · 한도 막대 · 초기화 · 오늘 사용량
+// 상태바의 에이전트 한 칸: 오늘 도구 횟수 · 토큰 · 사용 한도 요약. 누르면 상세: 연결 · 한도 막대 · 초기화까지 남은 시간
 import type { AgentUsage } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
 
@@ -6,8 +6,8 @@ import { type AgentLimits, limitLevel, limitWindows, span } from "@/entities/usa
 import { useUsage } from "@/entities/usage/model/store";
 import { fmtK } from "@/shared/lib/format";
 import { cn } from "@/shared/lib/utils";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/ui/hover-card";
 import { ClaudeLogo, OpenAILogo } from "@/shared/ui/icons/agent-logos";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 
 const levelText = (used: number) =>
   ({ warn: "text-warning", err: "text-destructive", ok: "" })[limitLevel(used) ?? "ok"];
@@ -87,13 +87,8 @@ function Detail({ agent, a, L }: { agent: string; a: AgentUsage; L: AgentLimits 
       ) : (
         <p className="text-faint-foreground text-xs">{note}</p>
       )}
-      <p className="mt-2.5 border-t pt-2 font-mono text-muted-foreground text-xs">
-        {t("limits.todayTools", { calls: a.calls.toLocaleString() })}
-        <br />
-        {t("limits.todayTokens", { tin: fmtK(a.tin), tout: fmtK(a.tout), tcache: fmtK(a.tcache) })}
-      </p>
       {L?.at && (
-        <p className="mt-0.5 font-mono text-faint-foreground text-xs">
+        <p className="mt-2.5 border-t pt-2 font-mono text-faint-foreground text-xs">
           {t("limits.recorded", { span: span(Date.now() - L.at * 1000) })}
         </p>
       )}
@@ -108,12 +103,12 @@ export function AgentUsageItem({ agent }: { agent: string }) {
   if (!a) return null;
   const wins = limitWindows(L);
   return (
-    <HoverCard openDelay={0} closeDelay={0}>
-      <HoverCardTrigger asChild>
-        <span
-          tabIndex={0} // 키보드로도 상세를 열 수 있게
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
           className={cn(
-            "-mx-1 inline-flex h-5 cursor-default items-center gap-1.5 rounded-sm px-1 outline-none hover:bg-secondary focus-visible:bg-secondary",
+            "-mx-1 inline-flex h-5 cursor-pointer items-center gap-1.5 rounded-sm px-1 outline-none hover:bg-secondary focus-visible:bg-secondary data-[state=open]:bg-secondary",
             !a.connected && "opacity-55",
           )}
         >
@@ -132,11 +127,11 @@ export function AgentUsageItem({ agent }: { agent: string }) {
               ))}
             </span>
           )}
-        </span>
-      </HoverCardTrigger>
-      <HoverCardContent side="top" align="start" sideOffset={8}>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" sideOffset={8}>
         <Detail agent={agent} a={a} L={L} />
-      </HoverCardContent>
-    </HoverCard>
+      </PopoverContent>
+    </Popover>
   );
 }

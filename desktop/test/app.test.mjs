@@ -487,6 +487,18 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   await until(async () => (await footer()).includes("LIVE"), "수집기 연결");
   assert.match(await footer(), /도구 12 · 6\.2k tok 5h 83%/, "오늘 사용량 · 한도 요약");
 
+  // 에이전트를 누르면 한도 상세 (올리기만 해서는 열리지 않는다)
+  const agent = 'footer button:has-text("도구")';
+  const detail = "[data-slot=popover-content]";
+  await page.hover(agent);
+  await page.waitForTimeout(300);
+  assert.equal(await page.$(detail), null, "올리기만 해서는 열리지 않는다");
+  await page.click(agent);
+  await page.waitForSelector(`${detail}:has-text("5시간")`);
+  assert.equal(await page.$(`${detail}:has-text("오늘 도구")`), null, "오늘 사용량 줄은 없다");
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$(detail)), "상세 닫기");
+
   // 궤도 패널: 지금 프로젝트 · 탭을 대시보드에 알린다
   await until(() => dashboardCalls.includes(`focus:alpha:${tabId}`), "대시보드에 지금 탭");
 
