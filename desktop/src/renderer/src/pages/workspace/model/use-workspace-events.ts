@@ -6,8 +6,18 @@ import { useTranslation } from "react-i18next";
 import { useProjects } from "@/entities/project/model/store";
 import { useTabs } from "@/entities/tab/model/store";
 import { getTerminal, initTerminals } from "@/entities/terminal/model/registry";
+import { connectCollector } from "@/features/collector/model/connect";
+import { handleAgentEvent, markActiveSeen, watchBadge } from "@/features/collector/model/events";
+import { loadUsage } from "@/features/collector/model/usage";
 import { useFind } from "@/features/find-in-terminal/model/store";
-import { activateNth, closeTab, cycleTab, focusActive, openTab } from "@/features/manage-tabs/model/actions";
+import {
+  activateNth,
+  activateTab,
+  closeTab,
+  cycleTab,
+  focusActive,
+  openTab,
+} from "@/features/manage-tabs/model/actions";
 import { moveFocus, splitPane, toggleZoom, unsplit } from "@/features/manage-tabs/model/panes";
 import { restoreTabs } from "@/features/manage-tabs/model/persist";
 import { epeira } from "@/shared/api/epeira";
@@ -23,16 +33,22 @@ export const useWorkspaceEvents = () => {
     useProjects.getState().load().then(restoreTabs);
   }, []);
 
-  // 수집기가 탭 ↔ 세션을 짝지어 주면 저장해 둔다 → 다시 켰을 때 그 대화를 이어 연다
-  useEffect(
-    () =>
-      epeira.onEvent((e) => {
-        if (e.kind !== "tab" || typeof e.tab !== "string" || typeof e.id !== "string") return;
-        const tab = useTabs.getState().tabs.find((t) => t.id === e.tab);
-        if (tab && tab.sid !== e.id) useTabs.getState().patch(tab.id, { sid: e.id });
-      }),
-    [],
-  );
+  // 수집기: 준비(설치 · 업데이트 · 실행) → 이벤트로 탭 상태 · 알림, 15초마다 사용량 · 탭 ↔ 세션 짝
+  useEffect(() => {
+    connectCollector();
+    const timer = setInterval(loadUsage, 15_000);
+    const offEvent = epeira.onEvent(handleAgentEvent);
+    const offBadge = watchBadge();
+    const offActivate = epeira.onActivateTab(activateTab); // macOS 알림을 누르면 그 탭으로
+    addEventListener("focus", markActiveSeen);
+    return () => {
+      clearInterval(timer);
+      offEvent();
+      offBadge();
+      offActivate();
+      removeEventListener("focus", markActiveSeen);
+    };
+  }, []);
 
   useEffect(
     () =>

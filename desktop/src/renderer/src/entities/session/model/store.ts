@@ -23,6 +23,8 @@ export interface Session {
 
 interface SessionState {
   sessions: Session[];
+  /** 궤도 HUB 에서 직접 붙인 세션 이름 (수집기가 기억) */
+  names: Record<string, string>;
   load: () => Promise<void>;
 }
 
@@ -30,6 +32,7 @@ const WEEK = 7 * 86400;
 
 export const useSessions = create<SessionState>((set) => ({
   sessions: [],
+  names: {},
   load: async () => {
     const r = (await epeira.get(`/api/summary?since=${Math.floor(Date.now() / 1000 - WEEK)}`)) as {
       sessions?: unknown;
@@ -40,8 +43,9 @@ export const useSessions = create<SessionState>((set) => ({
   },
 }));
 
-/** 직접 붙인 이름(4단계 궤도 HUB) > 첫 질문 > 마지막 동작 > 폴더 이름 */
-export const sessionName = (x: Session) => x.title || x.text || x.label || x.id;
+/** 직접 붙인 이름(궤도 HUB) > 첫 질문 > 마지막 동작 > 폴더 이름 */
+export const sessionName = (x: Session, names: Record<string, string>) =>
+  names[x.id] || x.title || x.text || x.label || x.id;
 
 /** 세션이 어느 프로젝트 것인지 (경로를 모르면 폴더 이름으로) */
 export const projectOf = (x: Session, projects: Project[]) =>

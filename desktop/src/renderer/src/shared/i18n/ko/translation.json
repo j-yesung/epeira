@@ -17,7 +17,10 @@
     "foldNamed": "{{name}} 세션 접기",
     "menu": "프로젝트 메뉴 (우클릭해도 돼요)",
     "menuNamed": "{{name}} 메뉴",
-    "dropOnlyFolders": "폴더를 끌어다 놓으면 프로젝트로 추가돼요"
+    "dropOnlyFolders": "폴더를 끌어다 놓으면 프로젝트로 추가돼요",
+    "usageToday": "오늘 {{tok}} tok",
+    "usageNone": "오늘은 아직 사용 기록이 없어요",
+    "usageHint": "입력 + 출력 토큰 (서브에이전트 포함)"
   },
   "tabBar": {
     "label": "터미널 탭",
@@ -39,11 +42,28 @@
     "label": "에이전트 궤도",
     "openDashboard": "대시보드 크게 보기",
     "resize": "궤도 패널 너비",
-    "placeholder": "궤도 패널은 React 로 옮기는 중이에요"
+    "waiting": "수집기를 준비하고 있어요",
+    "pythonTitle": "Python 이 필요해요",
+    "pythonBody": "macOS 개발자 도구를 설치하면 함께 설치돼요. 설치가 끝나면 자동으로 이어서 연결해요.",
+    "installDevTools": "개발자 도구 설치",
+    "failedTitle": "수집기에 연결하지 못했어요",
+    "failedBody": "자동으로 계속 다시 시도하고 있어요. 지금 바로 해 보려면 아래 버튼을 누르세요.",
+    "retry": "다시 시도",
+    "sessionMissing": "이 세션을 기록에서 찾지 못했어요"
   },
   "statusbar": {
     "label": "연결 상태와 오늘 사용량",
-    "connecting": "연결 중…"
+    "connecting": "연결 중…",
+    "off": "수집기가 꺼져 있어요",
+    "live": "LIVE",
+    "tools": "도구",
+    "tok": "· {{n}} tok",
+    "agentOff": "{{name}} (연결 안 됨)",
+    "refresh": "새로고침",
+    "inbox": "알림 기록",
+    "inboxUnread": "놓친 알림 {{count}}개",
+    "inboxEmpty": "아직 알림이 없어요",
+    "inboxClear": "모두 지우기"
   },
   "tab": {
     "kind": {
@@ -55,7 +75,13 @@
     "closeNamed": "{{label}} 탭 닫기",
     "exited": "[프로세스가 끝났어요 · ⌘W 로 탭을 닫을 수 있어요]",
     "hint": "{{dir}}\n끌어서 순서 바꾸기 · 칸에 놓으면 그 칸에 보여요",
-    "resumeHint": "↻ 이 탭을 열면 이전 대화를 이어서 열어요"
+    "resumeHint": "↻ 이 탭을 열면 이전 대화를 이어서 열어요",
+    "state": {
+      "wait": "입력 · 승인을 기다려요",
+      "busy": "일하는 중",
+      "new": "새 응답이 있어요"
+    },
+    "doneAlert": "응답을 마쳤어요"
   },
   "find": {
     "placeholder": "터미널에서 찾기",
@@ -98,5 +124,30 @@
     "minutes": "{{n}}분 전",
     "hours": "{{n}}시간 전",
     "days": "{{n}}일 전"
+  },
+  "agent": {
+    "notInstalled": "설치 안 됨",
+    "notConnected": "연결 안 됨",
+    "needsTrust": "승인 필요",
+    "connected": "연결됨"
+  },
+  "limits": {
+    "weekly": "주간",
+    "hours": "{{n}}시간",
+    "weeklyShort": "주",
+    "hoursShort": "{{n}}h",
+    "spanDays": "{{d}}일 {{h}}시간",
+    "spanHours": "{{h}}시간 {{m}}분",
+    "spanMinutes": "{{m}}분",
+    "resetIn": "{{span}} 후 초기화 · {{at}}",
+    "resetDone": "초기화됨 · 다음 사용 때 새로 기록돼요",
+    "todayTools": "오늘 도구 {{calls}}회",
+    "todayTokens": "입력 {{tin}} · 출력 {{tout}} · 캐시 읽기 {{tcache}}",
+    "recorded": "한도는 {{span}} 전 기록 기준",
+    "codexNone": "아직 기록된 사용 한도가 없어요 · Codex 를 한 번 사용하면 나타나요",
+    "claudeOff": "설정(⌘,)에서 \"Claude 사용 한도 보기\"를 켜면 5시간 · 주간 한도가 보여요",
+    "claudeNoLogin": "Claude Code 로그인 정보를 읽지 못했어요 · Claude Code 를 한 번 실행하면 다시 가져와요",
+    "error": "사용 한도를 불러오지 못했어요 · 잠시 후 다시 시도해요",
+    "loading": "사용 한도를 불러오는 중이에요"
   }
 }

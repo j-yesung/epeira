@@ -22,20 +22,64 @@ const data = path.join(tmp, "data");
 const alpha = path.join(tmp, "alpha");
 for (const d of [data, alpha]) mkdirSync(d);
 
-// 수집기 흉내: 지난 세션만 준다 (나머지는 404 → 꺼진 수집기처럼). 주소를 넘기면(AGENT_ORBIT_URL) 앱은 실제 수집기 설치를 건드리지 않는다
+// 수집기 흉내: 상태 · 지난 세션 · 이벤트(SSE) · 궤도 대시보드. 주소를 넘기면(AGENT_ORBIT_URL) 앱은 실제 수집기 설치를 건드리지 않는다
 const NOW = Date.now() / 1000;
 const sessions = [
-  { id: "abc-1", agent: "claude", cwd: alpha, label: "alpha", title: "로그인 버그 고쳐줘", last: NOW - 3600 },
+  {
+    id: "abc-1",
+    agent: "claude",
+    cwd: alpha,
+    label: "alpha",
+    title: "로그인 버그 고쳐줘",
+    last: NOW - 3600,
+    tools: 12,
+    tin: 5000,
+    tokens: 1200,
+  },
   { id: "recent-1", agent: "claude", cwd: alpha, label: "alpha", title: "방금 하던 대화", last: NOW + 600 },
   { id: "sub-1", parent: "abc-1", agent: "claude", cwd: alpha, label: "alpha", title: "서브에이전트", last: NOW },
 ];
+const status = {
+  version: "0.0.0",
+  agents: { claude: { name: "Claude Code", installed: true, connected: true } },
+  limits: { claude: { plan: "max", at: NOW, primary: { used: 83, window: 300, resets: NOW + 5400 } } },
+  claudeLimits: true,
+};
+const streams = new Set();
+const dashboardCalls = [];
+/** 수집기 이벤트를 앱으로 */
+const emit = (event) => {
+  for (const s of streams) s.write(`data: ${JSON.stringify(event)}\n\n`);
+};
 const collector = createServer((req, res) => {
-  if (!req.url.startsWith("/api/summary")) {
-    res.writeHead(404);
+  const url = new URL(req.url, "http://x");
+  const json = (v) => {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(v));
+  };
+  if (url.pathname === "/api/status") return json(status);
+  if (url.pathname === "/api/summary") return json({ sessions });
+  if (url.pathname === "/api/events") {
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(": hi\n\n");
+    streams.add(res);
+    return req.on("close", () => streams.delete(res));
+  }
+  if (url.pathname === "/record") {
+    dashboardCalls.push(url.searchParams.get("c"));
     return res.end();
   }
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ sessions }));
+  if (url.pathname === "/") {
+    // 대시보드: 앱이 부르는 함수를 /record 로 알린다
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.end(`<!doctype html><script>
+      const rec = (c) => fetch("/record?c=" + encodeURIComponent(c));
+      window.aoFocusProject = (name, tab) => rec("focus:" + name + ":" + tab);
+      window.aoSetActive = () => {};
+    </script>`);
+  }
+  res.writeHead(404);
+  res.end();
 });
 await new Promise((r) => collector.listen(0, "127.0.0.1", r));
 const ORBIT_URL = `http://127.0.0.1:${collector.address().port}`;
@@ -121,6 +165,7 @@ after(async () => {
     await app.close().catch(() => {});
   }
   updates.close();
+  for (const s of streams) s.destroy();
   collector.close();
   rmSync(tmp, { recursive: true, force: true });
 });
@@ -399,6 +444,49 @@ test("사이드바: 프로젝트 고르기 · 펼치기, 지난 세션 이어 �
   assert.equal(await page.evaluate((d) => JSON.parse(localStorage.getItem("app.folds"))[d], alpha), false);
 
   await answer(0);
+  await closeAll();
+});
+
+test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태바 사용량 · 한도, 궤도 패널에 지금 탭 알리기", async () => {
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await page.waitForSelector("[data-pane]");
+  const tabId = await page.$eval("[data-pane]", (e) => e.dataset.pane);
+  const footer = () => page.$eval("footer[role=status]", (e) => e.innerText.replace(/\s+/g, " "));
+  await until(async () => (await footer()).includes("LIVE"), "수집기 연결");
+  assert.match(await footer(), /도구 12 · 6\.2k tok 5h 83%/, "오늘 사용량 · 한도 요약");
+
+  // 궤도 패널: 지금 프로젝트 · 탭을 대시보드에 알린다
+  await until(() => dashboardCalls.includes(`focus:alpha:${tabId}`), "대시보드에 지금 탭");
+
+  // 앱이 뒤에 있을 때 생긴 일은 탭에 표시하고 놓친 알림 · Dock 배지에 남긴다
+  await page.evaluate(() => {
+    document.hasFocus = () => false;
+  });
+  const dot = () => page.$eval('[role="tab"] [role=img]', (e) => e.getAttribute("aria-label")).catch(() => null);
+  emit({ kind: "tab", tab: tabId, id: "abc-1" });
+  emit({ kind: "start", id: "abc-1" });
+  await until(async () => (await dot()) === "일하는 중", "일하는 중");
+  emit({ kind: "notify", id: "abc-1", text: "Bash 승인" });
+  await until(async () => (await dot()) === "입력 · 승인을 기다려요", "승인 대기");
+  emit({ kind: "done", id: "abc-1" });
+  await until(async () => (await dot()) === "새 응답이 있어요", "응답 끝");
+  assert.equal(await app.evaluate(({ app }) => app.getBadgeCount()), 1, "Dock 배지");
+  emit({ kind: "name", id: "abc-1", name: "API 서버" });
+  await until(
+    async () => (await page.$eval('[role="tab"] .truncate', (e) => e.textContent)) === "API 서버",
+    "궤도 HUB 에서 붙인 이름",
+  );
+  await page.evaluate(() => {
+    delete document.hasFocus;
+  });
+  await page.click('footer button[aria-label="놓친 알림 2개"]');
+  assert.deepEqual(
+    await page.$$eval("[role=menuitem]", (els) => els.map((e) => e.innerText.split("\n")[1]?.replace(/ · [^·]+$/, ""))),
+    ["응답을 마쳤어요", "입력 · 승인을 기다려요 → Bash 승인", undefined],
+    "놓친 알림 (최근 것부터) · 모두 지우기",
+  );
+  await page.keyboard.press("Escape");
+  await until(async () => !!(await page.$('footer button[aria-label="알림 기록"]')), "열어 보면 읽은 것으로");
   await closeAll();
 });
 

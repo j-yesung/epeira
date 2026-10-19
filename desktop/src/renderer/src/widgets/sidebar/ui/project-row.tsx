@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { useProjects } from "@/entities/project/model/store";
 import { useTabs } from "@/entities/tab/model/store";
+import { StateDot, worstState } from "@/entities/tab/ui/state-dot";
 import { selectProject } from "@/features/manage-tabs/model/actions";
 import { shortPath } from "@/shared/lib/path";
 import { cn } from "@/shared/lib/utils";
@@ -32,6 +33,8 @@ export function ProjectRow({ project: p }: { project: Project }) {
   const current = useProjects((s) => s.current);
   const git = useProjects((s) => s.git[p.path]);
   const count = useTabs((s) => s.tabs.filter((x) => x.dir === p.path && !x.exited).length);
+  // 다른 프로젝트에서 일어난 일도 보이게: 승인 대기 > 새 응답 > 일하는 중
+  const state = useTabs((s) => worstState(s.tabs.filter((x) => x.dir === p.path)));
   const folds = useFolds((s) => s.folds);
   const setFold = useFolds((s) => s.setFold);
   const on = p.path === current;
@@ -98,6 +101,7 @@ export function ProjectRow({ project: p }: { project: Project }) {
               <b className="truncate font-semibold">{p.name}</b>
               <small className="truncate font-mono text-faint-foreground text-xs">{sub}</small>
             </span>
+            {state && <StateDot state={state} className="group-focus-within:invisible group-hover:invisible" />}
             {count > 0 && (
               <span
                 title={t("sidebar.openCount", { count })}

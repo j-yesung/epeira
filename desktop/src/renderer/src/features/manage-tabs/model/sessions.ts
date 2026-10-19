@@ -1,5 +1,6 @@
 // 지난 세션 · 다른 터미널에서 하던 세션을 탭으로 이어 열기
 import { toast } from "sonner";
+import { create } from "zustand";
 
 import { useProjects } from "@/entities/project/model/store";
 import { projectOf, type Session } from "@/entities/session/model/store";
@@ -12,8 +13,11 @@ import { activateTab, openTab } from "./actions";
 /** 방금까지 움직이던 세션: 다른 터미널에서 아직 실행 중일 수 있다 */
 const RECENT = 120;
 
-/** 이어 열기. "recent" 면 같은 대화를 두 곳에서 열지 않게 먼저 물어보고 force 로 다시 부른다 */
-export const openSession = async (x: Session, force = false): Promise<"recent" | undefined> => {
+/** 확인을 기다리는 세션 (ResumeConfirm 창이 보여 준다) */
+export const useResumeConfirm = create<{ session: Session | null }>(() => ({ session: null }));
+
+/** 이어 열기. 방금 움직인 세션이면 같은 대화를 두 곳에서 열지 않게 먼저 묻는다 (확인하면 force 로 다시) */
+export const openSession = async (x: Session, force = false) => {
   const open = useTabs.getState().tabs.find((t) => t.sid === x.id);
   if (open) {
     activateTab(open.id);
@@ -31,6 +35,9 @@ export const openSession = async (x: Session, force = false): Promise<"recent" |
     toast(i18n.t("session.cannotResume"));
     return;
   }
-  if (!force && Date.now() / 1000 - (x.last || 0) <= RECENT) return "recent";
+  if (!force && Date.now() / 1000 - (x.last || 0) <= RECENT) {
+    useResumeConfirm.setState({ session: x });
+    return;
+  }
   await openTab(kind, dir, { sid: x.id, resume: true });
 };

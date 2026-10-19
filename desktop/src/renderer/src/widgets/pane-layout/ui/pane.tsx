@@ -6,6 +6,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { useSessions } from "@/entities/session/model/store";
 import { tabLabel } from "@/entities/tab/model/label";
 import { useTabs } from "@/entities/tab/model/store";
 import { KindIcon } from "@/entities/tab/ui/kind-icon";
@@ -21,11 +22,12 @@ const shq = (p: string) => (/^[\w@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g,
 export function Pane({ id, paned }: { id: string; paned: boolean }) {
   const { t } = useTranslation();
   const tabs = useTabs((s) => s.tabs);
+  const names = useSessions((s) => s.names);
   const focused = useTabs((s) => s.active === id);
   const { setNodeRef, isOver } = useDroppable({ id: `pane:${id}`, data: { pane: id } });
   const tab = tabs.find((x) => x.id === id);
   if (!tab) return null;
-  const label = tabLabel(tab, tabs);
+  const label = tabLabel(tab, tabs, names);
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
