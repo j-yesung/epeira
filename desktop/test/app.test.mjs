@@ -69,10 +69,32 @@ after(async () => {
 });
 
 test("React 화면이 뜨고 preload API 만 열린다", async () => {
-  await page.waitForSelector('[data-testid="react-shell"]');
+  await page.waitForSelector('[role="tablist"]', { state: "attached" });
   assert.equal(await page.evaluate(() => window.epeira.appVersion()), VERSION);
   assert.equal(await page.evaluate(() => typeof window.require), "undefined", "화면에 Node 를 열지 않는다");
   assert.equal(await page.evaluate(() => window.epeira.orbitUrl), "http://127.0.0.1:9");
+  assert.match(await page.evaluate(() => document.documentElement.dataset.theme), /^(dark|light)$/, "테마를 건다");
+});
+
+test("앱 뼈대: 사이드바 · 탭 줄 · 궤도 패널 · 상태바, ⌘B · ⌘J 로 접고 그 상태를 기억", async () => {
+  const has = (label) => page.evaluate((l) => !!document.querySelector(`[aria-label="${l}"]`), label);
+  for (const label of ["프로젝트", "터미널 탭", "에이전트 궤도", "연결 상태와 오늘 사용량"])
+    assert.ok(await has(label), label);
+  const menu = (action) =>
+    app.evaluate(({ BrowserWindow }, a) => BrowserWindow.getAllWindows()[0].webContents.send("menu", a), action);
+  await menu("toggle-side");
+  await page.waitForFunction(() => !document.querySelector('aside[aria-label="프로젝트"]'));
+  await menu("toggle-orbit");
+  await page.waitForFunction(() => !document.querySelector('[aria-label="에이전트 궤도"]'));
+  assert.deepEqual(
+    await page.evaluate(() => [localStorage.getItem("app.no-side"), localStorage.getItem("app.no-orbit")]),
+    ["1", "1"],
+    "예전 화면과 같은 키에 저장",
+  );
+  await menu("toggle-side");
+  await menu("toggle-orbit");
+  await page.waitForFunction(() => !!document.querySelector('[aria-label="에이전트 궤도"]'));
+  assert.ok(await has("프로젝트"));
 });
 
 test("프로젝트 목록: 폴더만 넣고, 뺄 수 있다", async () => {

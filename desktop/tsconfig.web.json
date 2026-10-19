@@ -10,7 +10,10 @@
     "strict": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "paths": { "@/*": ["./src/renderer/src/*"] }
+    "paths": {
+      "@/*": ["./src/renderer/src/*"]
+    },
+    "resolveJsonModule": true
   },
   "include": ["src/renderer/src/**/*", "src/ipc/**/*"]
 }

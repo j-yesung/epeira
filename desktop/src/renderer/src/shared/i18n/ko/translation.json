@@ -1,0 +1,33 @@
+{
+  "sidebar": {
+    "label": "프로젝트",
+    "title": "프로젝트",
+    "addProject": "폴더 열기",
+    "addProjectHint": "폴더 열기 (⌘O)",
+    "emptyTitle": "프로젝트 폴더를 여기에 끌어다 놓으세요",
+    "emptyHint": "또는 위의 + 버튼 · ⌘O",
+    "resize": "사이드바 너비"
+  },
+  "tabBar": {
+    "label": "터미널 탭",
+    "newShell": "새 터미널 탭 (⌘T)",
+    "newClaude": "Claude 새 세션 (⇧⌘C)",
+    "newCodex": "Codex 새 세션 (⇧⌘X)",
+    "toggleOrbit": "궤도 패널 (⌘J)"
+  },
+  "welcome": {
+    "title": "Epeira",
+    "body": "왼쪽에서 프로젝트를 고르거나 폴더를 추가하세요. 터미널에서 Claude Code · Codex와 대화하면 오른쪽 궤도에 실시간으로 나타나요.",
+    "keys": "<kbd>⌘O</kbd> 폴더 열기 · <kbd>⌘T</kbd> 새 탭 · <kbd>⇧⌘C</kbd> Claude · <kbd>⇧⌘X</kbd> Codex · <kbd>⌘J</kbd> 궤도 패널"
+  },
+  "orbit": {
+    "label": "에이전트 궤도",
+    "openDashboard": "대시보드 크게 보기",
+    "resize": "궤도 패널 너비",
+    "placeholder": "궤도 패널은 React 로 옮기는 중이에요"
+  },
+  "statusbar": {
+    "label": "연결 상태와 오늘 사용량",
+    "connecting": "연결 중…"
+  }
+}
