@@ -217,7 +217,7 @@ body.mini #feed .dot { margin-top: 0; }
 body.mini #feed p { grid-column: auto; }
 #feed li.empty { display: block; }  /* 빈 안내문은 격자 첫 칸(10px)에 갇혀 세로로 늘어서지 않게 */
 body.mini .brand span { display: inline; }
-body.embed .top, body.mini .cards, body.mini #refresh { display: none; }
+body.embed .top, body.embed .chips, body.mini .cards, body.mini #refresh { display: none; }  /* 앱의 궤도 패널은 탭마다 HUB 가 정해져 세션을 고를 칩이 필요 없다 */
 
 @keyframes pulse { 50% { opacity: .3; } }
 @keyframes in { from { opacity: 0; transform: translateY(-6px); } }

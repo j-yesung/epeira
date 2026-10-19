@@ -1,4 +1,4 @@
-// 방금까지 움직이던 세션을 이어 열기 전에 묻는 창 (사이드바 지난 세션 · 궤도 패널 "탭으로 열기")
+// 방금까지 움직이던 세션을 이어 열기 전에 묻는 창 (명령 팔레트의 지난 세션)
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/shared/ui/button";

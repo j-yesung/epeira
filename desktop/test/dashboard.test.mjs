@@ -52,23 +52,17 @@ test('프로젝트 경로로 궤도를 가른다 (하위 폴더 포함)', {skip}
   assert.equal(await page.evaluate(() => S.focus), 'dash-1', '/w/p 는 /w 의 하위 폴더');
 });
 
-test('HUB 를 누르면 세션 기록 + 탭으로 열기', {skip}, async () => {
+test('앱의 궤도 패널: HUB · 노드를 눌러도 기록을 열지 않고, 세션 고르는 칩도 없다', {skip}, async () => {
   await page.evaluate(() => aoFocusProject('p', '', '/w/p'));
-  await until(() => S.hubRect);  // 느린 컴퓨터에선 HUB 를 그리기까지 시간이 걸린다
-  const box = await page.evaluate(() => { const r = document.getElementById('orbit').getBoundingClientRect(), h = S.hubRect; return {x: r.left + h.x + h.w / 2, y: r.top + h.y + h.h / 2}; });
-  await page.mouse.click(box.x, box.y);
-  await until(() => document.querySelector('#drawer h2'));
-  const buttons = await page.$$eval('#drawer .hd button', els => els.map(e => e.textContent));
-  assert.ok(buttons.includes('탭으로 열기'), JSON.stringify(buttons));
-  await page.keyboard.press('Escape');
-});
-
-test('실행 중인 도구는 노드가 되고, 누르면 그 도구 기록', {skip}, async () => {
-  await until(() => S.drawn.some(([t, n]) => t === 'st' && n.key === 'Bash' && n.live));
-  const box = await page.evaluate(() => { const n = S.drawn.find(([t, x]) => t === 'st' && x.key === 'Bash')[1], r = document.getElementById('orbit').getBoundingClientRect(); return {x: r.left + n.bx + n.bw / 2, y: r.top + n.by + n.bh / 2}; });
-  await page.mouse.click(box.x, box.y);
-  await until(() => document.querySelector('#drawer h2') && document.querySelector('#drawer h2').textContent.endsWith('· Bash'));
-  await page.keyboard.press('Escape');
+  await until(() => S.hubRect && S.drawn.some(([t, n]) => t === 'st' && n.key === 'Bash' && n.live));  // 느린 컴퓨터에선 HUB 를 그리기까지 시간이 걸린다
+  const spots = await page.evaluate(() => {
+    const r = document.getElementById('orbit').getBoundingClientRect(), h = S.hubRect, n = S.drawn.find(([t, x]) => t === 'st' && x.key === 'Bash')[1];
+    return [{x: r.left + h.x + h.w / 2, y: r.top + h.y + h.h / 2}, {x: r.left + n.bx + n.bw / 2, y: r.top + n.by + n.bh / 2}];
+  });
+  for (const p of spots) await page.mouse.click(p.x, p.y);
+  await new Promise(r => setTimeout(r, 400));  // 예전엔 HUB 한 번 누름이 260ms 뒤에 기록을 열었다
+  assert.equal(await page.evaluate(() => document.getElementById('drawer').hidden), true);
+  assert.equal(await page.evaluate(() => { S.pinned = true; renderChips(); const d = getComputedStyle(document.getElementById('chips')).display; S.pinned = false; renderChips(); return d; }), 'none');
 });
 
 test('궤도를 글로도 읽을 수 있다 (화면 읽기 프로그램)', {skip}, async () => {

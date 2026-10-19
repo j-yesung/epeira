@@ -12,8 +12,6 @@ import { epeira } from "@/shared/api/epeira";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 
-import { handleOrbitMessage } from "../model/messages";
-
 /** Electron webview 에서 쓰는 것만 */
 interface Webview extends HTMLElement {
   executeJavaScript: (code: string) => Promise<unknown>;
@@ -62,13 +60,8 @@ export function OrbitPanel() {
     const el = ref.current;
     if (!el) return;
     const onReady = () => setLoads((n) => n + 1);
-    const onMessage = (e: Event) => handleOrbitMessage((e as Event & { message?: string }).message);
     el.addEventListener("dom-ready", onReady);
-    el.addEventListener("console-message", onMessage);
-    return () => {
-      el.removeEventListener("dom-ready", onReady);
-      el.removeEventListener("console-message", onMessage);
-    };
+    return () => el.removeEventListener("dom-ready", onReady);
   }, []);
 
   // 새로고침 · 수집기 업데이트 → 다시 불러오기

@@ -172,7 +172,7 @@ const closeAll = async () => {
   await until(() => page.$("text=왼쪽에서 프로젝트를 고르거나"), "시작 화면");
 };
 
-before(async () => {
+const launch = async () => {
   app = await electron.launch({
     executablePath: require("electron"),
     args: [APP_DIR, `--user-data-dir=${data}`],
@@ -189,7 +189,9 @@ before(async () => {
   await app.evaluate(({ Notification }) => {
     Notification.isSupported = () => false; // 테스트 중 macOS 알림을 띄우지 않게
   });
-});
+};
+
+before(launch);
 
 after(async () => {
   if (app) {
@@ -583,17 +585,6 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   await page.keyboard.press("Escape");
   await until(async () => !(await page.$("[role=menu]")), "놓친 알림 닫기");
   await until(async () => !!(await page.$('footer button[aria-label="알림 기록"]')), "열어 보면 읽은 것으로");
-
-  // 궤도 대시보드의 "이 탭으로 가기": 그 세션의 탭으로
-  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
-  await until(async () => (await page.$$('[role="tab"]')).length === 2, "두 번째 탭");
-  await page.evaluate(() =>
-    document.querySelector("webview").executeJavaScript(`console.log('epeira:focus {"id":"abc-1"}')`),
-  );
-  await until(
-    async () => (await page.$eval('[role="tab"][aria-selected="true"] .truncate', (e) => e.textContent)) === "API 서버",
-    "대시보드에서 고른 탭으로",
-  );
   await closeAll();
 });
 
@@ -1027,4 +1018,23 @@ test("업데이트: 우리 서명이 맞고 안의 버전도 맞는 DMG 만 받�
     { ok: false },
     "예전 버전으로는 바꾸지 않는다",
   );
+});
+
+test("앱을 끄고(업데이트 · ⌘Q) 다시 켜도 탭이 그대로", async () => {
+  await page.evaluate((d) => window.epeira.addProjectPath(d), alpha);
+  await page.reload();
+  await page.click(`aside li[title="${alpha}"]`);
+  await menu("new-shell");
+  await menu("new-shell");
+  await until(async () => (await page.$$('[role="tab"]')).length === 2, "탭 둘");
+  await answer(0);
+  // 끌 때는 창 닫기 처리가 터미널을 모두 끝낸다. 그동안 화면은 살아 있어 "셸이 끝남"을 받으면 탭을 닫힌 것으로 저장했다
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].emit("close", { preventDefault() {} }));
+  await page.waitForTimeout(1500);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("app.tabs")).list.length), 2);
+  const exited = new Promise((r) => app.process().once("exit", r));
+  await app.evaluate(({ app }) => app.quit()); // 업데이트의 "다시 시작"도 이렇게 끈다
+  await exited;
+  await launch();
+  await until(async () => (await page.$$('[role="tab"]')).length === 2, "다시 켜면 탭 둘");
 });

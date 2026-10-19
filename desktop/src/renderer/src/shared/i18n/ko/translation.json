@@ -44,8 +44,7 @@
     "installDevTools": "개발자 도구 설치",
     "failedTitle": "수집기에 연결하지 못했어요",
     "failedBody": "자동으로 계속 다시 시도하고 있어요. 지금 바로 해 보려면 아래 버튼을 누르세요.",
-    "retry": "다시 시도",
-    "sessionMissing": "이 세션을 기록에서 찾지 못했어요"
+    "retry": "다시 시도"
   },
   "statusbar": {
     "label": "연결 상태와 오늘 사용량",

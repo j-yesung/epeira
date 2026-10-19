@@ -32,7 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-VERSION = '1.4.102'
+VERSION = '1.4.103'
 PROTOCOL = 2
 PORT = int(os.environ.get('AGENT_ORBIT_PORT') or 47777)
 HOME = os.path.expanduser('~')
@@ -210,7 +210,9 @@ def parse_claude(s, o):
                 out.append((tool_kind(name), (name + ' ' + tool_arg(b.get('input') or {})).strip(), st))
             elif b.get('type') == 'text' and b.get('text', '').strip():
                 out.append(('say', short(b['text']), None))
-        if m.get('stop_reason') == 'end_turn' and s['ended'] != mid:
+        # 생각(thinking)이 있는 응답은 생각 줄과 답 줄이 따로, 둘 다 end_turn 으로 기록됨 → 답 줄에서 끝을 알린다 (끝 뒤에 답이 오면 앱이 다시 일하는 중으로 봄)
+        # ponytail: 생각만 있고 답 줄이 없는 응답은 끝을 못 알림 (최근 기록 658번 중 0번). 생기면 다음 질문에서 풀림
+        if m.get('stop_reason') == 'end_turn' and s['ended'] != mid and any(b.get('type') != 'thinking' for b in c if isinstance(c, list)):
             s['ended'] = mid
             out.append(('done', 'turn complete', None))
     elif t == 'user' and not o.get('isMeta') and not o.get('isCompactSummary'):  # 대화 압축 요약은 사용자 입력이 아님
