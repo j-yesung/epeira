@@ -2,7 +2,11 @@
 // 사람이 해야 하는 건 Python(Apple 개발자 도구) 설치 하나뿐
 import { create } from "zustand";
 
+import { useUsage } from "@/entities/usage/model/store";
 import { epeira } from "@/shared/api/epeira";
+import { i18n } from "@/shared/i18n";
+import { openSettings } from "@/shared/lib/dialogs";
+import { storage } from "@/shared/lib/storage";
 
 import { loadUsage } from "./usage";
 
@@ -17,6 +21,16 @@ interface CollectorState {
 
 export const useCollector = create<CollectorState>(() => ({ phase: "wait", reloads: 0 }));
 
+/** 처음 한 번: 연결 안 된 에이전트가 있으면 설정 창으로 안내 */
+const onboard = () => {
+  if (storage.get("onboarded")) return;
+  storage.set("onboarded", "1");
+  const u = useUsage.getState().usage;
+  if (u?.ok && Object.values(u.by ?? {}).some((a) => a.installed && !a.connected)) {
+    openSettings("agents", i18n.t("settings.onboard"));
+  }
+};
+
 let retry: ReturnType<typeof setTimeout> | undefined;
 let fails = 0;
 
@@ -28,6 +42,7 @@ export const connectCollector = async () => {
   if (r.ok) {
     fails = 0;
     useCollector.setState((s) => ({ phase: "ok", reloads: r.updated && s.phase === "ok" ? s.reloads + 1 : s.reloads }));
+    onboard();
     return;
   }
   fails++;

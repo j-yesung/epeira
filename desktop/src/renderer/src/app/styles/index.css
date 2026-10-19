@@ -119,6 +119,13 @@
   }
 }
 
+/* 업데이트 확인 중: 막대 위를 빛이 지나간다 */
+@keyframes update-move {
+  to {
+    background-position: -300% 0;
+  }
+}
+
 /* "동작 줄이기" 설정이면 움직임을 끈다 */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -47,6 +47,7 @@ const status = {
 };
 const streams = new Set();
 const dashboardCalls = [];
+const posts = [];
 /** 수집기 이벤트를 앱으로 */
 const emit = (event) => {
   for (const s of streams) s.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -64,6 +65,37 @@ const collector = createServer((req, res) => {
     res.write(": hi\n\n");
     streams.add(res);
     return req.on("close", () => streams.delete(res));
+  }
+  if (url.pathname === "/api/search") {
+    return json({
+      results: [
+        {
+          id: "abc-1",
+          agent: "claude",
+          cwd: alpha,
+          kind: "you",
+          text: `찾은 질문 ${url.searchParams.get("q")}`,
+          ts: NOW - 60,
+        },
+      ],
+    });
+  }
+  if (url.pathname === "/api/preview") return json({ diff: "--- a\n+++ b\n+ epeira 훅", trust: false });
+  if (req.method === "POST") {
+    // 설정 창 · 탭 이름 바꾸기가 보낸 것을 모아 둔다
+    let body = "";
+    req.on("data", (d) => {
+      body += d;
+    });
+    return req.on("end", () => {
+      const data = JSON.parse(body || "{}");
+      posts.push([url.pathname, data]);
+      json(
+        url.pathname === "/api/rename"
+          ? { ok: true, id: data.id, name: data.name || null }
+          : { ok: true, message: "완료했어요" },
+      );
+    });
   }
   if (url.pathname === "/record") {
     dashboardCalls.push(url.searchParams.get("c"));
@@ -487,6 +519,75 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   );
   await page.keyboard.press("Escape");
   await until(async () => !!(await page.$('footer button[aria-label="알림 기록"]')), "열어 보면 읽은 것으로");
+  await closeAll();
+});
+
+test("설정 · 명령 팔레트 · 단축키 안내 · 탭 이름 바꾸기", async () => {
+  // 설정: 에이전트 연결은 바뀌는 내용을 먼저 보여 주고 동의를 받는다
+  status.agents.codex = { name: "Codex", installed: true, connected: false };
+  await menu("settings");
+  await page.waitForSelector('[role=dialog]:has-text("에이전트")');
+  await page.click('[role=dialog] button:text-is("연결")');
+  await page.waitForSelector('[role=dialog]:has-text("Codex 연결") pre:has-text("epeira 훅")');
+  await page.click('[role=dialog] button:text-is("연결")');
+  await until(() => posts.some(([p, d]) => p === "/api/connect" && d.agent === "codex"), "연결 요청");
+  await page.waitForSelector('nav[aria-label="설정 목차"]');
+  delete status.agents.codex;
+
+  // 터미널 글자 크기 · 테마는 예전과 같은 곳에 저장
+  const prefs = () => page.evaluate(() => JSON.parse(localStorage.getItem("app.prefs") || "{}"));
+  await page.click('nav[aria-label="설정 목차"] button:has-text("터미널")');
+  await page.click('button[aria-label="크게"]');
+  assert.equal((await prefs()).fontSize, 14);
+  await page.click('button[aria-label="작게"]');
+  assert.equal((await prefs()).fontSize, 13);
+  await page.click('nav[aria-label="설정 목차"] button:has-text("화면")');
+  await page.click('[role=dialog] button:text-is("라이트")');
+  await until(async () => (await page.evaluate(() => document.documentElement.dataset.theme)) === "light", "라이트");
+  await page.click('[role=dialog] button:text-is("시스템")');
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$("[role=dialog]")), "설정 닫기");
+
+  // 단축키 안내
+  await menu("shortcuts");
+  await page.waitForSelector('[role=dialog]:has-text("명령 팔레트")');
+  await page.keyboard.press("Escape");
+  await until(async () => !(await page.$("[role=dialog]")), "단축키 닫기");
+
+  // 명령 팔레트: 명령 실행 · 지난 7일 기록 찾기
+  const tabCount = () => page.$$eval('[role="tab"]', (t) => t.length);
+  const palette = async () => {
+    await menu("palette");
+    await page.waitForFunction(() => document.activeElement?.matches("[cmdk-input]"));
+  };
+  await palette();
+  await page.keyboard.type("새 터미널");
+  await page.keyboard.press("Enter");
+  await until(async () => (await tabCount()) === 1, "팔레트로 새 터미널");
+  await until(
+    async () => page.evaluate(() => !!document.activeElement?.closest("[data-pane]")),
+    "닫으면 터미널에 입력 위치",
+  );
+  await palette();
+  await page.keyboard.type("버그");
+  await page.waitForSelector('[cmdk-group]:has-text("기록") [cmdk-item]:has-text("찾은 질문 버그")');
+  await page.keyboard.press("Escape");
+
+  // 탭 이름 바꾸기: 세션이 있는 탭은 수집기에 저장 (궤도 HUB 이름과 같이)
+  const tabId = await page.$eval("[data-pane]", (e) => e.dataset.pane);
+  emit({ kind: "tab", tab: tabId, id: "abc-1" });
+  await until(
+    async () => (await page.evaluate(() => JSON.parse(localStorage.getItem("app.tabs")).list[0].sid)) === "abc-1",
+    "탭 ↔ 세션",
+  );
+  await page.dblclick('[role="tab"]');
+  await page.fill('input[aria-label="탭 이름"]', "배포 준비");
+  await page.keyboard.press("Enter");
+  await until(
+    async () => (await page.$eval('[role="tab"] .truncate', (e) => e.textContent)) === "배포 준비",
+    "이름 바꾸기",
+  );
+  assert.ok(posts.some(([p, d]) => p === "/api/rename" && d.id === "abc-1" && d.name === "배포 준비"));
   await closeAll();
 });
 

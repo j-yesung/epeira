@@ -7,6 +7,7 @@ import { resumeCmd } from "@/entities/tab/model/resume";
 import { projectTabs, useTabs } from "@/entities/tab/model/store";
 import { disposeTerminal, getTerminal, openTerminal } from "@/entities/terminal/model/registry";
 import { epeira } from "@/shared/api/epeira";
+import { dialogOpen } from "@/shared/lib/dialogs";
 
 const KINDS: TabKind[] = ["shell", "claude", "codex"];
 
@@ -28,10 +29,10 @@ export const activateTab = (id: string) => {
   if (useProjects.getState().current !== tab.dir) useProjects.getState().setCurrent(tab.dir);
 };
 
-/** 입력 위치를 지금 탭의 터미널로 */
+/** 입력 위치를 지금 탭의 터미널로 (팔레트 · 설정 같은 창이 열려 있으면 그대로) */
 export const focusActive = () => {
   const id = useTabs.getState().active;
-  if (id) getTerminal(id)?.term.focus();
+  if (id && !dialogOpen()) getTerminal(id)?.term.focus();
 };
 
 /** 구분선을 끌고 나면 라이브러리가 구분선 포커스를 풀어 입력 위치가 사라진다 → 지금 터미널로 (키보드로 조절 중이면 그대로) */
