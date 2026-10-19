@@ -98,6 +98,19 @@ test('앱이 뒤에 있으면 애니메이션을 줄인다', {skip}, async () =>
   assert.equal(await page.evaluate(() => slow), false);
 });
 
+test('HUB 상태: 도구 실행 중이면 일하는 중, 응답 중에 승인을 기다리면 기다림, 실행이 끝나면 풀린다', {skip}, async () => {
+  const base = {session_id: 'dash-1', transcript_path: '/tmp/x/dash-1.jsonl', cwd: '/w/p'};
+  await page.evaluate(() => aoFocusProject('p', '', '/w/p'));
+  await until(() => phaseOf(S.sess.get('dash-1')) === 'work');  // 앞 테스트에서 Read 를 실행 중
+  await hook({...base, hook_event_name: 'Notification', message: 'Claude needs your permission to use Read'});
+  await until(() => phaseOf(S.sess.get('dash-1')) === 'wait');
+  await until(() => document.getElementById('orbit-text').textContent.includes('승인 · 입력을 기다려요'));
+  await hook({...base, hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: {file_path: '/w/p/a.ts'}, tool_use_id: 'dash-t2', tool_response: {}});
+  await until(() => phaseOf(S.sess.get('dash-1')) !== 'wait');
+  // 토큰 입자는 방금 쓴 도구 노드로 간다
+  assert.deepEqual(await page.evaluate(() => { S.flows = []; flow({dtok: 400}, S.sess.get('dash-1')); return [...new Set(S.flows.map(f => f.to))]; }), ['Read']);
+});
+
 test('스크립트 오류 없음', {skip}, () => {
   assert.deepEqual(errors, []);
 });
