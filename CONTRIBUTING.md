@@ -9,7 +9,7 @@
 | `agent_orbit.py` | 수집기. Python 3.9 표준 라이브러리만 씁니다. Claude Code · Codex 로그와 훅 신호를 모아 `127.0.0.1` 에서만 API · 대시보드를 엽니다 |
 | `index.html`, `app.js` | 궤도 대시보드. 사이트(Vercel)와 수집기가 같은 파일을 보여 주고, 앱의 궤도 패널도 이 화면입니다 |
 | `install.sh` | 수집기 설치 · 업데이트 스크립트 (앱도 같은 스크립트를 앱에 든 파일로 실행) |
-| `desktop/` | Electron 앱 (electron-vite · TypeScript): `src/main`(창 · 터미널 · 수집기 관리 · 업데이트), `src/preload`(화면에 여는 최소 API), `src/ipc`(메인 ↔ 화면 약속), `src/renderer`(화면, React · FSD), `test/`, `sign.mjs`(릴리스 서명). 옮기는 중인 예전 화면은 `legacy/` |
+| `desktop/` | Electron 앱 (electron-vite · TypeScript): `src/main`(창 · 터미널 · 수집기 관리 · 업데이트), `src/preload`(화면에 여는 최소 API), `src/ipc`(메인 ↔ 화면 약속), `src/renderer`(화면, React · FSD), `test/`, `resources/`(앱 아이콘, 원본은 `icon.svg`), `sign.mjs`(릴리스 서명) |
 | `app-version.json` | 앱이 6시간마다 확인하는 최신 버전 (업데이트 버튼이 이 버전의 릴리스를 받음) |
 | `vercel.json` | 사이트 보안 헤더 |
 | `.github/workflows/ci.yml` | PR · push 마다 Biome · 타입 검사 · FSD 구조 · 테스트 |
