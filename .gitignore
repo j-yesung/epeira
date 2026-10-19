@@ -3,3 +3,5 @@ __pycache__/
 .vercel
 desktop/node_modules/
 desktop/dist/
+.DS_Store
+.notes/
