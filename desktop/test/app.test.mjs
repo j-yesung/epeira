@@ -583,17 +583,6 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   await page.keyboard.press("Escape");
   await until(async () => !(await page.$("[role=menu]")), "놓친 알림 닫기");
   await until(async () => !!(await page.$('footer button[aria-label="알림 기록"]')), "열어 보면 읽은 것으로");
-
-  // 궤도 대시보드의 "이 탭으로 가기": 그 세션의 탭으로
-  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
-  await until(async () => (await page.$$('[role="tab"]')).length === 2, "두 번째 탭");
-  await page.evaluate(() =>
-    document.querySelector("webview").executeJavaScript(`console.log('epeira:focus {"id":"abc-1"}')`),
-  );
-  await until(
-    async () => (await page.$eval('[role="tab"][aria-selected="true"] .truncate', (e) => e.textContent)) === "API 서버",
-    "대시보드에서 고른 탭으로",
-  );
   await closeAll();
 });
 

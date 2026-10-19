@@ -834,15 +834,11 @@ async function openDrawer(id, st) {  // st: 도구 노드를 눌렀을 때 그 �
   const close = h('button', {class: 'btn small', type: 'button', 'aria-label': '닫기'}, '닫기');
   const ren = h('button', {class: 'btn small', type: 'button', onclick: () => renameSession(id)}, '이름 바꾸기');
   const title = h('h2', {}, (x.parent ? '↳ ' : '') + nameOf(id, x.label) + (st ? ` · ${st.startsWith('mcp:') ? 'MCP ' + st.slice(4) : st}` : ''));
-  // Epeira 앱의 궤도 패널: 다른 터미널에서 시작한 세션도 앱 탭으로 이어서 열기 (앱이 콘솔 메시지로 받는다)
-  const inTab = [...S.tabs.values()].includes(id), cwd = x.cwd || (s0 && s0.cwd) || '';
-  const toApp = EMBED && !x.parent && h('button', {class: 'btn small primary', type: 'button',
-    onclick: () => console.info(inTab ? 'epeira:focus' : 'epeira:open', JSON.stringify({id, agent: x.agent, cwd, last: x.last}))}, inTab ? '이 탭으로 가기' : '탭으로 열기');
   S.drawer = {id, list, prev, title, label: x.label, parent: x.parent, st};
   close.onclick = closeDrawer;
   d.replaceChildren(
     h('div', {class: 'hd'}, mark(x.agent),
-      h('div', {}, title, h('div', {class: 'sub'}, `${a.name} · ${RANGES[S.range].label} · 마지막 활동 ${ago(x.last)}`)), toApp, ren, close),
+      h('div', {}, title, h('div', {class: 'sub'}, `${a.name} · ${RANGES[S.range].label} · 마지막 활동 ${ago(x.last)}`)), ren, close),
     h('div', {class: 'nums'}, h('span', {}, h('b', {}, x.tools), ' tools'), h('span', {}, h('b', {}, x.turns), ' turns'), h('span', {}, h('b', {}, x.errors), ' errors')),
     h('div', {class: 'nums'}, h('span', {}, '입력 ', h('b', {}, fmtK(x.tin || 0))), h('span', {}, '출력 ', h('b', {}, fmtK(x.tokens))), h('span', {}, '캐시 ', h('b', {}, fmtK(x.tcache || 0)))),
     list);
@@ -1009,13 +1005,14 @@ const cardAt = ev => {  // 마우스 아래 노드 카드 (위에 그려진 것�
   const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
   return [...S.drawn].reverse().find(([, n]) => n.bw && x >= n.bx && x <= n.bx + n.bw && y >= n.by && y <= n.by + n.bh);
 };
-cv.addEventListener('mousemove', ev => {  // HUB 위에선 손가락 커서 + 안내, 노드 위에선 눌러서 기록 보기
-  const on = onHub(ev) && S.focus, card = !on && cardAt(ev);
+cv.addEventListener('mousemove', ev => {  // HUB 위에선 손가락 커서 + 안내, 노드 위에선 눌러서 기록 보기 (앱의 궤도 패널은 기록을 열지 않는다)
+  const on = onHub(ev) && S.focus, card = !on && !EMBED && cardAt(ev);
   cv.style.cursor = on || card ? 'pointer' : '';
-  cv.title = on ? '눌러서 세션 기록 · 두 번 눌러 이름 바꾸기' : card ? (card[0] === 'st' ? `눌러서 ${card[1].label} 기록 보기` : '눌러서 서브에이전트 기록 보기') : '';
+  cv.title = on ? (EMBED ? '두 번 눌러 이름 바꾸기' : '눌러서 세션 기록 · 두 번 눌러 이름 바꾸기') : card ? (card[0] === 'st' ? `눌러서 ${card[1].label} 기록 보기` : '눌러서 서브에이전트 기록 보기') : '';
 });
 let hubClick = 0;  // HUB 한 번 = 세션 기록, 두 번 = 이름 바꾸기 (두 번 누르면 한 번짜리는 취소)
 cv.addEventListener('click', ev => {
+  if (EMBED) return;
   const card = cardAt(ev);
   if (card) return card[0] === 'st' ? openDrawer(S.focus, card[1].key) : openDrawer(card[1].id);
   if (onHub(ev) && S.focus) { const id = S.focus; clearTimeout(hubClick); hubClick = setTimeout(() => openDrawer(id), 260); }
