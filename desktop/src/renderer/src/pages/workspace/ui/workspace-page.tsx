@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
+import { refocusAfterResize } from "@/features/manage-tabs/model/actions";
 import { OrbitPanel } from "@/widgets/orbit-panel/ui/orbit-panel";
 import { PaneLayout } from "@/widgets/pane-layout/ui/pane-layout";
 import { Sidebar } from "@/widgets/sidebar/ui/sidebar";
@@ -20,6 +21,7 @@ import {
   useLayout,
 } from "../model/layout";
 import { useWorkspaceEvents } from "../model/use-workspace-events";
+import { TabDnd } from "./tab-dnd";
 
 export function WorkspacePage() {
   const { t } = useTranslation();
@@ -30,7 +32,11 @@ export function WorkspacePage() {
 
   return (
     <div className="flex h-full flex-col">
-      <Group orientation="horizontal" className="min-h-0 flex-1">
+      <Group
+        orientation="horizontal"
+        className="min-h-0 flex-1"
+        onLayoutChanged={(_, meta) => meta.isUserInteraction && refocusAfterResize()}
+      >
         {sideOpen && (
           <>
             <Panel
@@ -51,8 +57,10 @@ export function WorkspacePage() {
         )}
         <Panel id="center" minSize={`${CENTER_MIN}px`}>
           <section className="flex h-full min-w-0 flex-col">
-            <TabBar sideOpen={sideOpen} orbitOpen={orbitOpen} onToggleOrbit={toggleOrbit} />
-            <PaneLayout />
+            <TabDnd>
+              <TabBar sideOpen={sideOpen} orbitOpen={orbitOpen} onToggleOrbit={toggleOrbit} />
+              <PaneLayout />
+            </TabDnd>
           </section>
         </Panel>
         {orbitOpen && (

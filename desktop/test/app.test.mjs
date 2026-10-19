@@ -40,6 +40,16 @@ const answer = (response) =>
     dialog.showMessageBoxSync = () => r;
   }, response);
 
+const menu = (action) =>
+  app.evaluate(({ BrowserWindow }, a) => BrowserWindow.getAllWindows()[0].webContents.send("menu", a), action);
+const until = async (fn, what) => {
+  for (let i = 0; i < 100; i++) {
+    if (await fn()) return;
+    await page.waitForTimeout(100);
+  }
+  assert.fail(what);
+};
+
 before(async () => {
   app = await electron.launch({
     executablePath: require("electron"),
@@ -80,8 +90,6 @@ test("앱 뼈대: 사이드바 · 탭 줄 · 궤도 패널 · 상태바, ⌘B ·
   const has = (label) => page.evaluate((l) => !!document.querySelector(`[aria-label="${l}"]`), label);
   for (const label of ["프로젝트", "터미널 탭", "에이전트 궤도", "연결 상태와 오늘 사용량"])
     assert.ok(await has(label), label);
-  const menu = (action) =>
-    app.evaluate(({ BrowserWindow }, a) => BrowserWindow.getAllWindows()[0].webContents.send("menu", a), action);
   await menu("toggle-side");
   await page.waitForFunction(() => !document.querySelector('aside[aria-label="프로젝트"]'));
   await menu("toggle-orbit");
@@ -113,13 +121,6 @@ test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘�
     };
   });
   const out = () => app.evaluate(() => globalThis.ptyOut);
-  const until = async (fn, what) => {
-    for (let i = 0; i < 100; i++) {
-      if (await fn()) return;
-      await page.waitForTimeout(100);
-    }
-    assert.fail(what);
-  };
   const tabs = () =>
     page.$$eval('[role="tab"]', (els) =>
       els.map((e) => [e.querySelector(".truncate").textContent, e.getAttribute("aria-selected")]),
@@ -161,6 +162,100 @@ test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘�
   for (const label of ["터미널 2 탭 닫기", "터미널 탭 닫기"]) await page.click(`button[aria-label="${label}"]`);
   await until(async () => (await tabs()).length === 0, "모두 닫기");
   assert.ok(await page.$("text=터미널만 열기"), "시작 화면");
+});
+
+test("칸: ⌘D · ⇧⌘D 로 나누고, 옆 칸으로 · 크게 보기 · 탭을 칸에 끌어 놓기 · 칸 닫기 · 나누기 풀기", async () => {
+  // 앞 테스트에서 alpha 를 열어 둔 시작 화면에서 시작
+  const panes = () =>
+    page.$$eval("[data-pane]", (els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return {
+          label: e.querySelector(".truncate")?.textContent ?? null,
+          x: Math.round(r.x),
+          y: Math.round(r.y),
+          w: Math.round(r.width),
+          focused: e.contains(document.activeElement),
+        };
+      }),
+    );
+  const focusedPane = async () => (await panes()).findIndex((p) => p.focused);
+
+  await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
+  await until(async () => (await panes()).length === 1, "새 탭");
+  await menu("split");
+  await until(async () => (await panes()).length === 2, "⌘D 좌우로 나누기");
+  let [a, b] = await panes();
+  assert.ok(a.y === b.y && a.x < b.x && Math.abs(a.w - b.w) <= 1, "왼쪽 · 오른쪽 같은 크기");
+  await menu("split-rows");
+  await until(async () => (await panes()).length === 3, "⇧⌘D 위아래로 나누기");
+  const [, top, bottom] = await panes();
+  assert.ok(top.x === bottom.x && top.y < bottom.y, "오른쪽 칸이 위 · 아래로");
+  assert.deepEqual(
+    (await panes()).map((p) => p.label),
+    ["터미널", "터미널 2", "터미널 3"],
+  );
+  await until(async () => (await focusedPane()) === 2, "새 칸에 입력 위치");
+
+  await menu("split"); // 오른쪽 아래 칸은 반으로 나누면 너무 좁다
+  await until(() => page.$("text=나눌 공간이 부족해요"), "공간이 부족하면 알림");
+  assert.equal((await panes()).length, 3);
+
+  await menu("pane-left");
+  await until(async () => (await focusedPane()) === 0, "⌥⌘← 왼쪽 칸");
+  assert.equal(await page.$eval('[role="tab"][aria-selected="true"] .truncate', (e) => e.textContent), "터미널");
+  await menu("pane-zoom");
+  await until(async () => (await panes()).length === 1, "⇧⌘↩ 크게 보기");
+  await menu("pane-zoom");
+  await until(async () => (await panes()).length === 3, "다시 누르면 원래대로");
+
+  // 구분선을 끌면 크기가 바뀌고, 두 번 누르면 같은 크기로. 끌고 나도 입력 위치는 터미널에
+  const sep = await page.$("[data-pane-area] [role=separator]").then((e) => e.boundingBox());
+  await page.mouse.move(sep.x + sep.width / 2, sep.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(sep.x - 150, sep.y + 200, { steps: 6 });
+  await page.mouse.up();
+  await until(async () => (await panes())[0].w < (await panes())[1].w - 100, "구분선 끌기");
+  await until(async () => (await focusedPane()) === 0, "끌고 나도 입력 위치는 터미널");
+  await page.mouse.dblclick(sep.x - 150 + sep.width / 2, sep.y + 200);
+  await until(async () => Math.abs((await panes())[0].w - (await panes())[1].w) <= 1, "두 번 누르면 같은 크기");
+
+  // 탭 줄의 "터미널 3" 을 첫 칸에 끌어 놓으면 두 칸이 자리를 바꾼다
+  const from = await page.$$('[role="tab"]').then((t) => t[2].boundingBox());
+  const to = await page.$("[data-pane]").then((e) => e.boundingBox());
+  await page.mouse.move(from.x + 30, from.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 40, from.y + 60, { steps: 4 });
+  await page.mouse.move(to.x + 100, to.y + 200, { steps: 8 });
+  await page.mouse.up();
+  await until(async () => (await panes())[0].label === "터미널 3", "끌어 놓은 칸에 그 탭");
+  assert.deepEqual(
+    (await panes()).map((p) => p.label),
+    ["터미널 3", "터미널 2", "터미널"],
+  );
+
+  await page.waitForTimeout(100); // dnd-kit 은 놓은 직후 50ms 동안 클릭을 막는다 (끌기 끝의 클릭이 탭을 누르지 않게)
+  await page.click('button[aria-label="터미널 3 칸 닫기"]');
+  await until(async () => (await panes()).length === 2, "칸 닫기 → 옆 칸이 자리를 채움");
+  await menu("unsplit");
+  await until(async () => (await panes()).length === 1, "⌥⌘W 나누기 풀기");
+  assert.equal(await page.$$eval('[role="tab"]', (t) => t.length), 2, "터미널은 탭으로 남는다");
+
+  // 탭 줄에서 끌어 순서 바꾸기: 지금 탭을 옆 탭 자리로
+  const selected = () =>
+    page.$$eval('[role="tab"]', (t) => t.findIndex((e) => e.getAttribute("aria-selected") === "true"));
+  const was = await selected();
+  const tabBoxes = await page.$$('[role="tab"]').then((t) => Promise.all(t.map((e) => e.boundingBox())));
+  const [src, dst] = [tabBoxes[was], tabBoxes[1 - was]];
+  await page.mouse.move(src.x + 30, src.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(src.x + 40, src.y + 10, { steps: 3 });
+  await page.mouse.move(dst.x + dst.width / 2, dst.y + 10, { steps: 8 });
+  await page.mouse.up();
+  await until(async () => (await selected()) === 1 - was, "끌어 놓은 자리로 순서가 바뀐다");
+  await menu("close-tab");
+  await menu("close-tab");
+  await until(() => page.$("text=터미널만 열기"), "시작 화면");
 });
 
 test("프로젝트 목록: 폴더만 넣고, 뺄 수 있다", async () => {
