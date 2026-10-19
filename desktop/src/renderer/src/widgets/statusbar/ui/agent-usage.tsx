@@ -2,7 +2,7 @@
 import type { AgentUsage } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
 
-import { type AgentLimits, limitLevel, limitWindows, span } from "@/entities/usage/model/limits";
+import { type AgentLimits, limitLevel, limitSummary, limitWindows, span } from "@/entities/usage/model/limits";
 import { useUsage } from "@/entities/usage/model/store";
 import { cn } from "@/shared/lib/utils";
 import { ClaudeLogo, OpenAILogo } from "@/shared/ui/icons/agent-logos";
@@ -100,7 +100,7 @@ export function AgentUsageItem({ agent }: { agent: string }) {
   const a = useUsage((s) => s.usage?.by?.[agent]);
   const L = useUsage((s) => s.usage?.limits?.[agent]) as AgentLimits | undefined;
   if (!a) return null;
-  const wins = limitWindows(L);
+  const summary = limitSummary(limitWindows(L));
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -113,16 +113,14 @@ export function AgentUsageItem({ agent }: { agent: string }) {
         >
           <Logo agent={agent} className="size-3" />
           <span className="sr-only">{a.connected ? a.name : t("statusbar.agentOff", { name: a.name })}</span>
-          {wins.length > 0 && (
-            <span>
-              {wins.map((w, i) => (
-                <span key={w.name} className={levelText(w.used)}>
-                  {i ? " · " : ""}
-                  {w.short} {w.used}%
-                </span>
-              ))}
-            </span>
-          )}
+          <span>
+            {summary.map((w, i) => (
+              <span key={w.short} className={levelText(w.used)}>
+                {i ? " · " : ""}
+                {w.short} {w.used}%
+              </span>
+            ))}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" sideOffset={8}>

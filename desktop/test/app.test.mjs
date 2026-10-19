@@ -484,9 +484,9 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   await page.waitForSelector("[data-pane]");
   const tabId = await page.$eval("[data-pane]", (e) => e.dataset.pane);
   const footer = () => page.$eval("footer[role=status]", (e) => e.innerText.replace(/\s+/g, " "));
-  await until(async () => (await footer()).includes("LIVE"), "수집기 연결");
-  assert.match(await footer(), /Claude Code 5h 83%/, "사용 한도 요약만 (도구 · 토큰은 없음)");
-  assert.doesNotMatch(await footer(), /도구|tok/);
+  await until(() => page.$('footer [role=img][aria-label="수집기에 연결됨"]'), "수집기 연결");
+  assert.match(await footer(), /Claude Code 5h 83% · 7d 0%/, "사용 한도 요약만, 기록이 없는 창도 0%");
+  assert.doesNotMatch(await footer(), /LIVE|도구|tok/);
 
   // 에이전트를 누르면 한도 상세 (올리기만 해서는 열리지 않는다)
   const agent = 'footer button:has-text("Claude Code")';

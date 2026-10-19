@@ -55,7 +55,7 @@
     "label": "연결 상태와 오늘 사용량",
     "connecting": "연결 중…",
     "off": "수집기가 꺼져 있어요",
-    "live": "LIVE",
+    "live": "수집기에 연결됨",
     "agentOff": "{{name}} (연결 안 됨)",
     "refresh": "새로고침",
     "inbox": "알림 기록",
@@ -136,7 +136,7 @@
   "limits": {
     "weekly": "주간",
     "hours": "{{n}}시간",
-    "weeklyShort": "주",
+    "weeklyShort": "7d",
     "hoursShort": "{{n}}h",
     "spanDays": "{{d}}일 {{h}}시간",
     "spanHours": "{{h}}시간 {{m}}분",
