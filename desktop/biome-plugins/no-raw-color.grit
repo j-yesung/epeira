@@ -1,0 +1,11 @@
+// 부품 코드에서 색을 직접 쓰지 않는다: #hex · rgb() · hsl() · oklch() · Tailwind 임의 색(bg-[#...])
+// 색은 의미 토큰(app/styles/tokens.css)을 Tailwind 유틸리티로 쓴다 (bg-background · text-muted-foreground …)
+language js
+
+or {
+  JsStringLiteralExpression(),
+  JsTemplateChunkElement()
+} as $text where {
+  $text <: r"(?s).*(?:#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\().*",
+  register_diagnostic(span=$text, message="색을 직접 쓰지 않아요. 의미 토큰(app/styles/tokens.css)을 Tailwind 유틸리티로 쓰세요 (예: bg-background · text-muted-foreground)", severity="error")
+}

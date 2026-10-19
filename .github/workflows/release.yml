@@ -17,11 +17,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0  # 태그가 main 에 들어갔는지 보려고
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413  # v6.1.0
+        with:
+          package_json_file: desktop/package.json
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
 
       - name: 태그와 버전이 같은지
         run: |
@@ -31,16 +35,16 @@ jobs:
           grep -q "^const LATEST = '$V';" app.js
           grep -q "\"version\": \"$V\"" app-version.json
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
         working-directory: desktop
       - name: 테스트
         run: |
           python3 test_agent_orbit.py
-          cd desktop && npm test
+          cd desktop && pnpm test
 
       - name: DMG 빌드
         working-directory: desktop
-        run: npm run dist -- --publish never
+        run: pnpm dist --publish never
       - name: 업데이트 서명
         working-directory: desktop
         env:
@@ -48,11 +52,14 @@ jobs:
         run: |
           umask 077
           printf '%s\n' "$KEY" > "$RUNNER_TEMP/key.pem"
-          EPEIRA_SIGNING_KEY="$RUNNER_TEMP/key.pem" npm run sign
+          EPEIRA_SIGNING_KEY="$RUNNER_TEMP/key.pem" pnpm sign
           rm -f "$RUNNER_TEMP/key.pem"
 
       - name: 릴리스
         working-directory: desktop
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/Epeira-*.dmg dist/Epeira-*.dmg.sig --verify-tag --title "Epeira ${GITHUB_REF_NAME#v}" --generate-notes
+        # main 에 아직 없는 태그(합치기 전 시험)는 초안으로 → 공개 · 최신 릴리스가 되지 않는다. 합친 뒤 gh release edit 로 공개
+        run: |
+          draft=$(git merge-base --is-ancestor "$GITHUB_SHA" origin/main || echo --draft)
+          gh release create "$GITHUB_REF_NAME" dist/Epeira-*.dmg dist/Epeira-*.dmg.sig --verify-tag --title "Epeira ${GITHUB_REF_NAME#v}" --generate-notes $draft

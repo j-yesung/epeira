@@ -1,0 +1,336 @@
+{
+  "sidebar": {
+    "label": "프로젝트",
+    "title": "프로젝트",
+    "addProject": "폴더 열기",
+    "addProjectHint": "폴더 열기 (⌘O)",
+    "emptyTitle": "프로젝트 폴더를 여기에 끌어다 놓으세요",
+    "emptyHint": "또는 위의 + 버튼 · ⌘O",
+    "resize": "사이드바 너비",
+    "gone": "폴더를 찾을 수 없어요",
+    "git": "⎇ {{branch}}",
+    "gitChanges": "⎇ {{branch}} · 변경 {{changes}}",
+    "openCount": "열린 터미널 {{count}}개",
+    "unfold": "세션 펼치기",
+    "fold": "세션 접기",
+    "unfoldNamed": "{{name}} 세션 펼치기",
+    "foldNamed": "{{name}} 세션 접기",
+    "menu": "프로젝트 메뉴 (우클릭해도 돼요)",
+    "menuNamed": "{{name}} 메뉴",
+    "dropOnlyFolders": "폴더를 끌어다 놓으면 프로젝트로 추가돼요",
+    "usageToday": "오늘 {{tok}} tok",
+    "usageNone": "오늘은 아직 사용 기록이 없어요",
+    "usageHint": "입력 + 출력 토큰 (서브에이전트 포함)"
+  },
+  "tabBar": {
+    "label": "터미널 탭",
+    "newShell": "새 터미널 탭 (⌘T)",
+    "newClaude": "Claude 새 세션 (⇧⌘C)",
+    "newCodex": "Codex 새 세션 (⇧⌘X)",
+    "toggleOrbit": "궤도 패널 (⌘J)"
+  },
+  "welcome": {
+    "title": "Epeira",
+    "body": "왼쪽에서 프로젝트를 고르거나 폴더를 추가하세요. 터미널에서 Claude Code · Codex와 대화하면 오른쪽 궤도에 실시간으로 나타나요.",
+    "keys": "<kbd>⌘O</kbd> 폴더 열기 · <kbd>⌘T</kbd> 새 탭 · <kbd>⇧⌘C</kbd> Claude · <kbd>⇧⌘X</kbd> Codex · <kbd>⌘J</kbd> 궤도 패널",
+    "openFolder": "폴더 열기",
+    "newClaude": "{{name}} · Claude 새 세션",
+    "newCodex": "Codex 새 세션",
+    "newShell": "터미널만 열기"
+  },
+  "orbit": {
+    "label": "에이전트 궤도",
+    "openDashboard": "대시보드 크게 보기",
+    "resize": "궤도 패널 너비",
+    "waiting": "수집기를 준비하고 있어요",
+    "pythonTitle": "Python 이 필요해요",
+    "pythonBody": "macOS 개발자 도구를 설치하면 함께 설치돼요. 설치가 끝나면 자동으로 이어서 연결해요.",
+    "installDevTools": "개발자 도구 설치",
+    "failedTitle": "수집기에 연결하지 못했어요",
+    "failedBody": "자동으로 계속 다시 시도하고 있어요. 지금 바로 해 보려면 아래 버튼을 누르세요.",
+    "retry": "다시 시도",
+    "sessionMissing": "이 세션을 기록에서 찾지 못했어요"
+  },
+  "statusbar": {
+    "label": "연결 상태와 오늘 사용량",
+    "connecting": "연결 중…",
+    "off": "수집기가 꺼져 있어요",
+    "live": "LIVE",
+    "tools": "도구",
+    "tok": "· {{n}} tok",
+    "agentOff": "{{name}} (연결 안 됨)",
+    "refresh": "새로고침",
+    "inbox": "알림 기록",
+    "inboxUnread": "놓친 알림 {{count}}개",
+    "inboxEmpty": "아직 알림이 없어요",
+    "inboxClear": "모두 지우기",
+    "settings": "설정 (⌘,)",
+    "connectAgents": "에이전트 연결하기 →"
+  },
+  "tab": {
+    "kind": {
+      "shell": "터미널",
+      "claude": "Claude",
+      "codex": "Codex"
+    },
+    "close": "탭 닫기 (⌘W)",
+    "closeNamed": "{{label}} 탭 닫기",
+    "exited": "[프로세스가 끝났어요 · ⌘W 로 탭을 닫을 수 있어요]",
+    "hint": "{{dir}}\n두 번 눌러 이름 바꾸기 · 끌어서 순서 바꾸기 · 칸에 놓기",
+    "resumeHint": "↻ 이 탭을 열면 이전 대화를 이어서 열어요",
+    "state": {
+      "wait": "입력 · 승인을 기다려요",
+      "busy": "일하는 중",
+      "new": "새 응답이 있어요"
+    },
+    "doneAlert": "응답을 마쳤어요",
+    "rename": "탭 이름",
+    "list": "탭 목록"
+  },
+  "find": {
+    "placeholder": "터미널에서 찾기",
+    "prev": "이전 찾기 (⇧↩)",
+    "next": "다음 찾기 (↩)",
+    "close": "찾기 닫기 (esc)",
+    "none": "없음"
+  },
+  "pane": {
+    "close": "칸 닫기 (⌘W)",
+    "closeNamed": "{{label}} 칸 닫기",
+    "resize": "칸 크기 (두 번 누르면 같은 크기로)",
+    "max": "한 프로젝트에 {{max}}칸까지 나눌 수 있어요",
+    "noRoom": "나눌 공간이 부족해요 → 사이드바(⌘B)나 궤도 패널(⌘J)을 접으면 더 나눌 수 있어요"
+  },
+  "projectMenu": {
+    "newShell": "새 터미널",
+    "newClaude": "Claude 새 세션",
+    "newCodex": "Codex 새 세션",
+    "reveal": "Finder 에서 보기",
+    "copyPath": "경로 복사",
+    "copied": "경로를 복사했어요",
+    "remove": "목록에서 빼기",
+    "removeSub": "폴더는 지우지 않아요"
+  },
+  "session": {
+    "list": "지난 세션",
+    "goToTab": "열려 있는 탭으로 가기",
+    "resume": "이 대화를 새 탭에서 이어서 열기",
+    "inTab": "탭에 열려 있어요",
+    "noFolder": "이 세션의 폴더를 찾지 못했어요",
+    "cannotResume": "이 세션은 이어서 열 수 없어요",
+    "recentTitle": "세션 이어 열기",
+    "recentBody": "이 세션은 방금까지 다른 곳에서 움직였어요. 다른 터미널에서 아직 실행 중이면 같은 대화를 두 곳에서 열게 되니, 그쪽을 먼저 종료하는 게 안전해요.",
+    "cancel": "취소",
+    "openAnyway": "그래도 열기"
+  },
+  "time": {
+    "now": "방금",
+    "minutes": "{{n}}분 전",
+    "hours": "{{n}}시간 전",
+    "days": "{{n}}일 전"
+  },
+  "agent": {
+    "notInstalled": "설치 안 됨",
+    "notConnected": "연결 안 됨",
+    "needsTrust": "승인 필요",
+    "connected": "연결됨"
+  },
+  "limits": {
+    "weekly": "주간",
+    "hours": "{{n}}시간",
+    "weeklyShort": "주",
+    "hoursShort": "{{n}}h",
+    "spanDays": "{{d}}일 {{h}}시간",
+    "spanHours": "{{h}}시간 {{m}}분",
+    "spanMinutes": "{{m}}분",
+    "resetIn": "{{span}} 후 초기화 · {{at}}",
+    "resetDone": "초기화됨 · 다음 사용 때 새로 기록돼요",
+    "todayTools": "오늘 도구 {{calls}}회",
+    "todayTokens": "입력 {{tin}} · 출력 {{tout}} · 캐시 읽기 {{tcache}}",
+    "recorded": "한도는 {{span}} 전 기록 기준",
+    "codexNone": "아직 기록된 사용 한도가 없어요 · Codex 를 한 번 사용하면 나타나요",
+    "claudeOff": "설정(⌘,)에서 \"Claude 사용 한도 보기\"를 켜면 5시간 · 주간 한도가 보여요",
+    "claudeNoLogin": "Claude Code 로그인 정보를 읽지 못했어요 · Claude Code 를 한 번 실행하면 다시 가져와요",
+    "error": "사용 한도를 불러오지 못했어요 · 잠시 후 다시 시도해요",
+    "loading": "사용 한도를 불러오는 중이에요"
+  },
+  "update": {
+    "downloading": "Epeira {{version}} 을(를) 받고 있어요…",
+    "manual": "내려받기 페이지를 열어요",
+    "manualError": "{{error}} → 내려받기 페이지를 열어요",
+    "progress": "업데이트 진행",
+    "verifying": "확인 중…",
+    "available": "새 버전 {{version}} →"
+  },
+  "settings": {
+    "title": "설정",
+    "nav": "설정 목차",
+    "todo": "할 일이 있어요",
+    "noCollector": "수집기에 연결할 수 없어요. 상태바의 새로고침을 눌러 보세요.",
+    "onboard": "에이전트를 연결하면 Claude Code · Codex 가 하는 일이 궤도에 나타나요. 연결할 때 바뀌는 설정 파일을 먼저 보여 드려요.",
+    "sections": {
+      "agents": "에이전트",
+      "alerts": "알림",
+      "terminal": "터미널",
+      "look": "화면",
+      "help": "문제 해결"
+    },
+    "agents": {
+      "heading": "에이전트",
+      "needInstall": "{{name}}를 설치하면 연결할 수 있어요",
+      "needNotify": "알림을 켜면 권한 승인 · 입력을 기다릴 때 알려 드려요",
+      "live": "도구 실행이 궤도에 실시간으로 나타나요",
+      "needUpdate": "업데이트 필요",
+      "connect": "연결",
+      "reconnect": "다시 연결",
+      "disconnect": "해제",
+      "trust": "승인",
+      "notifyOn": "알림 켜기"
+    },
+    "collector": {
+      "heading": "수집기",
+      "limits": "Claude 사용 한도 보기",
+      "limitsDesc": "Claude Code 로그인 정보로 5시간 · 주간 한도를 5분마다 가져와요 (비용 없음)",
+      "autostart": "로그인할 때 수집기 실행",
+      "autostartDesc": "꺼도 Epeira 앱을 켜면 수집기가 함께 켜져요"
+    },
+    "alerts": {
+      "notify": "알림 받기",
+      "notifyDesc": "Epeira 를 보고 있지 않을 때 macOS 알림과 Dock 배지로 알려요",
+      "done": "응답을 마쳤을 때",
+      "wait": "승인 · 입력을 기다릴 때",
+      "waitDesc": "Claude Code 는 알림 켜기가 필요해요 (Codex 는 아직 이 신호를 보내지 않아요)",
+      "sound": "소리",
+      "note": "알림을 꺼도 놓친 알림은 상태바의 종 아이콘에 모여요."
+    },
+    "terminal": {
+      "fontSize": "글자 크기",
+      "smaller": "작게",
+      "bigger": "크게",
+      "font": "글꼴",
+      "fontDesc": "이 Mac 에 설치된 글꼴에서 골라요. 한글이 없는 글꼴이면 한글은 기본 글꼴로 보여요",
+      "fontDefault": "기본 (SF Mono)",
+      "copyOnSelect": "선택하면 바로 복사",
+      "copyOnSelectDesc": "터미널에서 글자를 드래그해 고르면 클립보드로",
+      "optionMeta": "Option 키를 Meta 로",
+      "optionMetaDesc": "켜면 Option+←/→ 로 단어 이동 (끄면 Option 으로 특수 문자 입력)"
+    },
+    "look": {
+      "theme": "테마",
+      "themeDesc": "궤도 패널은 늘 어두운 밤하늘로 보여요",
+      "system": "시스템",
+      "light": "라이트",
+      "dark": "다크",
+      "shortcuts": "단축키 안내",
+      "shortcutsDesc": "⌘/ 로도 열 수 있어요",
+      "show": "보기"
+    },
+    "help": {
+      "version": "Epeira v{{version}}",
+      "updateAvailable": "새 버전 {{version}} 이 있어요 → 받아서 확인한 뒤 다시 시작하면 바뀌어요",
+      "updateAuto": "6시간마다 새 버전을 확인해요",
+      "update": "업데이트",
+      "check": "업데이트 확인",
+      "checkFailed": "확인하지 못했어요 → 인터넷 연결을 확인해 주세요",
+      "found": "새 버전 {{version}} 이 있어요",
+      "latest": "최신 버전이에요",
+      "collector": "수집기 v{{version}} · 127.0.0.1:{{port}}",
+      "collectorOk": "정상으로 연결돼 있어요",
+      "doctor": "진단 정보 복사",
+      "doctorCopied": "진단 정보를 복사했어요 → 문의할 때 붙여넣어 주세요",
+      "reinstall": "다시 설치",
+      "reinstalling": "수집기를 다시 설치하고 있어요…",
+      "reinstalled": "다시 설치했어요",
+      "reinstallFailed": "다시 설치하지 못했어요 {{log}}",
+      "dashboard": "대시보드 크게 보기 →"
+    },
+    "action": {
+      "connectTitle": "{{name}} 연결",
+      "connectOk": "연결",
+      "connectIntro": "아래 파일에 Epeira 훅이 추가돼요. {{name}}가 도구를 실행하거나 승인 · 입력을 기다릴 때 이 컴퓨터의 수집기로만 신호를 보내요.",
+      "disconnectTitle": "{{name}} 연결 해제",
+      "disconnectOk": "연결 해제",
+      "disconnectIntro": "추가했던 Epeira 훅을 제거해요. 연결한 뒤 설정이 바뀌지 않았다면 연결 전 파일 그대로 되돌려요.",
+      "trustTitle": "Codex 훅 승인",
+      "trustOk": "승인",
+      "trustIntro": "Codex 는 새 훅을 승인해야 실행해요. 아래 명령을 승인합니다 → Codex 의 /hooks 화면에서 승인하는 것과 같아요.",
+      "noChange": "설정 파일은 바뀌지 않아요.",
+      "trustToo": "Codex 승인도 함께 처리해요. 승인할 명령:",
+      "trustCommand": "승인할 명령:",
+      "cancel": "취소",
+      "done": "완료",
+      "unreachable": "수집기에 연결할 수 없어요"
+    }
+  },
+  "palette": {
+    "label": "명령 팔레트",
+    "placeholder": "명령 · 프로젝트 · 탭 · 지난 세션 · 기록 찾기",
+    "empty": "찾는 것이 없어요",
+    "groups": {
+      "commands": "명령",
+      "projects": "프로젝트",
+      "tabs": "탭",
+      "sessions": "지난 세션",
+      "history": "기록"
+    },
+    "cmd": {
+      "newShell": "새 터미널",
+      "newClaude": "Claude 새 세션",
+      "newCodex": "Codex 새 세션",
+      "split": "지금 칸을 좌우로 나누기",
+      "splitRows": "지금 칸을 위아래로 나누기",
+      "unsplit": "나누기 모두 풀기",
+      "find": "터미널에서 찾기",
+      "toggleSide": "사이드바 보이기 · 숨기기",
+      "toggleOrbit": "궤도 패널 보이기 · 숨기기",
+      "addProject": "폴더 열기",
+      "settings": "설정",
+      "shortcuts": "단축키 안내",
+      "dark": "다크 테마",
+      "light": "라이트 테마",
+      "system": "시스템 테마 따르기"
+    }
+  },
+  "shortcuts": {
+    "title": "단축키",
+    "groups": {
+      "tabs": {
+        "title": "프로젝트 · 탭",
+        "keys": [
+          ["⌘O", "폴더 열기"],
+          ["⌘T", "새 터미널"],
+          ["⇧⌘C", "Claude 새 세션"],
+          ["⇧⌘X", "Codex 새 세션"],
+          ["⌘W", "탭 · 칸 닫기"],
+          ["⌘1 – 9", "탭 이동"],
+          ["⌃⇥  ⌃⇧⇥", "다음 · 이전 탭"],
+          ["두 번 누르기", "탭 이름 바꾸기"],
+          ["끌기", "탭 순서 바꾸기 · 칸에 놓기"]
+        ]
+      },
+      "panes": {
+        "title": "화면 나누기",
+        "keys": [
+          ["⌘D", "지금 칸을 좌우로"],
+          ["⇧⌘D", "지금 칸을 위아래로"],
+          ["⌥⌘ + 방향키", "칸 이동"],
+          ["⇧⌘↩", "지금 칸 크게 보기"],
+          ["⌥⌘W", "나누기 모두 풀기"],
+          ["경계선 두 번 누르기", "칸 크기 같게"]
+        ]
+      },
+      "view": {
+        "title": "찾기 · 보기",
+        "keys": [
+          ["⌘P", "명령 팔레트 (프로젝트 · 탭 · 지난 세션 · 기록)"],
+          ["⌘F", "터미널에서 찾기"],
+          ["⌘⌫", "터미널에서 지금 줄 지우기"],
+          ["⌘B", "사이드바"],
+          ["⌘J", "궤도 패널"],
+          ["⌘,", "설정"],
+          ["⌘/", "단축키 안내"]
+        ]
+      }
+    }
+  }
+}

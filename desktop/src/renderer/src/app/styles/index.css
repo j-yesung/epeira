@@ -1,0 +1,137 @@
+@import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+@import "tw-animate-css";
+@import "./tokens.css";
+
+/* 터미널 단축키 기호(⌘ ⌥ ⇧ ⏎ ↑ …)는 Menlo 로 → 글꼴마다 기호 모양이 달라 줄이 어긋나지 않게 */
+@font-face {
+  font-family: "Epeira Keys";
+  src: local("Menlo-Regular"), local("Menlo");
+  unicode-range: U+2190-21FF, U+2303-2326, U+232B, U+238B, U+23CE-23CF;
+}
+
+/* 다크 모드 변형(dark:)은 <html data-theme="dark"> 를 따른다. 색 차이는 dark: 대신 의미 토큰으로 푸는 게 먼저 */
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+/* 의미 토큰 → Tailwind 유틸리티. 기본 팔레트(blue-500 등)는 꺼서 부품이 의미 토큰만 쓰게 한다 */
+@theme inline {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-strong: var(--primary-strong);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chrome: var(--chrome);
+  --color-tile: var(--tile);
+  --color-tile-foreground: var(--tile-foreground);
+  --color-code: var(--code);
+  --color-glow: var(--glow);
+  --color-overlay: var(--overlay);
+  --color-agent-claude: var(--agent-claude);
+  --color-agent-codex: var(--agent-codex);
+}
+
+/* 글꼴 · 크기 · 둥글기 · 그림자 · 움직임 (테마와 상관없음) */
+@theme {
+  --font-sans: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+
+  --text-*: initial;
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px; /* 앱 기본 글자 */
+  --text-md: 14px;
+  --text-lg: 15px;
+  --text-xl: 16px;
+  --text-2xl: 18px;
+  --text-3xl: 22px;
+
+  --radius-*: initial;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px; /* 버튼 · 입력칸 */
+  --radius-lg: 8px; /* 줄 · 카드 */
+  --radius-xl: 10px; /* 메뉴 · 창 */
+  --radius-2xl: 12px;
+  --radius-full: 9999px;
+
+  --shadow-*: initial;
+  --shadow-sm: 0 10px 28px var(--shadow-color);
+  --shadow-md: 0 14px 36px var(--shadow-color); /* 메뉴 · 팝오버 */
+  --shadow-lg: 0 24px 60px var(--shadow-color); /* 창 */
+
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --animate-spin: spin 0.8s linear infinite;
+}
+
+/* 배치 치수 (h-(--bar-height) 처럼 쓴다) · 겹침 순서 (z-(--z-menu) 처럼 쓴다) */
+:root {
+  --bar-height: 52px; /* 창 위쪽 막대: 사이드바 머리 · 탭 줄 · 궤도 패널 머리 */
+  --statusbar-height: 26px;
+  --traffic-lights: 84px; /* 신호등 버튼이 차지하는 왼쪽 자리 */
+  --z-popover: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+  --z-menu: 80;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply overflow-hidden bg-background font-sans text-base text-foreground;
+    line-height: 1.45;
+  }
+  /* 구분선을 끄는 동안 궤도 패널(webview)이 포인터를 가져가지 않게 */
+  body:has([data-separator="active"]) webview {
+    pointer-events: none;
+  }
+  /* 단축키 표시. 글자 사이를 조금 벌려 ⇧⌘C 가 붙어 보이지 않게 */
+  kbd {
+    @apply rounded-xs border border-input py-px pr-1 pl-1.5 font-sans text-muted-foreground text-xs tracking-[0.16em];
+  }
+}
+
+/* 업데이트 확인 중: 막대 위를 빛이 지나간다 */
+@keyframes update-move {
+  to {
+    background-position: -300% 0;
+  }
+}
+
+/* "동작 줄이기" 설정이면 움직임을 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
