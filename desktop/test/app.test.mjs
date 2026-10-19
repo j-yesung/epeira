@@ -268,6 +268,15 @@ test("탭: 폴더를 열고 새 터미널 → 입력하면 셸이 실행 · ⌘�
   await until(async () => (await out()).includes("yyy-2"), "입력한 명령이 실행된다");
   assert.ok(!(await out()).includes("zzz-2"), "⌘⌫ 로 지운 줄은 실행되지 않는다");
 
+  // ⌘← 줄 처음으로 · ⌘→ 줄 끝으로: "cho …" 앞에 e, 끝에 3 → echo zz-23
+  await page.keyboard.type("cho zz-$((1+1))");
+  await page.keyboard.press("Meta+ArrowLeft");
+  await page.keyboard.type("e");
+  await page.keyboard.press("Meta+ArrowRight");
+  await page.keyboard.type("3");
+  await page.keyboard.press("Enter");
+  await until(async () => (await out()).includes("zz-23"), "⌘← · ⌘→");
+
   // 두 번째 탭 → ⌘1 · ⌘2 로 오가기
   await page.click('button[aria-label="새 터미널 탭 (⌘T)"]');
   await until(async () => (await tabs()).length === 2, "두 번째 탭");

@@ -36,6 +36,9 @@ const termFont = (custom: string) =>
 const loadFont = (custom: string) =>
   fontName(custom) ? document.fonts.load(`13px "${fontName(custom)}"`, "가A").catch(() => {}) : Promise.resolve();
 
+/** ⌘⌫ 지금 줄 지우기 (Ctrl+U) · ⌘← 줄 처음으로 (Ctrl+A) · ⌘→ 줄 끝으로 (Ctrl+E) */
+const CMD_KEYS: Record<string, string> = { Backspace: "\x15", ArrowLeft: "\x01", ArrowRight: "\x05" };
+
 /** 처음 크기를 재는 곳: 화면 밖의 보이지 않는 자리 (터미널 칸과 같은 크기) */
 let stage: HTMLDivElement | null = null;
 const staging = (size?: { width: number; height: number }) => {
@@ -105,13 +108,12 @@ export const openTerminal = async (opts: {
   const id = await epeira.createTerm({ cwd: opts.cwd, run: opts.run, cols: term.cols, rows: term.rows });
   term.onData((d) => epeira.write(id, d));
   term.onResize(({ cols, rows }) => epeira.resize(id, cols, rows));
-  // ⌘⌫: 지금 줄 지우기 (macOS 터미널처럼 Ctrl+U)
+  // ⌘ 와 함께 누른 키 (⌥ · ⇧ · ⌃ 없이) → 셸 줄 편집 (iTerm2 · VS Code 터미널처럼). ⌥⌘ ← → 는 칸 이동이라 겹치지 않는다
   term.attachCustomKeyEventHandler((e) => {
-    if (e.type === "keydown" && e.metaKey && e.key === "Backspace") {
-      epeira.write(id, "\x15");
-      return false;
-    }
-    return true;
+    const seq = e.metaKey && !e.altKey && !e.shiftKey && !e.ctrlKey ? CMD_KEYS[e.key] : undefined;
+    if (!seq) return true;
+    if (e.type === "keydown") epeira.write(id, seq);
+    return false;
   });
   term.onSelectionChange(() => {
     if (usePrefs.getState().copyOnSelect && term.hasSelection()) {
