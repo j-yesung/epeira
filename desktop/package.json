@@ -1,7 +1,7 @@
 {
   "name": "epeira-app",
   "productName": "Epeira",
-  "version": "1.4.0",
+  "version": "1.4.100",
   "private": true,
   "description": "프로젝트 사이드바 + 에이전트 터미널 + 궤도 시각화",
   "license": "MIT",
