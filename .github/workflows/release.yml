@@ -1,4 +1,5 @@
-# 릴리스: v<버전> 태그를 push 하면 테스트 → DMG 빌드 → 업데이트 서명 → GitHub 릴리스
+# 릴리스: main 의 커밋에 v<버전> 태그를 push 하면 테스트 → DMG 빌드 → 업데이트 서명 → GitHub 릴리스 → app-version.json 을 main 에
+# app-version.json 은 릴리스가 올라온 뒤에 올린다 → 사용자 앱이 아직 없는 DMG 를 받으러 가지 않게
 # 서명 비밀 키는 저장소 Secrets 의 EPEIRA_SIGNING_KEY (서명 단계에서만 꺼낸다)
 name: release
 
@@ -7,7 +8,7 @@ on:
     tags: ['v*']
 
 permissions:
-  contents: write  # 릴리스 만들기
+  contents: write  # 릴리스 만들기 · app-version.json 올리기
 
 jobs:
   release:
@@ -33,7 +34,6 @@ jobs:
           test "$(node -p "require('./desktop/package.json').version")" = "$V"
           grep -q "^VERSION = '$V'" agent_orbit.py
           grep -q "^const LATEST = '$V';" app.js
-          grep -q "\"version\": \"$V\"" app-version.json
 
       - run: pnpm install --frozen-lockfile
         working-directory: desktop
@@ -63,3 +63,23 @@ jobs:
         run: |
           draft=$(git merge-base --is-ancestor "$GITHUB_SHA" origin/main || echo --draft)
           gh release create "$GITHUB_REF_NAME" dist/Epeira-*.dmg dist/Epeira-*.dmg.sig --verify-tag --title "Epeira ${GITHUB_REF_NAME#v}" --generate-notes $draft
+          echo "PUBLISHED=$([ -z "$draft" ] && echo 1)" >> "$GITHUB_ENV"
+
+      # 공개한 릴리스만: app-version.json 을 main 에 올린다 → Vercel 이 배포하면 사용자 앱에 새 버전이 보인다
+      - name: 사용자 앱에 새 버전 알리기
+        if: env.PUBLISHED == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for try in 1 2 3; do  # 그 사이 main 이 바뀌었으면 다시
+            git fetch -q origin main && git checkout -q -B app-version origin/main
+            node -e 'const f = "app-version.json", j = JSON.parse(require("fs").readFileSync(f, "utf8")); j.version = process.argv[1]; require("fs").writeFileSync(f, JSON.stringify(j, null, 2) + "\n")' "$V"
+            git diff --quiet && exit 0  # 이미 그 버전
+            git commit -qam "chore: app-version.json $V ($V)"
+            git push -q origin HEAD:main && exit 0
+          done
+          exit 1
