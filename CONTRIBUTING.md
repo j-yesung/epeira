@@ -96,8 +96,8 @@ pnpm fsd                        # 화면 FSD 구조 (Steiger)
 
 앱 · 수집기 · 대시보드가 같은 번호를 씁니다. 릴리스마다 **마지막 숫자만** 1씩 올립니다(기능 · 수정 모두). 마지막 숫자는 100부터 시작합니다: 1.3.100 → 1.3.101 → 1.3.102. 가운데 숫자는 큰 기능 묶음을 낼 때만(1.4.0), 앞 숫자는 설정 · 데이터가 예전 버전과 맞지 않게 바뀔 때만(2.0.0) 올립니다. 설치된 앱은 지금보다 높은 번호만 새 버전으로 받으므로 번호를 되돌리지 않습니다.
 
-1. 버전 올리기: `desktop/` 에서 `npm version <버전> --no-git-tag-version`, 그리고 `agent_orbit.py` 의 `VERSION`, `app.js` 의 `LATEST`, `app-version.json` 을 같은 값으로. 커밋합니다.
-2. 태그 push: `git tag v<버전> && git push origin v<버전>` → GitHub Actions(`.github/workflows/release.yml`)가 테스트 → DMG 빌드 → 업데이트 서명 → 릴리스까지 합니다. 태그와 버전 파일이 다르면 멈춥니다. 진행은 `gh run watch` 나 저장소의 Actions 탭에서.
+1. 버전 올리기: `desktop/package.json` 의 `version`, `agent_orbit.py` 의 `VERSION`, `app.js` 의 `LATEST`, `app-version.json` 을 같은 값으로. 커밋합니다.
+2. 태그 push: `git tag v<버전> && git push origin v<버전>` → GitHub Actions(`.github/workflows/release.yml`)가 테스트 → DMG 빌드 → 업데이트 서명 → 릴리스까지 합니다. 태그와 버전 파일이 다르면 멈춥니다. 진행은 `gh run watch` 나 저장소의 Actions 탭에서. `main` 에 아직 없는 커밋의 태그(브랜치에서 미리 시험)는 **초안 릴리스**가 되어 공개되지 않습니다 → 합친 뒤 `gh release edit v<버전> --draft=false --latest` 로 공개.
 3. 릴리스가 올라오면 `git push origin main` → Vercel 이 사이트(대시보드 · 설치 파일 · `app-version.json`)를 배포하고, 사용자 앱에 새 버전이 보입니다.
 
 Actions 를 쓸 수 없을 때는 직접: `cd desktop && pnpm dist && pnpm sign` 후 `gh release create v<버전> dist/Epeira-<버전>*.dmg dist/Epeira-<버전>*.dmg.sig --verify-tag`. 지금 DMG 는 임시 서명만 하고 공증하지 않습니다.
