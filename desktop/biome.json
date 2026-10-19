@@ -1,0 +1,253 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true,
+    "root": ".."
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["**", "!out", "!dist", "!legacy", "!test/legacy", "!test/dashboard.test.mjs", "!sign.mjs"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "bracketSpacing": true,
+      "arrowParentheses": "always"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    },
+    "formatter": {
+      "enabled": true
+    },
+    "linter": {
+      "enabled": true
+    }
+  },
+  "json": {
+    "parser": {
+      "allowComments": true,
+      "allowTrailingCommas": true
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noDebugger": "error",
+        "noArrayIndexKey": "warn",
+        "noConsole": {
+          "level": "warn",
+          "fix": "none"
+        }
+      },
+      "correctness": {
+        "noUnusedImports": {
+          "level": "warn",
+          "fix": "safe"
+        },
+        "noUnusedVariables": "warn",
+        "useExhaustiveDependencies": {
+          "level": "warn",
+          "fix": "none"
+        }
+      },
+      "style": {
+        "useImportType": "warn"
+      },
+      "nursery": {
+        "useSortedClasses": {
+          "level": "warn",
+          "fix": "safe",
+          "options": {
+            "attributes": ["className", "class"],
+            "functions": ["cn", "cva"]
+          }
+        }
+      }
+    },
+    "domains": {
+      "react": "recommended"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "groups": [
+              ":NODE:",
+              ":BLANK_LINE:",
+              ["react", "react/**", "react-dom", "react-dom/**"],
+              ":BLANK_LINE:",
+              [":PACKAGE:", "!react", "!react/**", "!react-dom", "!react-dom/**", "!@/**"],
+              ":BLANK_LINE:",
+              "@/**",
+              ":BLANK_LINE:",
+              [":PATH:"]
+            ]
+          }
+        }
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/renderer/src/pages/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/app/**", "@/app"],
+                    "message": "FSD: pages 은(는) 위 레이어(app)를 가져올 수 없어요. 방향은 app → pages → widgets → features → entities → shared"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/renderer/src/widgets/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/app/**", "@/pages/**", "@/app", "@/pages"],
+                    "message": "FSD: widgets 은(는) 위 레이어(app, pages)를 가져올 수 없어요. 방향은 app → pages → widgets → features → entities → shared"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/renderer/src/features/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/app/**", "@/pages/**", "@/widgets/**", "@/app", "@/pages", "@/widgets"],
+                    "message": "FSD: features 은(는) 위 레이어(app, pages, widgets)를 가져올 수 없어요. 방향은 app → pages → widgets → features → entities → shared"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/renderer/src/entities/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@/app/**",
+                      "@/pages/**",
+                      "@/widgets/**",
+                      "@/features/**",
+                      "@/app",
+                      "@/pages",
+                      "@/widgets",
+                      "@/features"
+                    ],
+                    "message": "FSD: entities 은(는) 위 레이어(app, pages, widgets, features)를 가져올 수 없어요. 방향은 app → pages → widgets → features → entities → shared"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/renderer/src/shared/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@/app/**",
+                      "@/pages/**",
+                      "@/widgets/**",
+                      "@/features/**",
+                      "@/entities/**",
+                      "@/app",
+                      "@/pages",
+                      "@/widgets",
+                      "@/features",
+                      "@/entities"
+                    ],
+                    "message": "FSD: shared 은(는) 위 레이어(app, pages, widgets, features, entities)를 가져올 수 없어요. 방향은 app → pages → widgets → features → entities → shared"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/main/**", "src/preload/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/**", "**/renderer/**"],
+                    "message": "메인 · preload 는 화면 코드를 가져오지 않아요. 같이 쓰는 타입은 src/ipc/contract.ts 에"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

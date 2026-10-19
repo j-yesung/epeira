@@ -3,3 +3,5 @@ test_*.py
 __pycache__
 desktop/
 .github/
+lefthook.yml
+.vscode/

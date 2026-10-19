@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="desktop/assets/icon.png" alt="Epeira 앱 아이콘" width="112">
+  <img src="desktop/resources/icon.png" alt="Epeira 앱 아이콘" width="112">
 </p>
 
 # Epeira · Agent Orbit

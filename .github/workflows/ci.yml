@@ -1,0 +1,46 @@
+# PR · main · 작업 브랜치: Biome · 타입 검사 · FSD 구조 · 빌드 · 테스트
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/react-renderer]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413  # v6.1.0
+        with:
+          package_json_file: desktop/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - name: Biome (포맷 · 린트 · import 정렬 · FSD 레이어 방향)
+        run: pnpm exec biome ci
+      - name: 타입 검사
+        run: pnpm typecheck
+      - name: FSD 구조 (Steiger)
+        run: pnpm fsd
+      - name: 테스트 (수집기 · 앱 · 대시보드)
+        run: |
+          python3 ../test_agent_orbit.py
+          pnpm test
