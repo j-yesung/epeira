@@ -1,13 +1,15 @@
-// 가운데 터미널 칸: 지금 탭의 터미널 (칸 나누기는 3b 에서). 지금 프로젝트에 탭이 없으면 시작 화면
+// 가운데 터미널 자리: 나눈 화면이면 칸 트리, 아니면(또는 한 칸 크게 보기) 지금 탭 하나. 지금 프로젝트에 탭이 없으면 시작 화면
 import { Trans, useTranslation } from "react-i18next";
 
 import { useProjects } from "@/entities/project/model/store";
 import { projectTabs, useTabs } from "@/entities/tab/model/store";
-import { TerminalView } from "@/entities/terminal/ui/terminal-view";
 import { FindBar } from "@/features/find-in-terminal/ui/find-bar";
 import { openTab } from "@/features/manage-tabs/model/actions";
 import { Button } from "@/shared/ui/button";
 import { OrbitMark } from "@/shared/ui/icons/orbit-mark";
+
+import { Pane } from "./pane";
+import { PaneTree } from "./pane-tree";
 
 function Welcome() {
   const { t } = useTranslation();
@@ -44,14 +46,19 @@ export function PaneLayout() {
   const current = useProjects((s) => s.current);
   const tabs = useTabs((s) => s.tabs);
   const active = useTabs((s) => s.active);
-  const hasTabs = projectTabs(tabs, current).length > 0;
+  const root = useTabs((s) => (current ? s.layout[current] : null));
+  const zoomed = useTabs((s) => !!current && !!s.zoom[current]);
+  const single = tabs.some((t) => t.id === active && t.dir === current) ? active : null;
   return (
     <div data-pane-area className="relative min-h-0 flex-1">
-      {tabs.map((tab) => {
-        const shown = tab.id === active && tab.dir === current;
-        return <TerminalView key={tab.id} id={tab.id} visible={shown} focused={shown} />;
-      })}
-      {!hasTabs && <Welcome />}
+      <div className="absolute inset-0">
+        {root && current && !zoomed ? (
+          <PaneTree node={root} path="" dir={current} />
+        ) : (
+          single && <Pane id={single} paned={false} />
+        )}
+      </div>
+      {!projectTabs(tabs, current).length && <Welcome />}
       <FindBar />
     </div>
   );

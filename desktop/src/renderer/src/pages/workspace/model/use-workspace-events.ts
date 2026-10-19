@@ -7,7 +7,8 @@ import { useProjects } from "@/entities/project/model/store";
 import { useTabs } from "@/entities/tab/model/store";
 import { getTerminal, initTerminals } from "@/entities/terminal/model/registry";
 import { useFind } from "@/features/find-in-terminal/model/store";
-import { activateNth, closeTab, cycleTab, openTab } from "@/features/manage-tabs/model/actions";
+import { activateNth, closeTab, cycleTab, focusActive, openTab } from "@/features/manage-tabs/model/actions";
+import { moveFocus, splitPane, toggleZoom, unsplit } from "@/features/manage-tabs/model/panes";
 import { epeira } from "@/shared/api/epeira";
 
 import { useLayout } from "./layout";
@@ -32,6 +33,14 @@ export const useWorkspaceEvents = () => {
           "close-tab": () => closeTab(),
           "next-tab": () => cycleTab(1),
           "prev-tab": () => cycleTab(-1),
+          split: () => splitPane("cols"),
+          "split-rows": () => splitPane("rows"),
+          "pane-left": () => moveFocus("left"),
+          "pane-right": () => moveFocus("right"),
+          "pane-up": () => moveFocus("up"),
+          "pane-down": () => moveFocus("down"),
+          "pane-zoom": toggleZoom,
+          unsplit,
           find: () => useFind.getState().show(),
           "toggle-side": layout.toggleSide,
           "toggle-orbit": layout.toggleOrbit,
@@ -50,6 +59,16 @@ export const useWorkspaceEvents = () => {
     };
     addEventListener("keydown", onKey, true);
     return () => removeEventListener("keydown", onKey, true);
+  }, []);
+
+  // 구분선을 마우스로 누르면 라이브러리가 구분선에 포커스를 준다 → 놓으면 입력 위치를 터미널로 (키보드로 조절할 때는 그대로)
+  useEffect(() => {
+    const onUp = () =>
+      requestAnimationFrame(() => {
+        if (document.activeElement?.hasAttribute("data-separator")) focusActive();
+      });
+    addEventListener("pointerup", onUp, true);
+    return () => removeEventListener("pointerup", onUp, true);
   }, []);
 
   // 터미널 우클릭 메뉴의 동작 (복사는 메뉴가 바로 처리)

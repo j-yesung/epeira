@@ -46,6 +46,19 @@ const staging = (size?: { width: number; height: number }) => {
   return stage;
 };
 
+/** 화면에 없는 터미널을 두는 곳 (숨김). 칸에 보일 때 TerminalView 가 꺼내 간다 */
+let lot: HTMLDivElement | null = null;
+export const parkTerminal = (id: string) => {
+  const host = handles.get(id)?.host;
+  if (!host) return;
+  if (!lot) {
+    lot = document.createElement("div");
+    lot.hidden = true;
+    document.body.append(lot);
+  }
+  lot.append(host);
+};
+
 /** 새 터미널: 칸 크기를 재고 PTY 를 연다 → 탭 id. run: 셸이 준비되면 입력할 명령 (claude · codex) */
 export const openTerminal = async (opts: {
   cwd: string;
@@ -108,6 +121,7 @@ export const openTerminal = async (opts: {
   });
   host.dataset.terminal = id;
   handles.set(id, { term, fit, search, host });
+  parkTerminal(id);
   return id;
 };
 

@@ -1,9 +1,11 @@
-// 가운데 위 탭 줄: 지금 프로젝트의 탭들 · 새 터미널 · Claude · Codex 새 세션 · 궤도 패널 열고 닫기
+// 가운데 위 탭 줄: 지금 프로젝트의 탭들(끌어서 순서 바꾸기 · 칸에 놓기는 TabDnd) · 새 터미널 · Claude · Codex 새 세션 · 궤도 패널 열고 닫기
+import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { Plus, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useProjects } from "@/entities/project/model/store";
 import { tabLabel } from "@/entities/tab/model/label";
+import { leaves } from "@/entities/tab/model/panes";
 import { projectTabs, type Tab, useTabs } from "@/entities/tab/model/store";
 import { KindIcon } from "@/entities/tab/ui/kind-icon";
 import { getTerminal } from "@/entities/terminal/model/registry";
@@ -21,15 +23,31 @@ interface TabBarProps {
   onToggleOrbit: () => void;
 }
 
-function TabItem({ tab, index, label, active }: { tab: Tab; index: number; label: string; active: boolean }) {
+interface TabItemProps {
+  tab: Tab;
+  index: number;
+  label: string;
+  active: boolean;
+  /** 나눈 화면의 다른 칸에 보이는 탭 */
+  paned: boolean;
+}
+
+function TabItem({ tab, index, label, active, paned }: TabItemProps) {
   const { t } = useTranslation();
+  // 키보드로 끌기는 쓰지 않는다 (↩ · space 는 탭 고르기). 그래서 attributes(role=button 등)는 붙이지 않는다
+  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: tab.id });
   return (
     <div
-      title={tab.dir}
+      ref={setNodeRef}
+      {...listeners}
+      title={t("tab.hint", { dir: tab.dir })}
+      style={{ transform: transform ? `translate3d(${transform.x}px, 0, 0)` : undefined, transition }}
       className={cn(
         "flex h-[30px] min-w-24 max-w-[220px] flex-[0_1_200px] items-center rounded-lg border border-transparent text-muted-foreground [-webkit-app-region:no-drag] hover:bg-card",
+        paned && "border-input text-foreground",
         active && "border-input bg-secondary text-foreground hover:bg-secondary",
         tab.exited && "opacity-55",
+        isDragging && "opacity-40",
       )}
     >
       <button
@@ -63,6 +81,9 @@ export function TabBar({ sideOpen, orbitOpen, onToggleOrbit }: TabBarProps) {
   const current = useProjects((s) => s.current);
   const tabs = useTabs((s) => s.tabs);
   const active = useTabs((s) => s.active);
+  const root = useTabs((s) => (current ? s.layout[current] : null));
+  const zoomed = useTabs((s) => !!current && !!s.zoom[current]);
+  const panes = zoomed ? [] : leaves(root);
   const list = projectTabs(tabs, current);
   return (
     <div
@@ -77,9 +98,18 @@ export function TabBar({ sideOpen, orbitOpen, onToggleOrbit }: TabBarProps) {
         style={{ flexBasis: `${list.length * 204}px` }}
         className="flex min-w-0 shrink grow-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
       >
-        {list.map((tab, i) => (
-          <TabItem key={tab.id} tab={tab} index={i} label={tabLabel(tab, tabs)} active={tab.id === active} />
-        ))}
+        <SortableContext items={list.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
+          {list.map((tab, i) => (
+            <TabItem
+              key={tab.id}
+              tab={tab}
+              index={i}
+              label={tabLabel(tab, tabs)}
+              active={tab.id === active}
+              paned={panes.includes(tab.id)}
+            />
+          ))}
+        </SortableContext>
       </div>
       <Button
         variant="ghost"
