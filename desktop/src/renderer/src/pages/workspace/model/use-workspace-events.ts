@@ -21,11 +21,28 @@ import {
 } from "@/features/manage-tabs/model/actions";
 import { moveFocus, splitPane, toggleZoom, unsplit } from "@/features/manage-tabs/model/panes";
 import { restoreTabs } from "@/features/manage-tabs/model/persist";
+import { useRenaming } from "@/features/manage-tabs/model/rename";
 import { initUpdates } from "@/features/update/model/update";
 import { epeira } from "@/shared/api/epeira";
 import { openSettings, useDialogs } from "@/shared/lib/dialogs";
 
 import { useLayout } from "./layout";
+
+/** ⌘G · ⇧⌘G: 찾기가 열려 있으면 다음 · 이전, 아니면 찾기를 연다 (열면 첫 결과로 간다) */
+const findAgain = (dir: 1 | -1) => {
+  const find = useFind.getState();
+  if (find.open) find.find(dir);
+  else find.show();
+};
+
+/** ⌘K: 지금 터미널 화면 지우기 (Terminal · iTerm 처럼, 셸에는 보내지 않는다). 찾던 글이 사라지므로 찾기도 닫는다 */
+const clearTerminal = () => {
+  if (useFind.getState().open) useFind.getState().hide();
+  const id = useTabs.getState().active;
+  const h = id ? getTerminal(id) : undefined;
+  h?.term.clear();
+  h?.term.focus();
+};
 
 /** 메뉴 · 단축키 · 명령 팔레트의 동작 */
 export const runMenuAction = (action: MenuAction) => {
@@ -36,6 +53,7 @@ export const runMenuAction = (action: MenuAction) => {
     "new-claude": () => openTab("claude"),
     "new-codex": () => openTab("codex"),
     "close-tab": () => closeTab(),
+    "rename-tab": () => useRenaming.setState({ id: useTabs.getState().active }),
     "next-tab": () => cycleTab(1),
     "prev-tab": () => cycleTab(-1),
     split: () => splitPane("cols"),
@@ -47,6 +65,9 @@ export const runMenuAction = (action: MenuAction) => {
     "pane-zoom": toggleZoom,
     unsplit,
     find: () => useFind.getState().show(),
+    "find-next": () => findAgain(1),
+    "find-prev": () => findAgain(-1),
+    "clear-terminal": clearTerminal,
     "toggle-side": layout.toggleSide,
     "toggle-orbit": layout.toggleOrbit,
     settings: () => openSettings(),
@@ -86,11 +107,15 @@ export const useWorkspaceEvents = () => {
 
   useEffect(() => epeira.onMenu(runMenuAction), []);
 
-  // ⌘1–9: 지금 프로젝트의 탭
+  // ⌘1–9: 지금 프로젝트의 탭, ⇧⌘[ · ⇧⌘]: 이전 · 다음 탭 (macOS 앱들과 같게)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key) && activateNth(Number(e.key))) {
         e.preventDefault();
+      } else if (e.metaKey && e.shiftKey && !e.altKey && (e.code === "BracketLeft" || e.code === "BracketRight")) {
+        e.preventDefault();
+        e.stopPropagation(); // 터미널로 가지 않게
+        cycleTab(e.code === "BracketLeft" ? -1 : 1);
       }
     };
     addEventListener("keydown", onKey, true);

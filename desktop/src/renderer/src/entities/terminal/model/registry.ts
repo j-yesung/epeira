@@ -36,6 +36,16 @@ const termFont = (custom: string) =>
 const loadFont = (custom: string) =>
   fontName(custom) ? document.fonts.load(`13px "${fontName(custom)}"`, "가A").catch(() => {}) : Promise.resolve();
 
+/** ⌘⌫ 지금 줄 지우기 (Ctrl+U) · ⌘← 줄 처음으로 (Ctrl+A) · ⌘→ 줄 끝으로 (Ctrl+E) */
+const CMD_KEYS: Record<string, string> = { Backspace: "\x15", ArrowLeft: "\x01", ArrowRight: "\x05" };
+
+/** 누른 키 → 셸에 보낼 글자 (없으면 xterm 이 알아서). ⇧↩ 는 줄바꿈(Ctrl+J) → Claude Code · Codex 입력에서 보내지 않고 줄만 바꾼다 */
+const keySeq = (e: KeyboardEvent) => {
+  const only = (meta: boolean, shift: boolean) => e.metaKey === meta && e.shiftKey === shift && !e.altKey && !e.ctrlKey;
+  if (only(true, false)) return CMD_KEYS[e.key];
+  if (only(false, true) && e.key === "Enter") return "\n";
+};
+
 /** 처음 크기를 재는 곳: 화면 밖의 보이지 않는 자리 (터미널 칸과 같은 크기) */
 let stage: HTMLDivElement | null = null;
 const staging = (size?: { width: number; height: number }) => {
@@ -105,13 +115,12 @@ export const openTerminal = async (opts: {
   const id = await epeira.createTerm({ cwd: opts.cwd, run: opts.run, cols: term.cols, rows: term.rows });
   term.onData((d) => epeira.write(id, d));
   term.onResize(({ cols, rows }) => epeira.resize(id, cols, rows));
-  // ⌘⌫: 지금 줄 지우기 (macOS 터미널처럼 Ctrl+U)
+  // ⌘ + 키 → 셸 줄 편집 (iTerm2 · VS Code 터미널처럼, ⌥⌘ ← → 칸 이동과 겹치지 않게 ⌥ · ⇧ · ⌃ 없을 때만), ⇧↩ → 줄바꿈
   term.attachCustomKeyEventHandler((e) => {
-    if (e.type === "keydown" && e.metaKey && e.key === "Backspace") {
-      epeira.write(id, "\x15");
-      return false;
-    }
-    return true;
+    const seq = keySeq(e);
+    if (!seq) return true;
+    if (e.type === "keydown") epeira.write(id, seq);
+    return false;
   });
   term.onSelectionChange(() => {
     if (usePrefs.getState().copyOnSelect && term.hasSelection()) {

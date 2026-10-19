@@ -60,6 +60,7 @@ export const buildMenu = () => {
         { label: "Claude 새 세션", accelerator: "CmdOrCtrl+Shift+C", click: send("new-claude") },
         { label: "Codex 새 세션", accelerator: "CmdOrCtrl+Shift+X", click: send("new-codex") },
         { type: "separator" },
+        { label: "탭 이름 바꾸기", accelerator: "CmdOrCtrl+R", click: send("rename-tab") },
         { label: "탭 닫기", accelerator: "CmdOrCtrl+W", click: send("close-tab") },
         ...(isMac
           ? []
@@ -81,6 +82,10 @@ export const buildMenu = () => {
         { role: "selectAll" },
         { type: "separator" },
         { label: "찾기…", accelerator: "CmdOrCtrl+F", click: send("find") },
+        { label: "다음 찾기", accelerator: "CmdOrCtrl+G", click: send("find-next") },
+        { label: "이전 찾기", accelerator: "CmdOrCtrl+Shift+G", click: send("find-prev") },
+        { type: "separator" },
+        { label: "터미널 화면 지우기", accelerator: "CmdOrCtrl+K", click: send("clear-terminal") },
       ],
     },
     {
@@ -118,8 +123,8 @@ export const buildMenu = () => {
         { label: "확대", accelerator: "CmdOrCtrl+Plus", click: zoom(0.5) },
         { label: "축소", accelerator: "CmdOrCtrl+-", click: zoom(-0.5) },
         { type: "separator" },
-        { role: "reload" },
-        { role: "toggleDevTools" },
+        // 다시 불러오기(⌘R)는 두지 않는다: 누르면 터미널 화면이 사라진다 (⌘R 은 탭 이름 바꾸기). 개발자 도구는 개발 중에만
+        ...(app.isPackaged ? [] : ([{ role: "toggleDevTools" }] satisfies MenuItemConstructorOptions[])),
         { role: "togglefullscreen" },
       ],
     },

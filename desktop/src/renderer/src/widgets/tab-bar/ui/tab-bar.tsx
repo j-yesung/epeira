@@ -15,7 +15,7 @@ import { KindIcon } from "@/entities/tab/ui/kind-icon";
 import { StateDot, tabState } from "@/entities/tab/ui/state-dot";
 import { getTerminal } from "@/entities/terminal/model/registry";
 import { activateTab, closeTab, focusActive, openTab } from "@/features/manage-tabs/model/actions";
-import { renameTab } from "@/features/manage-tabs/model/rename";
+import { renameTab, useRenaming } from "@/features/manage-tabs/model/rename";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/shared/ui/dropdown-menu";
@@ -44,7 +44,7 @@ function TabItem({ tab, index, label, active, paned }: TabItemProps) {
   // 키보드로 끌기는 쓰지 않는다 (↩ · space 는 탭 고르기). 그래서 attributes(role=button 등)는 붙이지 않는다
   const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: tab.id });
   const state = tabState(tab);
-  const [renaming, setRenaming] = useState(false);
+  const renaming = useRenaming((s) => s.id === tab.id);
   const input = useRef<HTMLInputElement>(null);
   const done = useRef(false);
 
@@ -59,7 +59,7 @@ function TabItem({ tab, index, label, active, paned }: TabItemProps) {
   const finish = (value: string | null) => {
     if (done.current) return;
     done.current = true;
-    setRenaming(false);
+    useRenaming.setState({ id: null });
     if (value !== null) renameTab(tab.id, value);
     focusActive();
   };
@@ -100,7 +100,7 @@ function TabItem({ tab, index, label, active, paned }: TabItemProps) {
           role="tab"
           aria-selected={active}
           onClick={() => (active ? getTerminal(tab.id)?.term.focus() : activateTab(tab.id))}
-          onDoubleClick={() => setRenaming(true)}
+          onDoubleClick={() => useRenaming.setState({ id: tab.id })}
           className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-[7px] pr-1 pl-2"
         >
           <KindIcon kind={tab.kind} />
