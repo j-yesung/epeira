@@ -86,6 +86,7 @@ export type TermAction = "paste" | "selectAll" | "find" | "clear";
 /** 메뉴 · 단축키에서 화면으로 보내는 동작 */
 export type MenuAction =
   | "settings"
+  | "quit-blocked"
   | "add-project"
   | "new-shell"
   | "new-claude"

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { constants, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -1027,6 +1027,28 @@ test("업데이트: 우리 서명이 맞고 안의 버전도 맞는 DMG 만 받�
     { ok: false },
     "예전 버전으로는 바꾸지 않는다",
   );
+});
+
+test("⌘Q: Claude · Codex 가 켜져 있으면 끄지 않고 안내 (Orca 처럼)", async () => {
+  const fake = path.join(tmp, "bin", "claude"); // 이름만 claude 인 node (시스템 명령은 복사하면 macOS 가 실행을 막는다)
+  mkdirSync(path.dirname(fake), { recursive: true });
+  copyFileSync(process.execPath, fake, constants.COPYFILE_FICLONE);
+  await page.evaluate((d) => window.epeira.addProjectPath(d), alpha);
+  await page.reload();
+  await page.click(`aside li[title="${alpha}"]`);
+  await menu("new-shell");
+  await page.waitForTimeout(800);
+  await page.keyboard.type(`${fake} -e "setTimeout(() => {}, 30000)"`);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(1000);
+  await app.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu().getMenuItemById("quit").click({ triggeredByAccelerator: true }),
+  );
+  await until(() => page.$("text=⌘Q 로는 끄지 않아요"), "끄지 않고 안내");
+  assert.equal(app.process().exitCode, null, "앱은 그대로");
+  await page.keyboard.press("Control+C");
+  await page.waitForTimeout(500);
+  await closeAll();
 });
 
 test("앱을 끄고(업데이트 · ⌘Q) 다시 켜도 탭이 그대로", async () => {

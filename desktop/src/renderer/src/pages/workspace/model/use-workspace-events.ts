@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import type { MenuAction } from "@ipc/contract";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 import { useProjects } from "@/entities/project/model/store";
 import { useTabs } from "@/entities/tab/model/store";
@@ -24,6 +25,7 @@ import { restoreTabs } from "@/features/manage-tabs/model/persist";
 import { useRenaming } from "@/features/manage-tabs/model/rename";
 import { initUpdates } from "@/features/update/model/update";
 import { epeira } from "@/shared/api/epeira";
+import { i18n } from "@/shared/i18n";
 import { openSettings, useDialogs } from "@/shared/lib/dialogs";
 
 import { useLayout } from "./layout";
@@ -71,6 +73,7 @@ export const runMenuAction = (action: MenuAction) => {
     "toggle-side": layout.toggleSide,
     "toggle-orbit": layout.toggleOrbit,
     settings: () => openSettings(),
+    "quit-blocked": () => toast(i18n.t("tab.quitBlocked")),
     palette: () => useDialogs.setState({ palette: true, shortcuts: false, settings: null }),
     shortcuts: () => useDialogs.setState({ shortcuts: true, palette: false, settings: null }),
   };
