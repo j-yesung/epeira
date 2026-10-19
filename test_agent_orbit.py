@@ -33,6 +33,9 @@ def test_parsers():
         'content': [{'type': 'tool_use', 'id': 'tu1', 'name': 'MultiEdit', 'input': {'file_path': '/x/proj/a.ts'}}, {'type': 'text', 'text': 'hi'}]}}
     assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None), ('done', 'turn complete', None)]
     assert ao.parse_claude(s, a) == [('edit', 'MultiEdit a.ts', 'Edit'), ('say', 'hi', None)]  # 같은 응답의 다음 줄: 토큰·done 중복 없음
+    think = {'type': 'assistant', 'message': {'id': 'm2', 'stop_reason': 'end_turn', 'content': [{'type': 'thinking', 'thinking': '...'}]}}
+    say = {'type': 'assistant', 'message': {'id': 'm2', 'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': '끝났어요'}]}}
+    assert ao.parse_claude(s, think) + ao.parse_claude(s, say) == [('say', '끝났어요', None), ('done', 'turn complete', None)], '생각 줄 다음 답 줄에서 끝'
     assert (s['tokens'], s['tin'], s['tcache'], s['label']) == (7, 103, 900, 'proj'), '입력(캐시 쓰기 포함)·캐시 읽기·출력'
     ao.parse_claude(s, {'type': 'user', 'cwd': '/x/proj/sub', 'message': {'content': 'cd 했어요'}})
     assert s['label'] == 'proj', 'cd 해도 세션 이름은 시작 폴더 그대로'
