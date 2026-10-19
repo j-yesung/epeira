@@ -112,6 +112,8 @@ app.on("web-contents-created", (_e, wc) => {
       e.preventDefault();
       if (/^https?:\/\//.test(url)) shell.openExternal(url);
     });
+    // 새로 불러오거나 궤도 패널을 다시 열면 창의 배율을 다시 따라가므로 그때마다 기본 크기로
+    wc.on("did-navigate", () => wc.setZoomLevel(0));
   }
 });
 

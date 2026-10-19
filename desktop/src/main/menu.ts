@@ -1,10 +1,19 @@
 // 앱 메뉴 · 단축키: 앱 전체 단축키는 여기서 맡고, 누르면 화면에 동작 이름만 보낸다
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions, shell } from "electron";
+import { app, BrowserWindow, Menu, type MenuItemConstructorOptions, shell, webContents } from "electron";
 
 import type { MenuAction } from "../ipc/contract";
-import { ORBIT, sendToWin } from "./context";
+import { liveWin, ORBIT, sendToWin } from "./context";
 
 const send = (action: MenuAction) => () => sendToWin("menu", action);
+
+/** ⌘+ · ⌘- · ⌘0: 앱 화면만 확대 · 축소 · 원래대로 (궤도 패널을 누르고 있어도 앱 화면이 바뀐다). step 이 null 이면 원래대로 */
+const zoom = (step: number | null) => () => {
+  const wc = liveWin()?.webContents;
+  if (!wc) return;
+  wc.setZoomLevel(step === null ? 0 : wc.getZoomLevel() + step);
+  // 궤도 패널(webview)은 품은 창의 배율을 따라가므로 기본 크기로 되돌린다 (새로 불러올 때는 index.ts)
+  for (const guest of webContents.getAllWebContents()) if (guest.hostWebContents === wc) guest.setZoomLevel(0);
+};
 
 /** 개발 모드에서만: 디자인 시스템 창 (토큰 · 부품 모아 보기). 개발 서버 주소가 있을 때만 메뉴에 나온다 */
 const DEV_URL = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
@@ -105,9 +114,9 @@ export const buildMenu = () => {
         { label: "다음 탭", accelerator: "Ctrl+Tab", click: send("next-tab") },
         { label: "이전 탭", accelerator: "Ctrl+Shift+Tab", click: send("prev-tab") },
         { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
+        { label: "실제 크기", accelerator: "CmdOrCtrl+0", click: zoom(null) },
+        { label: "확대", accelerator: "CmdOrCtrl+Plus", click: zoom(0.5) },
+        { label: "축소", accelerator: "CmdOrCtrl+-", click: zoom(-0.5) },
         { type: "separator" },
         { role: "reload" },
         { role: "toggleDevTools" },

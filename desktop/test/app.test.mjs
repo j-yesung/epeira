@@ -534,6 +534,37 @@ test("수집기: 이벤트로 탭 상태 · 놓친 알림 · Dock 배지, 상태
   await closeAll();
 });
 
+test("보기 › 확대 · 축소 · 실제 크기는 앱 화면만, 궤도 패널은 늘 기본 크기", async () => {
+  const zoom = () =>
+    app.evaluate(({ webContents }) =>
+      Object.fromEntries(webContents.getAllWebContents().map((w) => [w.getType(), w.getZoomLevel()])),
+    );
+  const click = (label) =>
+    app.evaluate(({ Menu }, l) => {
+      const find = (items) => {
+        for (const it of items) {
+          if (it.label === l) return it;
+          const sub = it.submenu && find(it.submenu.items);
+          if (sub) return sub;
+        }
+      };
+      find(Menu.getApplicationMenu().items).click();
+    }, label);
+  await until(async () => (await zoom()).webview === 0, "궤도 패널");
+  await click("확대");
+  await click("확대");
+  assert.deepEqual(await zoom(), { window: 1, webview: 0 });
+  // 궤도 패널을 다시 열어도 (webview 는 창의 배율을 따라가려 한다)
+  await menu("toggle-orbit");
+  await until(async () => !("webview" in (await zoom())), "궤도 패널 닫기");
+  await menu("toggle-orbit");
+  await until(async () => "webview" in (await zoom()), "궤도 패널 열기");
+  await page.waitForTimeout(1000);
+  assert.deepEqual(await zoom(), { window: 1, webview: 0 });
+  await click("실제 크기");
+  assert.deepEqual(await zoom(), { window: 0, webview: 0 });
+});
+
 test("설정 · 명령 팔레트 · 단축키 안내 · 탭 이름 바꾸기", async () => {
   // 설정: 에이전트 연결은 바뀌는 내용을 먼저 보여 주고 동의를 받는다
   status.agents.codex = { name: "Codex", installed: true, connected: false };
