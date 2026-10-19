@@ -80,6 +80,7 @@ export const registerTerminalIpc = () => {
     terms.set(id, p);
     p.onData((d) => sendToWin("pty:data", id, d));
     p.onExit(({ exitCode }) => {
+      if (terms.get(id) !== p) return; // 앱이 끈 것(탭 닫기 · 앱 종료)은 알리지 않는다 → 종료하는 동안 탭이 "끝남"으로 저장되지 않게
       terms.delete(id);
       sendToWin("pty:exit", id, exitCode);
     });
