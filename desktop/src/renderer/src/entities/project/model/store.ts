@@ -1,6 +1,6 @@
-// 프로젝트 목록과 지금 프로젝트. 목록 화면은 사이드바(4단계), 여기는 상태만
+// 프로젝트 목록과 지금 프로젝트, 프로젝트별 git 상태. 목록 화면은 사이드바
 
-import type { Project } from "@ipc/contract";
+import type { GitInfo, Project } from "@ipc/contract";
 import { create } from "zustand";
 
 import { epeira } from "@/shared/api/epeira";
@@ -13,6 +13,12 @@ interface ProjectState {
   setCurrent: (dir: string | null) => void;
   /** 폴더 열기 창으로 프로젝트를 더하고 그 프로젝트로 */
   add: () => Promise<string | null>;
+  /** 끌어다 놓은 폴더를 더한다 (폴더가 아니면 null) */
+  addPath: (dir: string) => Promise<string | null>;
+  /** 목록에서만 뺀다 (폴더는 그대로) */
+  remove: (dir: string) => Promise<Project[]>;
+  git: Record<string, GitInfo | null>;
+  loadGit: () => Promise<void>;
 }
 
 export const useProjects = create<ProjectState>((set, get) => ({
@@ -31,6 +37,23 @@ export const useProjects = create<ProjectState>((set, get) => ({
     set({ projects: r.list });
     if (r.added) get().setCurrent(r.added);
     return r.added;
+  },
+  addPath: async (dir) => {
+    const r = await epeira.addProjectPath(dir);
+    set({ projects: r.list });
+    return r.added;
+  },
+  remove: async (dir) => {
+    const projects = await epeira.removeProject(dir);
+    set({ projects });
+    return projects;
+  },
+  git: {},
+  loadGit: async () => {
+    const dirs = get()
+      .projects.filter((p) => p.exists)
+      .map((p) => p.path);
+    set({ git: (await epeira.gitInfo(dirs)) ?? {} });
   },
 }));
 
